@@ -1,0 +1,36 @@
+<resources>
+    <string name="app_name">Vigil 通知助手</string>
+    <string name="keywords_hint">输入关键词，用英文逗号分隔</string>
+    <string name="select_ringtone_button">选择提醒铃声</string>
+    <string name="selected_ringtone_label">当前铃声: %s</string>
+    <string name="no_ringtone_selected">未选择铃声</string>
+    <string name="enable_service_switch">启用通知监听</string>
+    <string name="service_status_label">服务状态:</string>
+    <string name="service_running">监听中</string>
+    <string name="service_stopped">已停止</string>
+    <string name="environment_check_label">环境检测:</string>
+    <string name="all_clear">环境正常，提醒条件良好。</string> <string name="grant_notification_access_button">授予通知读取权限</string>
+    <string name="grant_dnd_access_button">授予勿扰模式读取权限</string>
+    <string name="notification_listener_service_label">Vigil 通知监听服务</string>
+    <string name="permission_notification_access_missing">需要通知读取权限以运行服务。</string>
+    <string name="permission_dnd_access_missing_for_check">需要勿扰模式读取权限以检查状态。</string>
+    <string name="keywords_label">监控关键词:</string>
+    <string name="ringtone_selection_title">选择一个铃声</string>
+    <string name="save_settings_button">保存设置</string>
+    <string name="settings_saved">设置已保存</string>
+    <string name="error_saving_settings">保存设置失败</string>
+    <string name="default_ringtone_name">默认铃声</string>
+    <string name="notification_permission_dialog_title">权限请求</string>
+    <string name="notification_permission_dialog_message">为了使应用正常工作，请在系统设置中授予“通知使用权”。</string>
+    <string name="dnd_permission_dialog_message">为了检查勿扰模式状态，请在系统设置中授予“勿扰权限”。</string>
+    <string name="dialog_go_to_settings">前往设置</string>
+    <string name="dialog_cancel">取消</string>
+
+    <string name="warning_dnd_enabled">警告: 勿扰模式已开启，可能听不到提醒。</string>
+    <string name="warning_silent_mode_enabled">警告: 静音模式已开启，可能听不到提醒。</string>
+    <string name="warning_ringer_volume_not_max">警告: 铃声音量未设置为最大，可能影响提醒效果。</string>
+    <string name="warning_notification_volume_not_max">警告: 通知音量未设置为最大，可能影响提醒效果。</string>
+    <string name="warning_media_volume_low">警告: 媒体音量过低，自定义铃声可能听不清。</string>
+    <string name="info_dnd_permission_needed">提示: 请授予读取勿扰模式权限以进行更全面的环境检查。</string>
+
+</resources>

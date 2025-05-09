@@ -5,8 +5,15 @@
 
     <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
         tools:ignore="ProtectedPermissions" />
-
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
 
     <application
         android:allowBackup="true"
@@ -15,7 +22,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Vigil"
-        tools:targetApi="31">
+        tools:targetApi="34">
 
         <activity
             android:name=".MainActivity"
@@ -31,12 +38,23 @@
             android:name=".MyNotificationListenerService"
             android:label="@string/notification_listener_service_label"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
+            android:exported="true"
+            android:foregroundServiceType="dataSync" >
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
 
+        <activity
+            android:name=".AlertDialogActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Vigil.AlertDialogActivity"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:finishOnTaskLaunch="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            />
     </application>
-
 </manifest>

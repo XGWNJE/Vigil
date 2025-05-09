@@ -46,7 +46,11 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0") // Kotlin 核心扩展
     implementation("androidx.appcompat:appcompat:1.6.1") // Appcompat 库，提供向后兼容性
     implementation("com.google.android.material:material:1.11.0") // Material Design 组件
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4") // ConstraintLayout 布局
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.navigation.fragment.ktx)
+    implementation(libs.androidx.navigation.ui.ktx) // ConstraintLayout 布局
 
     // 测试依赖
     testImplementation("junit:junit:4.13.2")

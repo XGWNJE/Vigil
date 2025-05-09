@@ -68,6 +68,26 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/grant_dnd_access_button"
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone"
+                        tools:visibility="visible"/>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonGrantOverlayAccess"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/grant_overlay_permission_button"
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone"
+                        tools:visibility="visible"/>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonGrantPostNotifications"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/grant_post_notifications_permission_button"
                         android:visibility="gone"
                         tools:visibility="visible"/>
                 </LinearLayout>

@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-// import android.os.Parcelable // 未使用的导入，已移除
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -30,6 +29,22 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "VigilMainActivity"
+
+        // 预设的通讯应用包名列表
+        val PREDEFINED_COMMUNICATION_APPS = setOf(
+            "com.tencent.mm",           // 微信
+            "com.tencent.mobileqq",     // QQ
+            "com.whatsapp",             // WhatsApp
+            "com.facebook.orca",        // Messenger (Facebook)
+            "org.telegram.messenger",   // Telegram
+            "com.google.android.apps.messaging", // Google Messages
+            "com.viber.voip",           // Viber
+            "com.skype.raider",         // Skype
+            "jp.naver.line.android",    // Line
+            "com.snapchat.android",     // Snapchat
+            "com.discord"               // Discord
+            // 可以根据需要添加更多国内常用的通讯应用
+        )
     }
 
     internal lateinit var appSettingsLauncher: ActivityResultLauncher<Intent>
@@ -55,14 +70,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
-        sharedPreferencesHelper = SharedPreferencesHelper(this) // 移除了多余的 this
+        sharedPreferencesHelper = SharedPreferencesHelper(this)
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "从系统设置页面返回，重新检查权限和更新UI。")
+            // onResume 会处理 UI 更新和权限检查
         }
 
-        setupUIListeners()
-        loadSettings()
+        setupUIListeners() // 先设置监听器
+        loadSettings()     // 再加载设置以正确初始化UI
         handleIntentExtras(intent)
         Log.d(TAG, "MainActivity onCreate 完成。")
     }
@@ -120,7 +136,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.buttonSaveSettings.setOnClickListener {
-            saveSettings()
+            saveSettings() // 保存所有设置，包括新的过滤开关状态
             Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show()
         }
 
@@ -158,6 +174,24 @@ class MainActivity : AppCompatActivity() {
                 }, 700)
             }, 300)
         }
+
+        // 新增: 应用过滤开关的监听器
+        binding.switchFilterApps.setOnCheckedChangeListener { _, isChecked ->
+            sharedPreferencesHelper.saveFilterAppsEnabledState(isChecked)
+            if (isChecked) {
+                // 当启用过滤时，保存预设的通讯应用列表
+                sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
+                binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_on)
+                Log.i(TAG, "应用过滤已启用，监听预设通讯应用。")
+            } else {
+                // 当禁用过滤时，可以清空列表或服务会忽略此列表
+                sharedPreferencesHelper.saveFilteredAppPackages(emptySet()) // 保存空集合表示不特别指定
+                binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_off)
+                Log.i(TAG, "应用过滤已禁用，监听所有应用。")
+            }
+            // 通知服务更新设置
+            notifyServiceToUpdateSettings()
+        }
         Log.d(TAG, "UI 监听器已设置。")
     }
 
@@ -187,12 +221,21 @@ class MainActivity : AppCompatActivity() {
 
         setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
         setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
+        setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted) // 新增：应用过滤卡片也受核心权限影响
         binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
+        binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted // 新增：应用过滤开关也受核心权限影响
+
 
         if (!allCoreFunctionalityPermissionsGranted) {
             if (binding.switchEnableService.isChecked) {
                 Log.w(TAG, "核心权限不足，但服务开关为开。将关闭开关并保存状态。")
                 binding.switchEnableService.isChecked = false
+            }
+            // 如果核心权限不足，也应该禁用应用过滤开关并更新其状态
+            if (binding.switchFilterApps.isChecked) {
+                binding.switchFilterApps.isChecked = false
+                // sharedPreferencesHelper.saveFilterAppsEnabledState(false) // 开关监听器会处理
+                // updateFilterAppsSummary(false) // loadSettings 或 updateUI 会处理
             }
         }
         Log.i(TAG, "权限检查完成。通知: $notificationAccessGranted, DND: $dndAccessGranted, 悬浮窗: $overlayAccessGranted, 发送通知: $postNotificationsAccessGranted")
@@ -224,7 +267,13 @@ class MainActivity : AppCompatActivity() {
 
         val serviceEnabledByUserIntent = sharedPreferencesHelper.getServiceEnabledState()
         binding.switchEnableService.isChecked = serviceEnabledByUserIntent
-        Log.d(TAG, "设置已加载到 UI。用户意图启用服务: $serviceEnabledByUserIntent")
+
+        // 新增: 加载应用过滤设置
+        val filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
+        binding.switchFilterApps.isChecked = filterAppsEnabled
+        updateFilterAppsSummary(filterAppsEnabled)
+
+        Log.d(TAG, "设置已加载到 UI。用户意图启用服务: $serviceEnabledByUserIntent, 应用过滤启用: $filterAppsEnabled")
     }
 
     private fun saveSettings() {
@@ -232,8 +281,22 @@ class MainActivity : AppCompatActivity() {
         val keywords = keywordsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         sharedPreferencesHelper.saveKeywords(keywords)
         sharedPreferencesHelper.saveRingtoneUri(selectedRingtoneUri)
-        Log.i(TAG, "设置已保存。关键词: ${keywords.size}个, 铃声: $selectedRingtoneUri")
 
+        // 保存应用过滤开关的状态 (虽然其 listener 已经保存，但统一保存确保一致性)
+        val filterAppsEnabled = binding.switchFilterApps.isChecked
+        sharedPreferencesHelper.saveFilterAppsEnabledState(filterAppsEnabled)
+        if (filterAppsEnabled) {
+            sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
+        } else {
+            sharedPreferencesHelper.saveFilteredAppPackages(emptySet())
+        }
+
+        Log.i(TAG, "设置已保存。关键词: ${keywords.size}个, 铃声: $selectedRingtoneUri, 应用过滤: $filterAppsEnabled")
+        notifyServiceToUpdateSettings()
+    }
+
+    private fun notifyServiceToUpdateSettings() {
+        // 仅当服务开关开启且核心权限满足时才通知服务更新
         if (binding.switchEnableService.isChecked && PermissionUtils.isNotificationListenerEnabled(this)) {
             val intent = Intent(this, MyNotificationListenerService::class.java).apply {
                 action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
@@ -246,6 +309,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
 
     private fun updateSelectedRingtoneUI() {
         val ringtoneName = if (selectedRingtoneUri != null) {
@@ -269,6 +333,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateUI() {
         updateServiceStatusUI()
         updateEnvironmentWarnings()
+        // 新增: 更新应用过滤相关的UI状态
+        updateFilterAppsSummary(binding.switchFilterApps.isChecked)
+        // 确保应用过滤卡片及其内部控件的可交互性也由核心权限控制
+        val corePermissionsGranted = PermissionUtils.isNotificationListenerEnabled(this) &&
+                PermissionUtils.canDrawOverlays(this) &&
+                PermissionUtils.canPostNotifications(this)
+        setCardInteractive(binding.cardAppFilter, corePermissionsGranted)
+        binding.switchFilterApps.isEnabled = corePermissionsGranted
+
+
         Log.d(TAG, "UI 已更新。")
     }
 
@@ -277,7 +351,10 @@ class MainActivity : AppCompatActivity() {
         view.alpha = if (enabled) 1.0f else 0.5f
         if (view is android.view.ViewGroup) {
             for (i in 0 until view.childCount) {
-                view.getChildAt(i).isEnabled = enabled
+                // 特殊处理：MaterialSwitch 本身的 isEnabled 应该由其逻辑控制，而不是简单地被父卡片覆盖
+                if (view.getChildAt(i) !is com.google.android.material.materialswitch.MaterialSwitch) {
+                    view.getChildAt(i).isEnabled = enabled
+                }
             }
         }
     }
@@ -328,6 +405,15 @@ class MainActivity : AppCompatActivity() {
         binding.textViewEnvironmentWarnings.setTextColor(
             ContextCompat.getColor(this, if (warnings == getString(R.string.all_clear)) R.color.neutral_text_color else R.color.warning_text_color)
         )
+    }
+
+    // 新增: 更新应用过滤开关下方的摘要文本
+    private fun updateFilterAppsSummary(isFilterEnabled: Boolean) {
+        binding.textViewFilterAppsSummary.text = if (isFilterEnabled) {
+            getString(R.string.filter_apps_switch_summary_on)
+        } else {
+            getString(R.string.filter_apps_switch_summary_off)
+        }
     }
 
     private fun startVigilService() {

@@ -34,6 +34,10 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var currentRingtoneUri: Uri? = null
     private var keywords: List<String> = emptyList()
 
+    // 新增: 应用过滤相关状态
+    private var filterAppsEnabled: Boolean = false
+    private var filteredAppPackages: Set<String> = emptySet()
+
     private var mediaPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -63,7 +67,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         super.onCreate()
         Log.i(TAG, "服务创建中...")
         sharedPreferencesHelper = SharedPreferencesHelper(applicationContext)
-        loadSettings()
+        loadSettings() // 加载包括应用过滤在内的所有设置
         LocalBroadcastManager.getInstance(this).registerReceiver(
             alertConfirmedReceiver,
             IntentFilter(AlertDialogActivity.ACTION_ALERT_CONFIRMED)
@@ -76,7 +80,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "通知监听器已连接。")
-        loadSettings()
+        loadSettings() // 确保连接后设置是最新的
     }
 
     override fun onListenerDisconnected() {
@@ -106,12 +110,20 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
-            return
+            return // 服务未被用户启用
         }
         if (sbn == null) { Log.w(TAG, "StatusBarNotification 为空，忽略。"); return }
 
+        // 新增: 应用过滤逻辑
+        if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
+            if (sbn.packageName !in filteredAppPackages) {
+                // Log.d(TAG, "通知来自未被监听的应用: ${sbn.packageName}，已忽略。") // 可选日志
+                return // 如果启用了过滤，且当前应用不在监听列表，则忽略
+            }
+        }
+
         if (sbn.packageName == packageName && (sbn.tag == AlertDialogActivity.TAG || sbn.id == FOREGROUND_NOTIFICATION_ID || sbn.id == FULL_SCREEN_NOTIFICATION_ID)) {
-            return
+            return // 忽略自身通知
         }
 
         val notification = sbn.notification ?: run {
@@ -124,9 +136,9 @@ class MyNotificationListenerService : NotificationListenerService() {
         val bigText = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
         val notificationContent = "$title $text $bigText".lowercase()
 
-        val currentKeywords = keywords
+        val currentKeywords = keywords // 使用内存中已加载的关键词
         if (currentKeywords.isEmpty()) {
-            return
+            return // 没有关键词，不处理
         }
 
         var matchedKeyword: String? = null
@@ -142,7 +154,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             handler.post {
                 val canPostNotificationsByPermissionUtil = PermissionUtils.canPostNotifications(applicationContext)
 
-                if (canPostNotificationsByPermissionUtil) { // 优先使用 PermissionUtils 的检查结果
+                if (canPostNotificationsByPermissionUtil) {
                     acquireWakeLock()
                     playRingtoneLooping()
 
@@ -164,14 +176,11 @@ class MyNotificationListenerService : NotificationListenerService() {
                         .setAutoCancel(true)
 
                     try {
-                        // 即使 PermissionUtils.canPostNotifications 返回 true，
-                        // Lint 仍然建议对 notify 调用进行 try-catch，以防万一。
                         CoreNotificationManagerCompat.from(applicationContext).notify(FULL_SCREEN_NOTIFICATION_ID, notificationBuilder.build())
                         Log.i(TAG, "FullScreen Intent 通知已发送 (关键词: $matchedKeyword)。")
                     } catch (e: SecurityException) {
                         Log.e(TAG, "发送 FullScreen Intent 通知失败! (SecurityException)", e)
                         stopRingtoneAndLock()
-                        // 在这里调用备选通知时，也需要注意 SecurityException
                         sendFallbackNotification(matchedKeyword, "无法显示全屏提醒，请检查应用权限。")
                     } catch (e: Exception) {
                         Log.e(TAG, "发送 FullScreen Intent 通知失败! (其他异常)", e)
@@ -180,9 +189,6 @@ class MyNotificationListenerService : NotificationListenerService() {
                     }
                 } else {
                     Log.e(TAG, "无发送通知权限 (通过 PermissionUtils 检测)。无法执行任何提醒操作。")
-                    // 如果 PermissionUtils 检测到没有权限，就不应该尝试发送任何通知。
-                    // 如果仍希望在某些情况下尝试发送备选通知（例如，如果全屏Intent失败但普通通知可能成功），
-                    // 则 sendFallbackNotification 内部的权限检查和 try-catch 仍然重要。
                 }
             }
         }
@@ -197,7 +203,6 @@ class MyNotificationListenerService : NotificationListenerService() {
         keyword: String,
         additionalInfo: String? = null
     ) {
-        // 再次检查权限，作为双重保险，尽管调用此方法的地方可能已经检查过
         if (!PermissionUtils.canPostNotifications(this)) {
             Log.w(TAG, "备选通知：无 POST_NOTIFICATIONS 权限，无法发送。")
             return
@@ -227,11 +232,10 @@ class MyNotificationListenerService : NotificationListenerService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         try {
-            CoreNotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), builder.build()) // 使用不同的通知ID
+            CoreNotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), builder.build())
             Log.i(TAG, "已发送备选通知 (关键词: $keyword)。")
         } catch (e: SecurityException) {
-            // 这是针对 Lint 警告的主要修复点
-            Log.e(TAG, "发送备选通知时捕获到 SecurityException (POST_NOTIFICATIONS 权限可能在检查后被撤销)", e)
+            Log.e(TAG, "发送备选通知时捕获到 SecurityException", e)
         } catch (e: Exception) {
             Log.e(TAG, "发送备选通知时发生其他错误", e)
         }
@@ -239,27 +243,25 @@ class MyNotificationListenerService : NotificationListenerService() {
 
 
     private fun loadSettings() {
-        val oldKeywords = keywords
-        val oldUri = currentRingtoneUri
-
+        // 加载通用设置
         keywords = sharedPreferencesHelper.getKeywords()
         currentRingtoneUri = sharedPreferencesHelper.getRingtoneUri()
 
-        if (oldKeywords != keywords || oldUri != currentRingtoneUri) {
-            Log.i(TAG, "设置已更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri'")
-        }
+        // 新增: 加载应用过滤设置
+        filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
+        filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
+
+        Log.i(TAG, "设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
     }
 
     private fun playRingtoneLooping() {
         stopRingtone()
-
         val ringtoneUriToPlay = currentRingtoneUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         if (ringtoneUriToPlay == null) {
             Log.e(TAG, "无法获取铃声 URI！")
             releaseWakeLock()
             return
         }
-
         try {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(applicationContext, ringtoneUriToPlay)
@@ -294,9 +296,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     private fun stopRingtone() {
         mediaPlayer?.let {
             try {
-                if (it.isPlaying) {
-                    it.stop()
-                }
+                if (it.isPlaying) it.stop()
                 it.reset()
                 it.release()
             } catch (e: Exception) {
@@ -309,9 +309,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     @SuppressLint("WakelockTimeout")
     private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) {
-            return
-        }
+        if (wakeLock?.isHeld == true) return
         releaseWakeLock()
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
@@ -354,8 +352,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             enableLights(true)
             lightColor = android.graphics.Color.RED
         }
-        val notificationManager: NotificationManager =
-            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager: NotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
         Log.d(TAG,"通知渠道 '$ALERT_NOTIFICATION_CHANNEL_ID' 已创建/更新。")
     }
@@ -363,10 +360,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     private fun createForegroundServiceNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent,
-            pendingIntentFlags
-        )
+        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags)
 
         return NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
             .setContentTitle("${getString(R.string.app_name)} 正在运行")

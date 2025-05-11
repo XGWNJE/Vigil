@@ -141,7 +141,8 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/buttonSelectRingtone"
-                            android:layout_width="wrap_content" android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
                             android:text="@string/select_ringtone_button"
                             android:layout_marginEnd="16dp"/>
 
@@ -164,6 +165,56 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardAppFilter"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardElevation="2dp"
+                app:contentPadding="16dp"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/TextAppearance.Material3.TitleMedium"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/app_filter_settings_title"
+                        android:layout_marginBottom="8dp"/>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/switchFilterApps"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="48dp"
+                        android:text="@string/filter_apps_switch_label"
+                        style="@style/TextAppearance.Material3.BodyLarge"
+                        android:paddingVertical="8dp"
+                        android:layout_marginBottom="4dp"/>
+
+                    <TextView
+                        android:id="@+id/textViewFilterAppsSummary"
+                        style="@style/TextAppearance.Material3.BodySmall"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/filter_apps_switch_summary_off"
+                        android:layout_marginBottom="8dp"/>
+
+                    <TextView
+                        style="@style/TextAppearance.Material3.BodySmall"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/filter_apps_description"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:lineSpacingMultiplier="1.2"/>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardServiceControl"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -184,33 +235,36 @@
                         android:text="@string/enable_service_switch"
                         style="@style/TextAppearance.Material3.TitleSmall"
                         android:layout_marginBottom="8dp"
-                        android:paddingHorizontal="4dp"/> <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:layout_marginBottom="8dp">
+                        android:paddingHorizontal="4dp"/>
 
-                    <TextView
-                        style="@style/TextAppearance.Material3.BodyMedium"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/service_status_label"
-                        android:layout_marginEnd="8dp"/>
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginBottom="8dp">
 
-                    <TextView
-                        android:id="@+id/textViewServiceStatus"
-                        style="@style/TextAppearance.Material3.BodyMedium"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        tools:text="监听中"
-                        android:textStyle="bold"/>
-                </LinearLayout>
+                        <TextView
+                            style="@style/TextAppearance.Material3.BodyMedium"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/service_status_label"
+                            android:layout_marginEnd="8dp"/>
+
+                        <TextView
+                            android:id="@+id/textViewServiceStatus"
+                            style="@style/TextAppearance.Material3.BodyMedium"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            tools:text="监听中"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/buttonRestartService"
                         style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:layout_gravity="end"
                         android:text="@string/restart_service_button"
                         android:visibility="gone"

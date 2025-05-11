@@ -45,11 +45,25 @@
 
     <style name="Theme.Vigil.AlertDialogActivity" parent="Theme.Material3.DayNight.Dialog.Alert">
         <item name="android:windowIsFloating">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item> <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:backgroundDimEnabled">true</item> <item name="android:backgroundDimAmount">0.6</item>
-        <item name="colorPrimary">@color/md_theme_primary</item>
-        <item name="colorSurfaceContainerHigh">?attr/colorSurface</item> </style>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.7</item> <item name="colorPrimary">@color/md_theme_primary</item>
+        <item name="colorSurfaceContainerHigh">?attr/colorSurface</item>
+
+        <item name="android:windowAnimationStyle">@style/DialogAnimation</item>
+
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.App.Dialog</item>
+    </style>
+
+    <style name="ShapeAppearance.App.Dialog" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">28dp</item> </style>
+
+    <style name="DialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/anim_dialog_pop_in</item>
+        <item name="android:windowExitAnimation">@android:anim/fade_out</item> </style>
 
 
     <style name="ShapeAppearance.App.SmallComponent" parent="ShapeAppearance.Material3.SmallComponent">
@@ -69,8 +83,7 @@
 
     <style name="Widget.App.CardView" parent="Widget.Material3.CardView.Elevated">
         <item name="cardElevation">4dp</item>
-        <item name="cardCornerRadius">12dp</item>
-    </style>
+        <item name="cardCornerRadius">12dp</item> </style>
 
     <style name="Widget.App.TextInputLayout" parent="Widget.Material3.TextInputLayout.OutlinedBox">
     </style>

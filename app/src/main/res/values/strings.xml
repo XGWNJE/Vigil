@@ -49,12 +49,10 @@
     <string name="alert_dialog_message_format">通知内容: %1$s</string>
     <string name="grant_post_notifications_permission_button">授予发送通知权限 (Android 13+)</string>
     <string name="post_notifications_permission_dialog_title">发送通知权限</string>
-    <string name="post_notifications_permission_dialog_message">为了在匹配到关键词时发送备选通知，请授予应用发送通知的权限 (Android 13+)。</string>
-    <string name="post_notifications_permission_missing">需要发送通知权限以发送备选提醒。</string>
+    <string name="post_notifications_permission_dialog_message">为了在匹配到关键词时发送备选通知，请授予应用发送通知的权限 (Android 13+)。</string> <string name="post_notifications_permission_missing">需要发送通知权限以发送备选提醒。</string>
 
     <string name="service_status_abnormal">服务状态异常 (未连接)</string>
-    <string name="service_status_recovering">正在尝试恢复服务...</string>
-    <string name="restart_service_button">尝试重启服务</string>
+    <string name="service_status_recovering">正在尝试恢复服务…</string> <string name="restart_service_button">尝试重启服务</string>
     <string name="service_alert_limited_permissions">提醒功能受限: 缺少 %s 权限</string>
 
     <string name="permissions_settings_title">权限设置</string>

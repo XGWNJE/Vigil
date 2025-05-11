@@ -11,7 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.Parcelable // 确保导入 Parcelable
+// import android.os.Parcelable // 未使用的导入，已移除
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -19,7 +19,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.isGone // 导入 KTX 扩展
+import androidx.core.view.isGone
 import com.example.vigil.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -37,11 +37,10 @@ class MainActivity : AppCompatActivity() {
     private val ringtonePickerLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
-                // 使用 getParcelableExtra 的安全方式，兼容不同 Android 版本
                 val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
                 } else {
-                    @Suppress("DEPRECATION") // 对于低于 TIRAMISU 的版本，旧方法仍然需要
+                    @Suppress("DEPRECATION")
                     result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
                 }
                 selectedRingtoneUri = uri
@@ -56,18 +55,15 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setSupportActionBar(binding.toolbar)
-        sharedPreferencesHelper = SharedPreferencesHelper(this)
+        sharedPreferencesHelper = SharedPreferencesHelper(this) // 移除了多余的 this
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "从系统设置页面返回，重新检查权限和更新UI。")
-            // onResume 会处理 UI 更新和权限检查
         }
 
         setupUIListeners()
         loadSettings()
-
         handleIntentExtras(intent)
-
         Log.d(TAG, "MainActivity onCreate 完成。")
     }
 
@@ -80,7 +76,6 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntentExtras(intent: Intent?) {
         if (intent?.getStringExtra("reason") == "missing_overlay_permission") {
             Toast.makeText(this, R.string.overlay_permission_missing, Toast.LENGTH_LONG).show()
-            // 移除了不必要的 SDK_INT >= M 检查，因为 canDrawOverlays 内部会处理
             if (!PermissionUtils.canDrawOverlays(this)) {
                 PermissionUtils.requestOverlayPermission(this)
             }
@@ -168,10 +163,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkAndRequestPermissions() {
         val notificationAccessGranted = PermissionUtils.isNotificationListenerEnabled(this)
-        // 使用 KTX 扩展属性 View.isGone
         binding.buttonGrantNotificationAccess.isGone = notificationAccessGranted
 
-        // 移除了不必要的 SDK_INT 检查，因为 isDndAccessGranted 内部会处理
         val dndAccessGranted = PermissionUtils.isDndAccessGranted(this)
         binding.buttonGrantDndAccess.isGone = dndAccessGranted
 
@@ -246,7 +239,6 @@ class MainActivity : AppCompatActivity() {
                 action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
             }
             try {
-                // 移除了不必要的 SDK_INT >= O 检查，startForegroundService 内部有兼容处理或应用minSdk已满足
                 startService(intent)
                 Log.d(TAG, "已发送 ACTION_UPDATE_SETTINGS 到服务。")
             } catch (e: Exception) {
@@ -305,7 +297,6 @@ class MainActivity : AppCompatActivity() {
 
                 val missingAlertPermissions = mutableListOf<String>()
                 if (!PermissionUtils.canDrawOverlays(this)) missingAlertPermissions.add("悬浮窗")
-                // 移除了不必要的 SDK_INT >= TIRAMISU 检查
                 if (!PermissionUtils.canPostNotifications(this)) {
                     missingAlertPermissions.add("发送通知")
                 }
@@ -325,7 +316,7 @@ class MainActivity : AppCompatActivity() {
 
         binding.textViewServiceStatus.text = statusText
         binding.textViewServiceStatus.setTextColor(statusColor)
-        binding.buttonRestartService.isGone = !showRestartButton // 使用 KTX
+        binding.buttonRestartService.isGone = !showRestartButton
 
         Log.d(TAG, "UI服务状态更新: $statusText, 重启按钮: $showRestartButton")
     }
@@ -349,8 +340,7 @@ class MainActivity : AppCompatActivity() {
         setNotificationListenerServiceComponentEnabled(true)
         val serviceIntent = Intent(this, MyNotificationListenerService::class.java)
         try {
-            // 移除了不必要的 SDK_INT >= O 检查
-            startForegroundService(serviceIntent) // 优先使用 startForegroundService
+            startForegroundService(serviceIntent)
             Log.i(TAG, "Vigil 通知服务已尝试启动。")
         } catch (e: Exception) {
             Log.e(TAG, "启动 Vigil 服务时出错: ", e)

@@ -37,15 +37,14 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var mediaPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
-    // private var isListenerConnected = false // Replaced by direct system check in MainActivity for UI
 
     companion object {
-        private const val TAG = "VigilListenerService" // 日志标签已修改
+        private const val TAG = "VigilListenerService"
         const val ACTION_UPDATE_SETTINGS = "com.example.vigil.UPDATE_SETTINGS"
         private const val WAKELOCK_TAG = "Vigil::KeywordAlertWakeLock"
         private const val FOREGROUND_NOTIFICATION_ID = 717
         private const val ALERT_NOTIFICATION_CHANNEL_ID = "vigil_alert_channel"
-        private const val WAKELOCK_TIMEOUT_MS = 2 * 60 * 1000L
+        private const val WAKELOCK_TIMEOUT_MS = 2 * 60 * 1000L // 2 minutes
         private const val FULL_SCREEN_NOTIFICATION_ID = 718
     }
 
@@ -71,24 +70,18 @@ class MyNotificationListenerService : NotificationListenerService() {
         )
         createNotificationChannel()
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundServiceNotification())
-        // 初始连接状态将在 onListenerConnected 中明确
         Log.i(TAG, "服务已创建并启动为前台服务。")
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        // isListenerConnected = true // 内部状态标记，可选
         Log.i(TAG, "通知监听器已连接。")
-        // 可以在此处发送广播或更新共享首选项（如果其他组件需要精确的连接事件）
-        // 但对于MainActivity的UI，它会直接查询系统状态
-        loadSettings() // 确保设置是最新的
+        loadSettings()
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        // isListenerConnected = false // 内部状态标记，可选
-        Log.w(TAG, "通知监听器已断开连接！这可能是系统行为或服务问题。")
-        // 同上，MainActivity会通过系统查询来更新UI
+        Log.w(TAG, "通知监听器已断开连接！")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -97,7 +90,6 @@ class MyNotificationListenerService : NotificationListenerService() {
             Log.i(TAG, "收到 ACTION_UPDATE_SETTINGS，重新加载设置。")
             loadSettings()
         }
-        // 确保服务在前台运行
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundServiceNotification())
         return START_STICKY
     }
@@ -108,45 +100,34 @@ class MyNotificationListenerService : NotificationListenerService() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(alertConfirmedReceiver)
         stopRingtone()
         releaseWakeLock()
-        stopForeground(Service.STOP_FOREGROUND_REMOVE) // 使用 STOP_FOREGROUND_REMOVE
-        // isListenerConnected = false // 内部状态标记，可选
+        stopForeground(Service.STOP_FOREGROUND_REMOVE)
         Log.w(TAG, "服务已销毁，资源已释放。")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        val postTime = System.currentTimeMillis()
-        // Log.d(TAG, "开始处理通知 (ID: ${sbn?.id}, Pkg: ${sbn?.packageName}) at $postTime") // 减少不必要的日志
-
-        // 检查服务是否应处理通知 (用户是否启用)
         if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
-            // Log.d(TAG, "服务已被用户禁用，忽略通知 (ID: ${sbn?.id})。") // 仅在需要时记录
             return
         }
-
         if (sbn == null) { Log.w(TAG, "StatusBarNotification 为空，忽略。"); return }
 
-        // 忽略自身应用的通知，防止循环或干扰
         if (sbn.packageName == packageName && (sbn.tag == AlertDialogActivity.TAG || sbn.id == FOREGROUND_NOTIFICATION_ID || sbn.id == FULL_SCREEN_NOTIFICATION_ID)) {
-            // Log.d(TAG, "忽略应用自身通知 (ID: ${sbn.id}, Tag: ${sbn.tag})。")
             return
         }
 
-        val notification = sbn.notification
-        if (notification == null) { Log.w(TAG, "Notification 对象为空，忽略 (ID: ${sbn.id}, Pkg: ${sbn.packageName})。"); return }
+        val notification = sbn.notification ?: run {
+            Log.w(TAG, "Notification 对象为空，忽略 (ID: ${sbn.id}, Pkg: ${sbn.packageName})。")
+            return
+        }
 
         val title = notification.extras.getString(Notification.EXTRA_TITLE) ?: ""
         val text = notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
         val bigText = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
         val notificationContent = "$title $text $bigText".lowercase()
 
-        // Log.d(TAG, "提取内容: Title='${title}', Text='${text}', BigText='${bigText}'")
-
-        val currentKeywords = keywords // 使用加载到内存的关键词
+        val currentKeywords = keywords
         if (currentKeywords.isEmpty()) {
-            // Log.d(TAG, "当前关键词列表为空，不进行匹配。")
             return
         }
-        // Log.d(TAG, "当前关键词列表: $currentKeywords")
 
         var matchedKeyword: String? = null
         for (keyword in currentKeywords) {
@@ -158,16 +139,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
 
         if (matchedKeyword != null) {
-            // Log.i(TAG, "匹配成功，准备在主线程处理...") // 减少日志
             handler.post {
-                // val handlerPostTime = System.currentTimeMillis()
-                // Log.d(TAG, "Handler.post 开始执行 - 距离 onNotificationPosted: ${handlerPostTime - postTime}ms")
+                val canPostNotificationsByPermissionUtil = PermissionUtils.canPostNotifications(applicationContext)
 
-                val canPostNotifications = PermissionUtils.canPostNotifications(applicationContext)
-                // Log.d(TAG, "权限检查结果: canPostNotifications=$canPostNotifications")
-
-                if (canPostNotifications) {
-                    // Log.i(TAG, "拥有发送通知权限，准备使用 FullScreen Intent。")
+                if (canPostNotificationsByPermissionUtil) { // 优先使用 PermissionUtils 的检查结果
                     acquireWakeLock()
                     playRingtoneLooping()
 
@@ -175,11 +150,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
                         putExtra(AlertDialogActivity.EXTRA_MATCHED_KEYWORD, matchedKeyword)
                     }
-                    val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    } else {
-                        PendingIntent.FLAG_UPDATE_CURRENT
-                    }
+                    val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     val fullScreenPendingIntent = PendingIntent.getActivity(applicationContext, (System.currentTimeMillis() % 10000).toInt(), alertIntent, pendingIntentFlags)
 
                     val notificationBuilder = NotificationCompat.Builder(applicationContext, ALERT_NOTIFICATION_CHANNEL_ID)
@@ -190,32 +161,31 @@ class MyNotificationListenerService : NotificationListenerService() {
                         .setCategory(NotificationCompat.CATEGORY_ALARM)
                         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                         .setFullScreenIntent(fullScreenPendingIntent, true)
-                        .setAutoCancel(true) // 点击通知本身时取消 (如果 AlertDialogActivity 没启动或被意外关闭)
+                        .setAutoCancel(true)
 
                     try {
-                        // Log.i(TAG, "尝试发送 FullScreen Intent 通知 (ID: $FULL_SCREEN_NOTIFICATION_ID)...")
+                        // 即使 PermissionUtils.canPostNotifications 返回 true，
+                        // Lint 仍然建议对 notify 调用进行 try-catch，以防万一。
                         CoreNotificationManagerCompat.from(applicationContext).notify(FULL_SCREEN_NOTIFICATION_ID, notificationBuilder.build())
                         Log.i(TAG, "FullScreen Intent 通知已发送 (关键词: $matchedKeyword)。")
                     } catch (e: SecurityException) {
                         Log.e(TAG, "发送 FullScreen Intent 通知失败! (SecurityException)", e)
                         stopRingtoneAndLock()
-                        sendFallbackNotification(title, text, matchedKeyword, "无法显示全屏提醒，请检查应用权限。")
+                        // 在这里调用备选通知时，也需要注意 SecurityException
+                        sendFallbackNotification(matchedKeyword, "无法显示全屏提醒，请检查应用权限。")
                     } catch (e: Exception) {
                         Log.e(TAG, "发送 FullScreen Intent 通知失败! (其他异常)", e)
                         stopRingtoneAndLock()
-                        sendFallbackNotification(title, text, matchedKeyword, "显示提醒时发生错误。")
+                        sendFallbackNotification(matchedKeyword, "显示提醒时发生错误。")
                     }
                 } else {
-                    Log.e(TAG, "无发送通知权限。无法执行任何提醒操作。")
-                    // 不获取锁，不播放铃声
+                    Log.e(TAG, "无发送通知权限 (通过 PermissionUtils 检测)。无法执行任何提醒操作。")
+                    // 如果 PermissionUtils 检测到没有权限，就不应该尝试发送任何通知。
+                    // 如果仍希望在某些情况下尝试发送备选通知（例如，如果全屏Intent失败但普通通知可能成功），
+                    // 则 sendFallbackNotification 内部的权限检查和 try-catch 仍然重要。
                 }
-                // val handlerEndTime = System.currentTimeMillis()
-                // Log.d(TAG, "Handler.post 执行完毕 - 耗时: ${handlerEndTime - handlerPostTime}ms")
             }
         }
-        // else { Log.d(TAG, "未匹配到关键词。") }
-        // val endTime = System.currentTimeMillis()
-        // Log.d(TAG, "处理结束 - 总耗时: ${endTime - postTime}ms") // 减少不必要的日志
     }
 
     private fun stopRingtoneAndLock() {
@@ -224,16 +194,13 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun sendFallbackNotification(
-        originalTitle: String,
-        originalText: String,
         keyword: String,
         additionalInfo: String? = null
     ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                Log.w(TAG, "无 POST_NOTIFICATIONS 权限，无法发送备选通知。")
-                return
-            }
+        // 再次检查权限，作为双重保险，尽管调用此方法的地方可能已经检查过
+        if (!PermissionUtils.canPostNotifications(this)) {
+            Log.w(TAG, "备选通知：无 POST_NOTIFICATIONS 权限，无法发送。")
+            return
         }
 
         val mainActivityIntent = Intent(this, MainActivity::class.java).apply {
@@ -245,10 +212,9 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (additionalInfo != null) {
             baseMessage += "\n($additionalInfo)"
         }
-        // baseMessage += "\n原通知: $originalTitle - $originalText" // 可选：包含原通知信息
 
         val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        val intentAction = PendingIntent.getActivity(this, System.currentTimeMillis().toInt() % 10001, mainActivityIntent, pendingIntentFlags) // Unique request code
+        val intentAction = PendingIntent.getActivity(this, System.currentTimeMillis().toInt() % 10001, mainActivityIntent, pendingIntentFlags)
 
         val builder = NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_icon)
@@ -260,13 +226,19 @@ class MyNotificationListenerService : NotificationListenerService() {
             .setContentIntent(intentAction)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
-        CoreNotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), builder.build()) // Unique notification ID
-        Log.i(TAG, "已发送备选通知 (关键词: $keyword)。")
+        try {
+            CoreNotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), builder.build()) // 使用不同的通知ID
+            Log.i(TAG, "已发送备选通知 (关键词: $keyword)。")
+        } catch (e: SecurityException) {
+            // 这是针对 Lint 警告的主要修复点
+            Log.e(TAG, "发送备选通知时捕获到 SecurityException (POST_NOTIFICATIONS 权限可能在检查后被撤销)", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "发送备选通知时发生其他错误", e)
+        }
     }
 
 
     private fun loadSettings() {
-        // Log.d(TAG, "正在加载设置...") // 减少日志
         val oldKeywords = keywords
         val oldUri = currentRingtoneUri
 
@@ -279,28 +251,25 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun playRingtoneLooping() {
-        // Log.d(TAG, "请求播放循环铃声...") // 减少日志
-        stopRingtone() // 确保先停止任何正在播放的
+        stopRingtone()
 
         val ringtoneUriToPlay = currentRingtoneUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         if (ringtoneUriToPlay == null) {
             Log.e(TAG, "无法获取铃声 URI！")
-            releaseWakeLock() // 如果无法播放，也释放锁
+            releaseWakeLock()
             return
         }
-        // Log.d(TAG, "准备播放 URI: $ringtoneUriToPlay")
 
         try {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(applicationContext, ringtoneUriToPlay)
                 val audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM) // 确保使用正确的音频焦点和流类型
+                    .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
                 setAudioAttributes(audioAttributes)
                 isLooping = true
-                // Log.d(TAG, "MediaPlayer 设置完成，准备异步加载...")
-                prepareAsync() // 异步准备，避免阻塞服务线程
+                prepareAsync()
                 setOnPreparedListener { mp ->
                     Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
                     try {
@@ -313,7 +282,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 setOnErrorListener { _, what, extra ->
                     Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, URI: $ringtoneUriToPlay")
                     stopRingtoneAndLock()
-                    true // 表示已处理错误
+                    true
                 }
             }
         } catch (e: Exception) {
@@ -324,16 +293,13 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private fun stopRingtone() {
         mediaPlayer?.let {
-            // Log.d(TAG, "尝试停止和释放 MediaPlayer...") // 减少日志
             try {
                 if (it.isPlaying) {
                     it.stop()
-                    // Log.i(TAG, "MediaPlayer 已停止。")
                 }
-                it.reset() // 重置状态
+                it.reset()
                 it.release()
-                // Log.i(TAG, "MediaPlayer 已释放。")
-            } catch (e: Exception) { // IllegalStateException or other
+            } catch (e: Exception) {
                 Log.e(TAG, "停止或释放 MediaPlayer 时出错", e)
             } finally {
                 mediaPlayer = null
@@ -343,27 +309,25 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     @SuppressLint("WakelockTimeout")
     private fun acquireWakeLock() {
-        // Log.d(TAG, "尝试获取唤醒锁...") // 减少日志
         if (wakeLock?.isHeld == true) {
-            // Log.d(TAG, "唤醒锁已持有，无需重复获取。")
             return
         }
-        releaseWakeLock() // 确保之前的锁已释放
+        releaseWakeLock()
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK, // PARTIAL_WAKE_LOCK 保持 CPU 运行，屏幕可关闭
+            PowerManager.PARTIAL_WAKE_LOCK,
             WAKELOCK_TAG
         ).apply {
             try {
-                acquire(WAKELOCK_TIMEOUT_MS) // 设置超时，防止无限期持有
+                acquire(WAKELOCK_TIMEOUT_MS)
                 if (isHeld) {
                     Log.i(TAG, "唤醒锁已获取 (超时: ${WAKELOCK_TIMEOUT_MS / 1000}秒)。")
                 } else {
-                    Log.w(TAG, "调用 acquire 后，锁仍未持有？") // 不太可能发生，但记录
+                    Log.w(TAG, "调用 acquire 后，锁仍未持有？")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "获取唤醒锁时出错", e)
-                wakeLock = null // 获取失败
+                wakeLock = null
             }
         }
     }
@@ -373,54 +337,45 @@ class MyNotificationListenerService : NotificationListenerService() {
             if (it.isHeld) {
                 try {
                     it.release()
-                    // Log.i(TAG, "唤醒锁已释放。") // 减少日志
                 } catch (e: Exception) {
                     Log.e(TAG, "释放唤醒锁时出错", e)
                 }
             }
         }
-        wakeLock = null // 清除引用
+        wakeLock = null
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = getString(R.string.notification_channel_name)
-            val descriptionText = getString(R.string.notification_channel_description)
-            val importance = NotificationManager.IMPORTANCE_HIGH // 高优先级用于提醒
-            val channel = NotificationChannel(ALERT_NOTIFICATION_CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-                enableLights(true)
-                lightColor = android.graphics.Color.RED
-                // 对于需要声音的提醒渠道，可以设置声音，但我们通过 MediaPlayer 控制
-                // setSound(null, null) // 如果希望通知本身不发出声音，仅依赖 MediaPlayer
-            }
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-            Log.d(TAG,"通知渠道 '$ALERT_NOTIFICATION_CHANNEL_ID' 已创建/更新。")
+        val name = getString(R.string.notification_channel_name)
+        val descriptionText = getString(R.string.notification_channel_description)
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        val channel = NotificationChannel(ALERT_NOTIFICATION_CHANNEL_ID, name, importance).apply {
+            description = descriptionText
+            enableLights(true)
+            lightColor = android.graphics.Color.RED
         }
+        val notificationManager: NotificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+        Log.d(TAG,"通知渠道 '$ALERT_NOTIFICATION_CHANNEL_ID' 已创建/更新。")
     }
 
     private fun createForegroundServiceNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
+        val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pendingIntent = PendingIntent.getActivity(
             this, 0, notificationIntent,
             pendingIntentFlags
         )
 
-        return NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID) // 使用相同的渠道ID
-            .setContentTitle(getString(R.string.app_name) + " 正在运行")
+        return NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("${getString(R.string.app_name)} 正在运行")
             .setContentText("正在后台监听关键词...")
-            .setSmallIcon(R.drawable.ic_notification_icon) // 确保图标存在
+            .setSmallIcon(R.drawable.ic_notification_icon)
             .setContentIntent(pendingIntent)
-            .setOngoing(true) // 使其成为持续性通知
-            .setSilent(true)  // 前台服务通知通常是静默的，避免打扰用户
-            .setPriority(NotificationCompat.PRIORITY_MIN) // 最低优先级，减少在状态栏的干扰
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
     }
 }

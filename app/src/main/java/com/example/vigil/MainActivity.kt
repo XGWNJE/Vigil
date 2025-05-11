@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -18,6 +19,9 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.core.view.isGone
 import com.example.vigil.databinding.ActivityMainBinding
 
@@ -30,20 +34,11 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "VigilMainActivity"
 
-        // 预设的通讯应用包名列表
         val PREDEFINED_COMMUNICATION_APPS = setOf(
-            "com.tencent.mm",           // 微信
-            "com.tencent.mobileqq",     // QQ
-            "com.whatsapp",             // WhatsApp
-            "com.facebook.orca",        // Messenger (Facebook)
-            "org.telegram.messenger",   // Telegram
-            "com.google.android.apps.messaging", // Google Messages
-            "com.viber.voip",           // Viber
-            "com.skype.raider",         // Skype
-            "jp.naver.line.android",    // Line
-            "com.snapchat.android",     // Snapchat
-            "com.discord"               // Discord
-            // 可以根据需要添加更多国内常用的通讯应用
+            "com.tencent.mm", "com.tencent.mobileqq", "com.whatsapp",
+            "com.facebook.orca", "org.telegram.messenger", "com.google.android.apps.messaging",
+            "com.viber.voip", "com.skype.raider", "jp.naver.line.android",
+            "com.snapchat.android", "com.discord"
         )
     }
 
@@ -69,16 +64,20 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setSupportActionBar(binding.toolbar)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(left = insets.left, right = insets.right)
+            WindowInsetsCompat.CONSUMED
+        }
+
         sharedPreferencesHelper = SharedPreferencesHelper(this)
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "从系统设置页面返回，重新检查权限和更新UI。")
-            // onResume 会处理 UI 更新和权限检查
         }
 
-        setupUIListeners() // 先设置监听器
-        loadSettings()     // 再加载设置以正确初始化UI
+        setupUIListeners()
+        loadSettings()
         handleIntentExtras(intent)
         Log.d(TAG, "MainActivity onCreate 完成。")
     }
@@ -136,7 +135,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.buttonSaveSettings.setOnClickListener {
-            saveSettings() // 保存所有设置，包括新的过滤开关状态
+            saveSettings()
             Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show()
         }
 
@@ -156,7 +155,10 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "用户点击尝试重启服务...")
             binding.buttonRestartService.isEnabled = false
             binding.textViewServiceStatus.text = getString(R.string.service_status_recovering)
-            binding.textViewServiceStatus.setTextColor(ContextCompat.getColor(this, R.color.neutral_text_color))
+            // 使用新的中性灰色点缀色
+            val neutralColorRes = if (isDarkThemeActive()) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
+            binding.textViewServiceStatus.setTextColor(ContextCompat.getColor(this, neutralColorRes))
+
 
             setNotificationListenerServiceComponentEnabled(false)
 
@@ -175,21 +177,17 @@ class MainActivity : AppCompatActivity() {
             }, 300)
         }
 
-        // 新增: 应用过滤开关的监听器
         binding.switchFilterApps.setOnCheckedChangeListener { _, isChecked ->
             sharedPreferencesHelper.saveFilterAppsEnabledState(isChecked)
             if (isChecked) {
-                // 当启用过滤时，保存预设的通讯应用列表
                 sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
                 binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_on)
                 Log.i(TAG, "应用过滤已启用，监听预设通讯应用。")
             } else {
-                // 当禁用过滤时，可以清空列表或服务会忽略此列表
-                sharedPreferencesHelper.saveFilteredAppPackages(emptySet()) // 保存空集合表示不特别指定
+                sharedPreferencesHelper.saveFilteredAppPackages(emptySet())
                 binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_off)
                 Log.i(TAG, "应用过滤已禁用，监听所有应用。")
             }
-            // 通知服务更新设置
             notifyServiceToUpdateSettings()
         }
         Log.d(TAG, "UI 监听器已设置。")
@@ -221,9 +219,9 @@ class MainActivity : AppCompatActivity() {
 
         setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
         setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
-        setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted) // 新增：应用过滤卡片也受核心权限影响
+        setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
         binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
-        binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted // 新增：应用过滤开关也受核心权限影响
+        binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
 
 
         if (!allCoreFunctionalityPermissionsGranted) {
@@ -231,11 +229,8 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "核心权限不足，但服务开关为开。将关闭开关并保存状态。")
                 binding.switchEnableService.isChecked = false
             }
-            // 如果核心权限不足，也应该禁用应用过滤开关并更新其状态
             if (binding.switchFilterApps.isChecked) {
                 binding.switchFilterApps.isChecked = false
-                // sharedPreferencesHelper.saveFilterAppsEnabledState(false) // 开关监听器会处理
-                // updateFilterAppsSummary(false) // loadSettings 或 updateUI 会处理
             }
         }
         Log.i(TAG, "权限检查完成。通知: $notificationAccessGranted, DND: $dndAccessGranted, 悬浮窗: $overlayAccessGranted, 发送通知: $postNotificationsAccessGranted")
@@ -268,7 +263,6 @@ class MainActivity : AppCompatActivity() {
         val serviceEnabledByUserIntent = sharedPreferencesHelper.getServiceEnabledState()
         binding.switchEnableService.isChecked = serviceEnabledByUserIntent
 
-        // 新增: 加载应用过滤设置
         val filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         binding.switchFilterApps.isChecked = filterAppsEnabled
         updateFilterAppsSummary(filterAppsEnabled)
@@ -282,7 +276,6 @@ class MainActivity : AppCompatActivity() {
         sharedPreferencesHelper.saveKeywords(keywords)
         sharedPreferencesHelper.saveRingtoneUri(selectedRingtoneUri)
 
-        // 保存应用过滤开关的状态 (虽然其 listener 已经保存，但统一保存确保一致性)
         val filterAppsEnabled = binding.switchFilterApps.isChecked
         sharedPreferencesHelper.saveFilterAppsEnabledState(filterAppsEnabled)
         if (filterAppsEnabled) {
@@ -296,7 +289,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun notifyServiceToUpdateSettings() {
-        // 仅当服务开关开启且核心权限满足时才通知服务更新
         if (binding.switchEnableService.isChecked && PermissionUtils.isNotificationListenerEnabled(this)) {
             val intent = Intent(this, MyNotificationListenerService::class.java).apply {
                 action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
@@ -333,16 +325,12 @@ class MainActivity : AppCompatActivity() {
     private fun updateUI() {
         updateServiceStatusUI()
         updateEnvironmentWarnings()
-        // 新增: 更新应用过滤相关的UI状态
         updateFilterAppsSummary(binding.switchFilterApps.isChecked)
-        // 确保应用过滤卡片及其内部控件的可交互性也由核心权限控制
         val corePermissionsGranted = PermissionUtils.isNotificationListenerEnabled(this) &&
                 PermissionUtils.canDrawOverlays(this) &&
                 PermissionUtils.canPostNotifications(this)
         setCardInteractive(binding.cardAppFilter, corePermissionsGranted)
         binding.switchFilterApps.isEnabled = corePermissionsGranted
-
-
         Log.d(TAG, "UI 已更新。")
     }
 
@@ -351,7 +339,6 @@ class MainActivity : AppCompatActivity() {
         view.alpha = if (enabled) 1.0f else 0.5f
         if (view is android.view.ViewGroup) {
             for (i in 0 until view.childCount) {
-                // 特殊处理：MaterialSwitch 本身的 isEnabled 应该由其逻辑控制，而不是简单地被父卡片覆盖
                 if (view.getChildAt(i) !is com.google.android.material.materialswitch.MaterialSwitch) {
                     view.getChildAt(i).isEnabled = enabled
                 }
@@ -359,18 +346,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isDarkThemeActive(): Boolean {
+        return resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    }
+
     private fun updateServiceStatusUI() {
         val serviceEnabledByUser = binding.switchEnableService.isChecked
         val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(this)
 
         var statusText: String
-        var statusColor: Int
+        val statusColorRes: Int
         var showRestartButton = false
+
+        val isDark = isDarkThemeActive()
 
         if (serviceEnabledByUser) {
             if (notificationAccessActuallyGranted) {
                 statusText = getString(R.string.service_running)
-                statusColor = ContextCompat.getColor(this, R.color.positive_text_color)
+                statusColorRes = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light
 
                 val missingAlertPermissions = mutableListOf<String>()
                 if (!PermissionUtils.canDrawOverlays(this)) missingAlertPermissions.add("悬浮窗")
@@ -382,17 +375,17 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 statusText = getString(R.string.service_status_abnormal)
-                statusColor = ContextCompat.getColor(this, R.color.warning_text_color)
+                statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
                 showRestartButton = true
                 Log.w(TAG, "服务开关已启用，但系统层面通知监听器未启用。")
             }
         } else {
             statusText = getString(R.string.service_stopped)
-            statusColor = ContextCompat.getColor(this, R.color.neutral_text_color)
+            statusColorRes = if (isDark) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
         }
 
         binding.textViewServiceStatus.text = statusText
-        binding.textViewServiceStatus.setTextColor(statusColor)
+        binding.textViewServiceStatus.setTextColor(ContextCompat.getColor(this, statusColorRes))
         binding.buttonRestartService.isGone = !showRestartButton
 
         Log.d(TAG, "UI服务状态更新: $statusText, 重启按钮: $showRestartButton")
@@ -402,12 +395,23 @@ class MainActivity : AppCompatActivity() {
     private fun updateEnvironmentWarnings() {
         val warnings = EnvironmentChecker.getEnvironmentWarnings(this)
         binding.textViewEnvironmentWarnings.text = warnings
-        binding.textViewEnvironmentWarnings.setTextColor(
-            ContextCompat.getColor(this, if (warnings == getString(R.string.all_clear)) R.color.neutral_text_color else R.color.warning_text_color)
-        )
+
+        val warningColorRes = if (warnings == getString(R.string.all_clear)) {
+            // 如果一切正常，使用主题中定义的 onSurfaceVariant (通常是中性辅助文本颜色)
+            // 或者我们可以定义一个更明确的中性文本色
+            android.R.attr.textColorSecondary // 使用系统定义的次要文本颜色属性
+        } else {
+            if (isDarkThemeActive()) R.color.status_negative_red_dark else R.color.status_negative_red_light
+        }
+
+        if (warnings == getString(R.string.all_clear)) {
+            // android.R.attr.textColorSecondary 需要解析，或者直接用 colorOnSurfaceVariant
+            binding.textViewEnvironmentWarnings.setTextColor( ContextCompat.getColor(this, R.color.md_theme_onSurfaceVariant))
+        } else {
+            binding.textViewEnvironmentWarnings.setTextColor(ContextCompat.getColor(this, warningColorRes))
+        }
     }
 
-    // 新增: 更新应用过滤开关下方的摘要文本
     private fun updateFilterAppsSummary(isFilterEnabled: Boolean) {
         binding.textViewFilterAppsSummary.text = if (isFilterEnabled) {
             getString(R.string.filter_apps_switch_summary_on)

@@ -5,40 +5,30 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
+    android:background="?attr/colorSurface"
     tools:context=".MainActivity">
-
-    <com.google.android.material.appbar.AppBarLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fitsSystemWindows="true">
-
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            app:title="@string/app_name" />
-
-    </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior"
+        android:clipToPadding="false"
+        android:paddingTop="@dimen/spacing_large"
+        android:paddingBottom="@dimen/spacing_large"
         android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingHorizontal="@dimen/padding_medium">
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardPermissions"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:contentPadding="16dp"
-                android:layout_marginBottom="16dp">
+                app:contentPadding="@dimen/padding_large"
+                android:layout_marginBottom="@dimen/spacing_large">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -50,7 +40,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/permissions_settings_title"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_marginBottom="@dimen/spacing_medium"/>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/buttonGrantNotificationAccess"
@@ -58,7 +48,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/grant_notification_access_button"
-                        android:layout_marginBottom="8dp"
+                        android:layout_marginBottom="@dimen/spacing_small"
                         android:visibility="gone"
                         tools:visibility="visible"/>
 
@@ -68,7 +58,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/grant_dnd_access_button"
-                        android:layout_marginBottom="8dp"
+                        android:layout_marginBottom="@dimen/spacing_small"
                         android:visibility="gone"
                         tools:visibility="visible"/>
 
@@ -78,7 +68,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/grant_overlay_permission_button"
-                        android:layout_marginBottom="8dp"
+                        android:layout_marginBottom="@dimen/spacing_small"
                         android:visibility="gone"
                         tools:visibility="visible"/>
 
@@ -95,11 +85,11 @@
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardConfiguration"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:contentPadding="16dp"
-                android:layout_marginBottom="16dp">
+                app:contentPadding="@dimen/padding_large"
+                android:layout_marginBottom="@dimen/spacing_large">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -111,7 +101,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/notification_configuration_title"
-                        android:layout_marginBottom="16dp"/>
+                        android:layout_marginBottom="@dimen/spacing_medium"/>
 
                     <com.google.android.material.textfield.TextInputLayout
                         android:id="@+id/textFieldKeywordsLayout"
@@ -120,7 +110,7 @@
                         android:layout_height="wrap_content"
                         android:hint="@string/keywords_label"
                         app:helperText="@string/keywords_hint"
-                        android:layout_marginBottom="16dp">
+                        android:layout_marginBottom="@dimen/spacing_medium">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/editTextKeywords"
@@ -137,14 +127,15 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:layout_marginBottom="16dp">
+                        android:layout_marginBottom="@dimen/spacing_medium">
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/buttonSelectRingtone"
+                            style="@style/Widget.App.Button.Text"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/select_ringtone_button"
-                            android:layout_marginEnd="16dp"/>
+                            android:layout_marginEnd="@dimen/spacing_medium"/>
 
                         <TextView
                             android:id="@+id/textViewSelectedRingtone"
@@ -158,6 +149,7 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/buttonSaveSettings"
+                        style="?attr/materialButtonStyle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/save_settings_button"/>
@@ -166,11 +158,11 @@
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardAppFilter"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:contentPadding="16dp"
-                android:layout_marginBottom="16dp">
+                app:contentPadding="@dimen/padding_large"
+                android:layout_marginBottom="@dimen/spacing_large">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -182,7 +174,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/app_filter_settings_title"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_marginBottom="@dimen/spacing_small"/>
 
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/switchFilterApps"
@@ -191,8 +183,8 @@
                         android:minHeight="48dp"
                         android:text="@string/filter_apps_switch_label"
                         style="@style/TextAppearance.Material3.BodyLarge"
-                        android:paddingVertical="8dp"
-                        android:layout_marginBottom="4dp"/>
+                        android:paddingVertical="@dimen/padding_small"
+                        android:layout_marginBottom="@dimen/spacing_small"/>
 
                     <TextView
                         android:id="@+id/textViewFilterAppsSummary"
@@ -200,7 +192,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/filter_apps_switch_summary_off"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_marginBottom="@dimen/spacing_medium"/>
 
                     <TextView
                         style="@style/TextAppearance.Material3.BodySmall"
@@ -209,18 +201,16 @@
                         android:text="@string/filter_apps_description"
                         android:textColor="?android:attr/textColorSecondary"
                         android:lineSpacingMultiplier="1.2"/>
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardServiceControl"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:contentPadding="16dp"
-                android:layout_marginBottom="16dp">
+                app:contentPadding="@dimen/padding_large"
+                android:layout_marginBottom="@dimen/spacing_large">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -234,7 +224,7 @@
                         android:minHeight="48dp"
                         android:text="@string/enable_service_switch"
                         style="@style/TextAppearance.Material3.TitleSmall"
-                        android:layout_marginBottom="8dp"
+                        android:layout_marginBottom="@dimen/spacing_small"
                         android:paddingHorizontal="4dp"/>
 
                     <LinearLayout
@@ -242,14 +232,14 @@
                         android:layout_height="wrap_content"
                         android:orientation="horizontal"
                         android:gravity="center_vertical"
-                        android:layout_marginBottom="8dp">
+                        android:layout_marginBottom="@dimen/spacing_medium">
 
                         <TextView
                             style="@style/TextAppearance.Material3.BodyMedium"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/service_status_label"
-                            android:layout_marginEnd="8dp"/>
+                            android:layout_marginEnd="@dimen/spacing_small"/>
 
                         <TextView
                             android:id="@+id/textViewServiceStatus"
@@ -269,16 +259,15 @@
                         android:text="@string/restart_service_button"
                         android:visibility="gone"
                         tools:visibility="visible"/>
-
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardEnvironmentCheck"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:cardElevation="2dp"
-                app:contentPadding="16dp">
+                app:contentPadding="@dimen/padding_large">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -290,7 +279,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/environment_check_label"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_marginBottom="@dimen/spacing_medium"/>
 
                     <TextView
                         android:id="@+id/textViewEnvironmentWarnings"

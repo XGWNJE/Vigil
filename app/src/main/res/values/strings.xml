@@ -39,7 +39,25 @@
     <string name="alert_dialog_message_keyword_format">检测到关键词：“%1$s”</string>
     <string name="alert_dialog_confirm_button_long">我知道了，结束提醒</string>
     <string name="alert_dialog_message_default">检测到匹配的关键词通知。</string>
-    <string name="alert_dialog_confirm_button">知道了</string> <string name="grant_overlay_permission_button">授予悬浮窗权限</string>
-    <string name="overlay_permission_dialog_title">悬浮窗权限</string> <string name="overlay_permission_dialog_message">为了在您使用其他应用或锁屏时弹出提醒窗口，请授予“在其他应用上层显示”的权限。</string> <string name="overlay_permission_missing">需要悬浮窗权限以弹出提醒窗口。</string> <string name="notification_channel_name">关键词提醒</string> <string name="notification_channel_description">当检测到关键词时发出的通知和提醒</string> <string name="alert_dialog_message_format">通知内容: %1$s</string> <string name="grant_post_notifications_permission_button">授予发送通知权限 (Android 13+)</string>
-    <string name="post_notifications_permission_dialog_title">发送通知权限</string> <string name="post_notifications_permission_dialog_message">为了在匹配到关键词时发送备选通知，请授予应用发送通知的权限 (Android 13+)。</string>
-    <string name="post_notifications_permission_missing">需要发送通知权限以发送备选提醒。</string> </resources>
+    <string name="alert_dialog_confirm_button">知道了</string>
+    <string name="grant_overlay_permission_button">授予悬浮窗权限</string>
+    <string name="overlay_permission_dialog_title">悬浮窗权限</string>
+    <string name="overlay_permission_dialog_message">为了在您使用其他应用或锁屏时弹出提醒窗口，请授予“在其他应用上层显示”的权限。</string>
+    <string name="overlay_permission_missing">需要悬浮窗权限以弹出提醒窗口。</string>
+    <string name="notification_channel_name">关键词提醒</string>
+    <string name="notification_channel_description">当检测到关键词时发出的通知和提醒</string>
+    <string name="alert_dialog_message_format">通知内容: %1$s</string>
+    <string name="grant_post_notifications_permission_button">授予发送通知权限 (Android 13+)</string>
+    <string name="post_notifications_permission_dialog_title">发送通知权限</string>
+    <string name="post_notifications_permission_dialog_message">为了在匹配到关键词时发送备选通知，请授予应用发送通知的权限 (Android 13+)。</string>
+    <string name="post_notifications_permission_missing">需要发送通知权限以发送备选提醒。</string>
+
+    <string name="service_status_abnormal">服务状态异常 (未连接)</string>
+    <string name="service_status_recovering">正在尝试恢复服务...</string>
+    <string name="restart_service_button">尝试重启服务</string>
+    <string name="service_alert_limited_permissions">提醒功能受限: 缺少 %s 权限</string>
+
+    <string name="permissions_settings_title">权限设置</string>
+    <string name="notification_configuration_title">通知配置</string>
+
+</resources>

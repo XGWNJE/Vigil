@@ -49,7 +49,7 @@
                         style="@style/TextAppearance.Material3.TitleMedium"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="权限设置"
+                        android:text="@string/permissions_settings_title"
                         android:layout_marginBottom="8dp"/>
 
                     <com.google.android.material.button.MaterialButton
@@ -110,7 +110,7 @@
                         style="@style/TextAppearance.Material3.TitleMedium"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="通知配置"
+                        android:text="@string/notification_configuration_title"
                         android:layout_marginBottom="16dp"/>
 
                     <com.google.android.material.textfield.TextInputLayout
@@ -128,7 +128,8 @@
                             android:layout_height="wrap_content"
                             android:inputType="textMultiLine"
                             android:minLines="2"
-                            android:gravity="top|start"/>
+                            android:gravity="top|start"
+                            android:textAppearance="?attr/textAppearanceBodyLarge" />
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <LinearLayout
@@ -140,8 +141,7 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/buttonSelectRingtone"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content" android:layout_height="wrap_content"
                             android:text="@string/select_ringtone_button"
                             android:layout_marginEnd="16dp"/>
 
@@ -183,29 +183,39 @@
                         android:minHeight="48dp"
                         android:text="@string/enable_service_switch"
                         style="@style/TextAppearance.Material3.TitleSmall"
-                        android:layout_marginBottom="8dp"/>
+                        android:layout_marginBottom="8dp"
+                        android:paddingHorizontal="4dp"/> <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp">
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
+                    <TextView
+                        style="@style/TextAppearance.Material3.BodyMedium"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
+                        android:text="@string/service_status_label"
+                        android:layout_marginEnd="8dp"/>
 
-                        <TextView
-                            style="@style/TextAppearance.Material3.BodyMedium"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/service_status_label"
-                            android:layout_marginEnd="8dp"/>
+                    <TextView
+                        android:id="@+id/textViewServiceStatus"
+                        style="@style/TextAppearance.Material3.BodyMedium"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        tools:text="监听中"
+                        android:textStyle="bold"/>
+                </LinearLayout>
 
-                        <TextView
-                            android:id="@+id/textViewServiceStatus"
-                            style="@style/TextAppearance.Material3.BodyMedium"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            tools:text="监听中"
-                            android:textStyle="bold"/>
-                    </LinearLayout>
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/buttonRestartService"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_gravity="end"
+                        android:text="@string/restart_service_button"
+                        android:visibility="gone"
+                        tools:visibility="visible"/>
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

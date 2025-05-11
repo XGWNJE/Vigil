@@ -84,5 +84,5 @@ Vigil 通知助手是一款 Android 应用程序，旨在监控设备接收到�
 
 ## 联系方式
 如果您有任何问题或建议，请通过以下方式联系我们：
-- 邮箱：[your-email@example.com](mailto:your-email@example.com)
+- 邮箱：[xgwnje@qq.com]                    
 - GitHub Issues：[https://github.com/your-repo/Vigil/issues](https://github.com/your-repo/Vigil/issues)

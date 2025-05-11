@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+// import android.widget.TextView // TextView 已通过 binding.tvAppTitleGithub 访问，无需单独导入
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,7 +35,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "VigilMainActivity"
 
-        // Typo warnings for "mobileqq" and "naver" can be ignored as these are correct package names.
         val PREDEFINED_COMMUNICATION_APPS = setOf(
             "com.tencent.mm", "com.tencent.mobileqq", "com.whatsapp",
             "com.facebook.orca", "org.telegram.messenger", "com.google.android.apps.messaging",
@@ -65,13 +65,20 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+        // 设置标题点击跳转到 GitHub
+        setupGithubLinkForTitle()
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.mainContainer) { view, windowInsets -> // 确保 ID 是 main_container
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(left = insets.left, right = insets.right)
+            view.updatePadding(
+                left = insets.left,
+                right = insets.right,
+                bottom = insets.bottom
+            )
             WindowInsetsCompat.CONSUMED
         }
 
-        sharedPreferencesHelper = SharedPreferencesHelper(this) // Redundant qualifier 'this' can be removed if preferred, but not an error.
+        sharedPreferencesHelper = SharedPreferencesHelper(this)
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "从系统设置页面返回。")
@@ -82,6 +89,19 @@ class MainActivity : AppCompatActivity() {
         loadSettings()
         handleIntentExtras(intent)
         Log.d(TAG, "MainActivity onCreate 完成。")
+    }
+
+    private fun setupGithubLinkForTitle() {
+        binding.tvAppTitleGithub.setOnClickListener {
+            val githubUrl = getString(R.string.github_url)
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(githubUrl))
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "无法打开 GitHub 链接: $githubUrl", e)
+                Toast.makeText(this, "无法打开链接", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -152,9 +172,10 @@ class MainActivity : AppCompatActivity() {
                 Log.i(TAG, "服务开关已关闭，停止服务。")
                 stopVigilService()
             }
-            updateServiceStatusUI()
-            updateEnvironmentWarnings()
-            Log.d(TAG, "服务开关状态改变，环境警告已刷新。")
+            // UI 更新移至 updateUI() 或各个权限/服务状态改变的回调中
+            // updateServiceStatusUI() // 避免重复调用
+            // updateEnvironmentWarnings() // 避免重复调用
+            Log.d(TAG, "服务开关状态改变为: $isChecked。")
         }
 
         binding.buttonRestartService.setOnClickListener {
@@ -233,9 +254,9 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "核心权限不足，但服务开关为开。将关闭开关并保存状态。")
                 binding.switchEnableService.isChecked = false
             }
-            if (binding.switchFilterApps.isChecked) {
-                binding.switchFilterApps.isChecked = false
-            }
+            // if (binding.switchFilterApps.isChecked) { // isEnabled 会处理显示，无需强制关闭
+            //     binding.switchFilterApps.isChecked = false
+            // }
         }
         Log.i(TAG, "权限检查完成。通知: $notificationAccessGranted, DND: $dndAccessGranted, 悬浮窗: $overlayAccessGranted, 发送通知: $postNotificationsAccessGranted")
     }
@@ -248,7 +269,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         Log.d(TAG, "onRequestPermissionsResult: requestCode=$requestCode")
-        var permissionsChanged = false // Flag to see if any relevant permission changed
+        var permissionsChanged = false
         if (requestCode == PermissionUtils.REQUEST_CODE_POST_NOTIFICATIONS) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.i(TAG, "发送通知权限已授予。")
@@ -259,16 +280,14 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "未授予发送通知权限，部分提醒功能可能受限。", Toast.LENGTH_LONG).show()
             }
         }
-        // Add similar checks for other permission request codes if they become relevant
-        // e.g., if (requestCode == PermissionUtils.REQUEST_CODE_DND_ACCESS) { ... permissionsChanged = true }
 
         if (permissionsChanged) {
-            // If a relevant permission changed, a full UI update (which includes environment warnings)
-            // is good practice. onResume will handle this, but an explicit call ensures immediate refresh.
-            updateUI()
-            Log.d(TAG, "权限结果返回并且相关权限已更改，UI 已刷新。")
+            // onResume will be called after this, which calls updateUI().
+            // So, explicit updateUI() call might be redundant here but ensures immediate refresh.
+            // updateUI()
+            Log.d(TAG, "权限结果返回并且相关权限已更改，UI 将在 onResume 中刷新。")
         } else {
-            Log.d(TAG, "权限结果返回，但未检测到影响环境警告的直接权限更改（或将在onResume中刷新）。")
+            Log.d(TAG, "权限结果返回，但未检测到影响环境警告的直接权限更改。")
         }
     }
 
@@ -278,11 +297,15 @@ class MainActivity : AppCompatActivity() {
         updateSelectedRingtoneUI()
 
         val serviceEnabledByUserIntent = sharedPreferencesHelper.getServiceEnabledState()
-        binding.switchEnableService.isChecked = serviceEnabledByUserIntent
+        if(binding.switchEnableService.isChecked != serviceEnabledByUserIntent) { // 避免不必要的监听器触发
+            binding.switchEnableService.isChecked = serviceEnabledByUserIntent
+        }
 
         val filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
-        binding.switchFilterApps.isChecked = filterAppsEnabled
-        updateFilterAppsSummary(filterAppsEnabled)
+        if(binding.switchFilterApps.isChecked != filterAppsEnabled) { // 避免不必要的监听器触发
+            binding.switchFilterApps.isChecked = filterAppsEnabled
+        }
+        // updateFilterAppsSummary(filterAppsEnabled) // updateUI 会调用它
 
         Log.d(TAG, "设置已加载到 UI。用户意图启用服务: $serviceEnabledByUserIntent, 应用过滤启用: $filterAppsEnabled")
     }
@@ -293,17 +316,17 @@ class MainActivity : AppCompatActivity() {
         sharedPreferencesHelper.saveKeywords(keywords)
         sharedPreferencesHelper.saveRingtoneUri(selectedRingtoneUri)
 
-        val filterAppsEnabled = binding.switchFilterApps.isChecked
-        sharedPreferencesHelper.saveFilterAppsEnabledState(filterAppsEnabled)
-        if (filterAppsEnabled) {
-            sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
-        } else {
-            sharedPreferencesHelper.saveFilteredAppPackages(emptySet())
-        }
+        // 应用过滤状态由其 Switch 监听器直接保存
+        // val filterAppsEnabled = binding.switchFilterApps.isChecked
+        // sharedPreferencesHelper.saveFilterAppsEnabledState(filterAppsEnabled)
+        // if (filterAppsEnabled) {
+        //     sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
+        // } else {
+        //     sharedPreferencesHelper.saveFilteredAppPackages(emptySet())
+        // }
 
-        Log.i(TAG, "设置已保存。关键词: ${keywords.size}个, 铃声: $selectedRingtoneUri, 应用过滤: $filterAppsEnabled")
+        Log.i(TAG, "设置已保存 (关键词和铃声)。关键词: ${keywords.size}个, 铃声: $selectedRingtoneUri")
         notifyServiceToUpdateSettings()
-        // updateEnvironmentWarnings() is already called in the onClickListener for saveSettings button
     }
 
     private fun notifyServiceToUpdateSettings() {
@@ -312,7 +335,7 @@ class MainActivity : AppCompatActivity() {
                 action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
             }
             try {
-                startService(intent)
+                ContextCompat.startForegroundService(this, intent) // 推荐使用 ContextCompat
                 Log.d(TAG, "已发送 ACTION_UPDATE_SETTINGS 到服务。")
             } catch (e: Exception) {
                 Log.e(TAG, "启动服务以更新设置时出错: ", e)
@@ -342,14 +365,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateUI() {
         Log.d(TAG, "updateUI 调用。")
+        // checkAndRequestPermissions() // 确保在 onResume 中调用
         updateServiceStatusUI()
         updateEnvironmentWarnings()
         updateFilterAppsSummary(binding.switchFilterApps.isChecked)
-        val corePermissionsGranted = PermissionUtils.isNotificationListenerEnabled(this) &&
+
+        val allCoreFunctionalityPermissionsGranted = PermissionUtils.isNotificationListenerEnabled(this) &&
                 PermissionUtils.canDrawOverlays(this) &&
                 PermissionUtils.canPostNotifications(this)
-        setCardInteractive(binding.cardAppFilter, corePermissionsGranted)
-        binding.switchFilterApps.isEnabled = corePermissionsGranted
+
+        setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
+        setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
+        setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
+        binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
+        binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
     }
 
     private fun setCardInteractive(view: View, enabled: Boolean) {
@@ -357,12 +386,16 @@ class MainActivity : AppCompatActivity() {
         view.alpha = if (enabled) 1.0f else 0.5f
         if (view is android.view.ViewGroup) {
             for (i in 0 until view.childCount) {
-                if (view.getChildAt(i) !is com.google.android.material.materialswitch.MaterialSwitch) {
-                    view.getChildAt(i).isEnabled = enabled
+                val child = view.getChildAt(i)
+                // MaterialSwitch 的 enabled 状态由 allCoreFunctionalityPermissionsGranted 单独控制，
+                // 因此这里不应根据父卡片的 enabled 状态来覆盖它。
+                if (child !is com.google.android.material.materialswitch.MaterialSwitch) {
+                    child.isEnabled = enabled
                 }
             }
         }
     }
+
 
     private fun isDarkThemeActive(): Boolean {
         return resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -384,15 +417,15 @@ class MainActivity : AppCompatActivity() {
                 statusColorRes = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light
 
                 val missingAlertPermissions = mutableListOf<String>()
-                if (!PermissionUtils.canDrawOverlays(this)) missingAlertPermissions.add("悬浮窗")
+                if (!PermissionUtils.canDrawOverlays(this)) missingAlertPermissions.add(getString(R.string.permission_overlay_short)) // 使用短名称
                 if (!PermissionUtils.canPostNotifications(this)) {
-                    missingAlertPermissions.add("发送通知")
+                    missingAlertPermissions.add(getString(R.string.permission_post_notification_short)) // 使用短名称
                 }
                 if (missingAlertPermissions.isNotEmpty()) {
-                    statusText += " (" + getString(R.string.service_alert_limited_permissions, missingAlertPermissions.joinToString("、")) + ")"
+                    statusText += " (" + getString(R.string.service_alert_limited_permissions, missingAlertPermissions.joinToString(getString(R.string.joiner_comma))) + ")"
                 }
             } else {
-                statusText = getString(R.string.service_status_abnormal)
+                statusText = getString(R.string.service_status_abnormal_no_permission) // 使用之前建议的更具体的字符串
                 statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
                 showRestartButton = true
                 Log.w(TAG, "服务开关已启用，但系统层面通知监听器未启用。")
@@ -415,15 +448,20 @@ class MainActivity : AppCompatActivity() {
         binding.textViewEnvironmentWarnings.text = warnings
         Log.d(TAG, "环境警告已更新: $warnings")
 
-        val warningColorResId: Int = if (warnings == getString(R.string.all_clear)) {
-            // For "all clear", use the theme's onSurfaceVariant color
-            // This color (md_theme_onSurfaceVariant) should be defined for both light and dark themes
-            R.color.md_theme_onSurfaceVariant
+        val textColor: Int // 用于存储最终解析的颜色整数值
+        if (warnings == getString(R.string.all_clear)) {
+            textColor = try {
+                ContextCompat.getColor(this, R.color.md_theme_onSurfaceVariant)
+            } catch (e: Exception) {
+                Log.w(TAG, "R.color.md_theme_onSurfaceVariant not found, using fallback for all_clear.")
+                val fallbackColorResId = if (isDarkThemeActive()) android.R.color.darker_gray else android.R.color.black
+                ContextCompat.getColor(this, fallbackColorResId)
+            }
         } else {
-            // For warnings, use the specific red status color based on the theme
-            if (isDarkThemeActive()) R.color.status_negative_red_dark else R.color.status_negative_red_light
+            val warningColorResId = if (isDarkThemeActive()) R.color.status_negative_red_dark else R.color.status_negative_red_light
+            textColor = ContextCompat.getColor(this, warningColorResId)
         }
-        binding.textViewEnvironmentWarnings.setTextColor(ContextCompat.getColor(this, warningColorResId))
+        binding.textViewEnvironmentWarnings.setTextColor(textColor)
     }
 
 
@@ -438,24 +476,23 @@ class MainActivity : AppCompatActivity() {
     private fun startVigilService() {
         if (!PermissionUtils.isNotificationListenerEnabled(this)) {
             Log.w(TAG, "尝试启动服务，但通知读取权限未授予。")
-            updateUI()
+            updateUI() // 确保UI反映此状态
             return
         }
 
         setNotificationListenerServiceComponentEnabled(true)
         val serviceIntent = Intent(this, MyNotificationListenerService::class.java)
         try {
-            startForegroundService(serviceIntent)
+            ContextCompat.startForegroundService(this, serviceIntent)
             Log.i(TAG, "Vigil 通知服务已尝试启动。")
         } catch (e: Exception) {
             Log.e(TAG, "启动 Vigil 服务时出错: ", e)
-            Toast.makeText(this, "启动服务失败: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.error_starting_service, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
             if (binding.switchEnableService.isChecked) {
                 binding.switchEnableService.isChecked = false
             }
         }
-        updateServiceStatusUI()
-        updateEnvironmentWarnings()
+        updateUI() // 服务启动尝试后更新UI
     }
 
     private fun stopVigilService() {
@@ -466,8 +503,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "停止 Vigil 服务时出错: ", e)
         }
-        updateServiceStatusUI()
-        updateEnvironmentWarnings()
+        updateUI() // 服务停止尝试后更新UI
     }
 
     private fun setNotificationListenerServiceComponentEnabled(enabled: Boolean) {

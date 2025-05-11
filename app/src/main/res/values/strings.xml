@@ -1,19 +1,22 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vigil 通知助手</string>
+    <string name="app_name">Vigil 守夜人</string>
     <string name="keywords_hint">输入关键词，用英文逗号分隔</string>
-    <string name="select_ringtone_button">选择铃声</string> <string name="selected_ringtone_label">当前铃声: %s</string>
+    <string name="select_ringtone_button">选择铃声</string>
+    <string name="selected_ringtone_label">当前铃声: %s</string>
     <string name="no_ringtone_selected">未选择铃声</string>
-    <string name="enable_service_switch">启用通知监听服务</string> <string name="service_status_label">服务状态:</string>
+    <string name="enable_service_switch">启用通知监听服务</string>
+    <string name="service_status_label">服务状态:</string>
     <string name="service_running">监听中</string>
     <string name="service_stopped">已停止</string>
-    <string name="environment_check_label">环境检测</string> <string name="all_clear">环境正常，提醒条件良好。</string>
+    <string name="environment_check_label">环境检测</string>
+    <string name="all_clear">环境正常，提醒条件良好。</string>
     <string name="grant_notification_access_button">授予通知读取权限</string>
     <string name="grant_dnd_access_button">授予勿扰模式读取权限</string>
     <string name="notification_listener_service_label">Vigil 通知监听服务</string>
     <string name="permission_notification_access_missing">需要通知读取权限以运行服务。</string>
     <string name="permission_dnd_access_missing_for_check">需要勿扰模式读取权限以检查状态。</string>
-    <string name="keywords_label">监控关键词</string> <string name="ringtone_selection_title">选择一个铃声</string>
+    <string name="keywords_label">监控关键词</string>
+    <string name="ringtone_selection_title">选择一个铃声</string>
     <string name="save_settings_button">保存设置</string>
     <string name="settings_saved">设置已保存</string>
     <string name="error_saving_settings">保存设置失败</string>
@@ -51,11 +54,22 @@
     <string name="service_status_abnormal">服务状态异常 (未连接)</string>
     <string name="service_status_recovering">正在尝试恢复服务…</string>
     <string name="restart_service_button">尝试重启服务</string>
-    <string name="service_alert_limited_permissions">提醒功能受限: 缺少 %s 权限</string>
 
-    <string name="permissions_settings_title">权限设定</string> <string name="notification_configuration_title">通知设定</string> <string name="app_filter_settings_title">应用过滤设定</string> <string name="filter_apps_switch_label">仅监听指定通讯应用</string>
+    <string name="permissions_settings_title">权限设定</string>
+    <string name="notification_configuration_title">通知设定</string>
+    <string name="app_filter_settings_title">应用过滤设定</string>
+    <string name="filter_apps_switch_label">仅监听指定通讯应用</string>
     <string name="filter_apps_switch_summary_on">当前仅监听预设的通讯应用通知</string>
     <string name="filter_apps_switch_summary_off">当前监听所有应用的通知</string>
     <string name="filter_apps_description">开启后，将只处理来自常见通讯应用（如微信、QQ、Telegram等）的通知。关闭则监听所有应用的通知。</string>
+
+    <string name="github_url">https://github.com/XGWNJE/Vigil</string>
+
+    <string name="permission_overlay_short">悬浮窗</string>
+    <string name="permission_post_notification_short">发送通知</string>
+    <string name="joiner_comma">、</string>
+    <string name="service_alert_limited_permissions">提醒功能受限: 缺少 %s 权限</string>
+    <string name="service_status_abnormal_no_permission">服务异常 (权限不足)</string>
+    <string name="error_starting_service">启动服务失败: %s</string>
 
 </resources>

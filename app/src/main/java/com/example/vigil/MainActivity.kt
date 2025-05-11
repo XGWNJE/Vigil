@@ -34,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "VigilMainActivity"
 
+        // Typo warnings for "mobileqq" and "naver" can be ignored as these are correct package names.
         val PREDEFINED_COMMUNICATION_APPS = setOf(
             "com.tencent.mm", "com.tencent.mobileqq", "com.whatsapp",
             "com.facebook.orca", "org.telegram.messenger", "com.google.android.apps.messaging",
@@ -70,10 +71,11 @@ class MainActivity : AppCompatActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
-        sharedPreferencesHelper = SharedPreferencesHelper(this)
+        sharedPreferencesHelper = SharedPreferencesHelper(this) // Redundant qualifier 'this' can be removed if preferred, but not an error.
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            Log.d(TAG, "从系统设置页面返回，重新检查权限和更新UI。")
+            Log.d(TAG, "从系统设置页面返回。")
+            // onResume will handle UI updates.
         }
 
         setupUIListeners()
@@ -137,6 +139,8 @@ class MainActivity : AppCompatActivity() {
         binding.buttonSaveSettings.setOnClickListener {
             saveSettings()
             Toast.makeText(this, R.string.settings_saved, Toast.LENGTH_SHORT).show()
+            updateEnvironmentWarnings()
+            Log.d(TAG, "设置已保存，环境警告已刷新。")
         }
 
         binding.switchEnableService.setOnCheckedChangeListener { _, isChecked ->
@@ -149,16 +153,16 @@ class MainActivity : AppCompatActivity() {
                 stopVigilService()
             }
             updateServiceStatusUI()
+            updateEnvironmentWarnings()
+            Log.d(TAG, "服务开关状态改变，环境警告已刷新。")
         }
 
         binding.buttonRestartService.setOnClickListener {
             Log.i(TAG, "用户点击尝试重启服务...")
             binding.buttonRestartService.isEnabled = false
             binding.textViewServiceStatus.text = getString(R.string.service_status_recovering)
-            // 使用新的中性灰色点缀色
             val neutralColorRes = if (isDarkThemeActive()) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
             binding.textViewServiceStatus.setTextColor(ContextCompat.getColor(this, neutralColorRes))
-
 
             setNotificationListenerServiceComponentEnabled(false)
 
@@ -244,14 +248,27 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         Log.d(TAG, "onRequestPermissionsResult: requestCode=$requestCode")
+        var permissionsChanged = false // Flag to see if any relevant permission changed
         if (requestCode == PermissionUtils.REQUEST_CODE_POST_NOTIFICATIONS) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.i(TAG, "发送通知权限已授予。")
                 Toast.makeText(this, "发送通知权限已获取", Toast.LENGTH_SHORT).show()
+                permissionsChanged = true
             } else {
                 Log.w(TAG, "发送通知权限被拒绝。")
                 Toast.makeText(this, "未授予发送通知权限，部分提醒功能可能受限。", Toast.LENGTH_LONG).show()
             }
+        }
+        // Add similar checks for other permission request codes if they become relevant
+        // e.g., if (requestCode == PermissionUtils.REQUEST_CODE_DND_ACCESS) { ... permissionsChanged = true }
+
+        if (permissionsChanged) {
+            // If a relevant permission changed, a full UI update (which includes environment warnings)
+            // is good practice. onResume will handle this, but an explicit call ensures immediate refresh.
+            updateUI()
+            Log.d(TAG, "权限结果返回并且相关权限已更改，UI 已刷新。")
+        } else {
+            Log.d(TAG, "权限结果返回，但未检测到影响环境警告的直接权限更改（或将在onResume中刷新）。")
         }
     }
 
@@ -286,6 +303,7 @@ class MainActivity : AppCompatActivity() {
 
         Log.i(TAG, "设置已保存。关键词: ${keywords.size}个, 铃声: $selectedRingtoneUri, 应用过滤: $filterAppsEnabled")
         notifyServiceToUpdateSettings()
+        // updateEnvironmentWarnings() is already called in the onClickListener for saveSettings button
     }
 
     private fun notifyServiceToUpdateSettings() {
@@ -323,6 +341,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateUI() {
+        Log.d(TAG, "updateUI 调用。")
         updateServiceStatusUI()
         updateEnvironmentWarnings()
         updateFilterAppsSummary(binding.switchFilterApps.isChecked)
@@ -331,7 +350,6 @@ class MainActivity : AppCompatActivity() {
                 PermissionUtils.canPostNotifications(this)
         setCardInteractive(binding.cardAppFilter, corePermissionsGranted)
         binding.switchFilterApps.isEnabled = corePermissionsGranted
-        Log.d(TAG, "UI 已更新。")
     }
 
     private fun setCardInteractive(view: View, enabled: Boolean) {
@@ -395,22 +413,19 @@ class MainActivity : AppCompatActivity() {
     private fun updateEnvironmentWarnings() {
         val warnings = EnvironmentChecker.getEnvironmentWarnings(this)
         binding.textViewEnvironmentWarnings.text = warnings
+        Log.d(TAG, "环境警告已更新: $warnings")
 
-        val warningColorRes = if (warnings == getString(R.string.all_clear)) {
-            // 如果一切正常，使用主题中定义的 onSurfaceVariant (通常是中性辅助文本颜色)
-            // 或者我们可以定义一个更明确的中性文本色
-            android.R.attr.textColorSecondary // 使用系统定义的次要文本颜色属性
+        val warningColorResId: Int = if (warnings == getString(R.string.all_clear)) {
+            // For "all clear", use the theme's onSurfaceVariant color
+            // This color (md_theme_onSurfaceVariant) should be defined for both light and dark themes
+            R.color.md_theme_onSurfaceVariant
         } else {
+            // For warnings, use the specific red status color based on the theme
             if (isDarkThemeActive()) R.color.status_negative_red_dark else R.color.status_negative_red_light
         }
-
-        if (warnings == getString(R.string.all_clear)) {
-            // android.R.attr.textColorSecondary 需要解析，或者直接用 colorOnSurfaceVariant
-            binding.textViewEnvironmentWarnings.setTextColor( ContextCompat.getColor(this, R.color.md_theme_onSurfaceVariant))
-        } else {
-            binding.textViewEnvironmentWarnings.setTextColor(ContextCompat.getColor(this, warningColorRes))
-        }
+        binding.textViewEnvironmentWarnings.setTextColor(ContextCompat.getColor(this, warningColorResId))
     }
+
 
     private fun updateFilterAppsSummary(isFilterEnabled: Boolean) {
         binding.textViewFilterAppsSummary.text = if (isFilterEnabled) {
@@ -439,6 +454,8 @@ class MainActivity : AppCompatActivity() {
                 binding.switchEnableService.isChecked = false
             }
         }
+        updateServiceStatusUI()
+        updateEnvironmentWarnings()
     }
 
     private fun stopVigilService() {
@@ -449,6 +466,8 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "停止 Vigil 服务时出错: ", e)
         }
+        updateServiceStatusUI()
+        updateEnvironmentWarnings()
     }
 
     private fun setNotificationListenerServiceComponentEnabled(enabled: Boolean) {

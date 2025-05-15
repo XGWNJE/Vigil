@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.application) version "8.10.0-alpha05"
     alias(libs.plugins.kotlin.android)
     // alias(libs.plugins.kotlin.compose)
 }
@@ -21,11 +21,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true //启用代码压缩（移除未使用的代码）。
-            isShrinkResources = true //启用资源压缩（移除未使用的资源）。
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
-            )
+            ) //启用资源压缩（移除未使用的资源）。
         }
     }
     compileOptions {

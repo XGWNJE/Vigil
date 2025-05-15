@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Vigil 守夜人</string>
     <string name="keywords_hint">输入关键词，用英文逗号分隔</string>
@@ -71,5 +72,17 @@
     <string name="service_alert_limited_permissions">提醒功能受限: 缺少 %s 权限</string>
     <string name="service_status_abnormal_no_permission">服务异常 (权限不足)</string>
     <string name="error_starting_service">启动服务失败: %s</string>
+
+    <string name="license_key_title">授权码</string>
+    <string name="license_key_label">输入授权码</string>
+    <string name="license_key_hint">从授权码生成器获取的授权字符串</string>
+    <string name="activate_license_button">激活授权</string>
+    <string name="license_status_label">授权状态:</string>
+    <string name="license_status_unlicensed">未授权</string>
+    <string name="license_status_valid_premium">高级版已激活</string>
+    <string name="license_status_expired">授权已过期</string>
+    <string name="license_status_invalid">授权码无效</string>
+    <string name="license_status_valid_premium_expiry_format">高级版已激活，有效期至 %s</string>
+    <string name="license_parsing_error">授权码格式错误</string>
 
 </resources>

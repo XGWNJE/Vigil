@@ -25,12 +25,16 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.core.view.isGone
 import com.example.vigil.databinding.ActivityMainBinding
+import com.example.vigil.LicenseManager // 确保添加了此导入语句
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var sharedPreferencesHelper: SharedPreferencesHelper
     private var selectedRingtoneUri: Uri? = null
+
+    // 新增: LicenseManager 实例
+    private lateinit var licenseManager: LicenseManager
 
     companion object {
         private const val TAG = "VigilMainActivity"
@@ -79,6 +83,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         sharedPreferencesHelper = SharedPreferencesHelper(this)
+        licenseManager = LicenseManager() // 初始化 LicenseManager
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "从系统设置页面返回。")
@@ -124,6 +129,8 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "MainActivity onResume。")
         checkAndRequestPermissions()
         updateUI()
+        // TODO: 在后续阶段，这里需要检查授权状态并更新 UI
+        updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 暂时显示未授权
     }
 
     private fun setupUIListeners() {
@@ -215,6 +222,31 @@ class MainActivity : AppCompatActivity() {
             }
             notifyServiceToUpdateSettings()
         }
+
+        // 修改: 激活授权按钮点击监听器，调用新的解码方法
+        binding.buttonActivateLicense.setOnClickListener {
+            val licenseKey = binding.editTextLicenseKey.text.toString().trim()
+            if (licenseKey.isEmpty()) {
+                Toast.makeText(this, "请输入授权码", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // 调用 LicenseManager 进行解析和解码
+            val decodedParts = licenseManager.decodeLicenseKey(licenseKey)
+
+            if (decodedParts != null) {
+                val (decodedPayloadString, decodedSignatureBytes) = decodedParts
+                // 暂时显示解码结果，后续阶段会进行验证
+                updateLicenseStatusUI("解码成功:\nPayload (String): $decodedPayloadString\nSignature (Bytes): ${decodedSignatureBytes.toHexString()}") // 使用 toHexString() 方便查看字节数组
+                Log.d(TAG, "授权码解码成功。")
+            } else {
+                // 解析或解码失败，显示错误信息
+                updateLicenseStatusUI(getString(R.string.license_parsing_error))
+                Toast.makeText(this, R.string.license_parsing_error, Toast.LENGTH_SHORT).show()
+                Log.w(TAG, "授权码解析或解码失败。")
+            }
+        }
+
         Log.d(TAG, "UI 监听器已设置。")
     }
 
@@ -247,6 +279,8 @@ class MainActivity : AppCompatActivity() {
         setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
         binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
         binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
+        // TODO: 在后续阶段，根据授权状态启用/禁用授权卡片内的输入框和按钮
+        // setCardInteractive(binding.cardLicenseKey, true) // 授权卡片始终启用，用户总是可以尝试输入授权码
 
 
         if (!allCoreFunctionalityPermissionsGranted) {
@@ -306,6 +340,9 @@ class MainActivity : AppCompatActivity() {
             binding.switchFilterApps.isChecked = filterAppsEnabled
         }
         // updateFilterAppsSummary(filterAppsEnabled) // updateUI 会调用它
+
+        // TODO: 在后续阶段，这里需要加载保存的授权状态并更新 UI
+        // updateLicenseStatusUI(...)
 
         Log.d(TAG, "设置已加载到 UI。用户意图启用服务: $serviceEnabledByUserIntent, 应用过滤启用: $filterAppsEnabled")
     }
@@ -379,6 +416,8 @@ class MainActivity : AppCompatActivity() {
         setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
         binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
         binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
+        // TODO: 在后续阶段，根据授权状态启用/禁用授权卡片内的输入框和按钮
+        // setCardInteractive(binding.cardLicenseKey, true) // 授权卡片始终启用，用户总是可以尝试输入授权码
     }
 
     private fun setCardInteractive(view: View, enabled: Boolean) {
@@ -394,6 +433,21 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // 新增: 更新授权状态 UI 的方法
+    private fun updateLicenseStatusUI(statusText: String) {
+        binding.textViewLicenseStatus.text = statusText
+        // TODO: 在后续阶段，根据不同的授权状态设置不同的颜色
+        // val textColor = when (statusText) {
+        //     getString(R.string.license_status_valid_premium),
+        //     getString(R.string.license_status_valid_premium_expiry_format) -> ContextCompat.getColor(this, R.color.status_positive_green_light) // 需要在 colors.xml 中定义绿色
+        //     getString(R.string.license_status_expired),
+        //     getString(R.string.license_status_invalid),
+        //     getString(R.string.license_parsing_error) -> ContextCompat.getColor(this, R.color.status_negative_red_light) // 需要在 colors.xml 中定义红色
+        //     else -> ContextCompat.getColor(this, R.color.status_neutral_grey_light) // 需要在 colors.xml 中定义灰色
+        // }
+        // binding.textViewLicenseStatus.setTextColor(textColor)
     }
 
 
@@ -523,3 +577,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+
+// 扩展函数，方便将 ByteArray 转换为十六进制字符串用于调试
+fun ByteArray.toHexString() = joinToString("") { "%02x".format(it) }

@@ -24,7 +24,7 @@ data class LicensePayload(
 
 /**
  * LicenseManager 用于处理应用的授权验证逻辑。
- * 在第三阶段，它负责解析、解码、签名验证和 JSON 解析。
+ * 增加了客户端验证密钥的简单保护措施（密钥拆分和变量名隐匿）。
  */
 class LicenseManager {
 
@@ -34,10 +34,24 @@ class LicenseManager {
         private const val HMAC_SHA256 = "HmacSHA256"
 
         // TODO: !!! 重要 !!!
-        // 这是用于客户端验证的密钥。在实际应用中，这个密钥绝对不能明文存储！
-        // 您需要采用密钥拆分、混淆、NDK 等方式来保护这个密钥。
-        // 为了演示，这里使用一个硬编码的占位符，请务必替换并保护好您的实际密钥。
-        private const val CLIENT_VERIFICATION_SECRET_KEY = "A_Very_Unique_And_Secret_Key_For_Vigil_Generator_App_Only_123!@#"    }
+        // 将客户端验证密钥拆分成多个部分，并使用隐匿的变量名，增加逆向分析的难度。
+        // 这只是一个简单的保护措施，不能替代更高级的密钥保护技术。
+        // 请将这些字符串替换为您实际密钥拆分后的部分。
+        // 新密钥示例: "Vg!l_Cl!entSecr3t_K3y_@2025_R@nd0mStr!ng_xyz"
+        private const val p1 = "Vg!l_Cl!entSecr3t_" // 替换为您密钥的第一部分
+        private const val p2 = "K3y_@2025_R@nd0m" // 替换为您密钥的第二部分
+        private const val p3 = "Str!ng_xyz" // 替换为您密钥的第三部分
+
+
+        // 移除完整的明文密钥常量
+        // private const val CLIENT_VERIFICATION_SECRET_KEY = "A_Very_Unique_And_Secret_Key_For_Vigil_Generator_App_Only_123!@#"
+
+        // 在运行时组合密钥，拼接逻辑可以稍微调整，例如改变顺序等
+        private fun getClientVerificationSecretKey(): String {
+            // 根据您拆分的密钥部分和隐匿的变量名进行拼接
+            return p1 + p2 + p3 // 拼接顺序需要与拆分时一致
+        }
+    }
 
     /**
      * 解析、解码并验证授权码字符串。
@@ -58,8 +72,9 @@ class LicenseManager {
         }
         val (decodedPayloadString, receivedSignatureBytes) = decodedParts
 
-        // 2. 重新计算签名
-        val calculatedSignatureBytes = calculateHmacSha256(decodedPayloadString, CLIENT_VERIFICATION_SECRET_KEY)
+        // 2. 重新计算签名，使用组合后的密钥
+        val clientSecretKey = getClientVerificationSecretKey() // 获取组合后的密钥
+        val calculatedSignatureBytes = calculateHmacSha256(decodedPayloadString, clientSecretKey)
         if (calculatedSignatureBytes == null) {
             Log.e(TAG, "计算签名失败。")
             return null
@@ -194,6 +209,4 @@ class LicenseManager {
             return null
         }
     }
-
-    // TODO: 在后续阶段添加保存授权状态到 SharedPreferences 的方法
 }

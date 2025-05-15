@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPreferencesHelper: SharedPreferencesHelper
     private var selectedRingtoneUri: Uri? = null
 
-    // 新增: LicenseManager 实例
+    // LicenseManager 实例
     private lateinit var licenseManager: LicenseManager
 
     companion object {
@@ -131,10 +131,8 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "MainActivity onResume。")
         checkAndRequestPermissions()
         updateUI()
-        // TODO: 在后续阶段，这里需要检查授权状态并更新 UI
-        // updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 暂时显示未授权
-        // 在 onResume 中加载并显示保存的授权状态
-        loadLicenseStatus()
+        // 在 onResume 中加载并显示保存的授权状态，并更新功能可用性
+        loadLicenseStatusAndUpdateUI()
     }
 
     private fun setupUIListeners() {
@@ -155,7 +153,6 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
                 putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, getString(R.string.ringtone_selection_title))
-                // Corrected the extra key here
                 putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, selectedRingtoneUri)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
@@ -176,17 +173,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.switchEnableService.setOnCheckedChangeListener { _, isChecked ->
-            sharedPreferencesHelper.saveServiceEnabledState(isChecked)
-            if (isChecked) {
-                Log.i(TAG, "服务开关已打开，尝试启动服务（如果权限允许）。")
-                startVigilService()
+            // 检查授权状态，如果未授权且尝试开启服务，则阻止
+            val isLicensed = sharedPreferencesHelper.isAuthenticated()
+            if (isChecked && !isLicensed) {
+                Log.w(TAG, "尝试开启服务但未授权。")
+                Toast.makeText(this, "请先激活授权码以启用服务", Toast.LENGTH_SHORT).show()
+                binding.switchEnableService.isChecked = false // 阻止开关开启
+                // 不保存状态，因为用户意图开启但被阻止
             } else {
-                Log.i(TAG, "服务开关已关闭，停止服务。")
-                stopVigilService()
+                // 授权有效或用户尝试关闭服务，保存状态
+                sharedPreferencesHelper.saveServiceEnabledState(isChecked)
+                if (isChecked) {
+                    Log.i(TAG, "服务开关已打开，尝试启动服务（如果权限允许）。")
+                    startVigilService()
+                } else {
+                    Log.i(TAG, "服务开关已关闭，停止服务。")
+                    stopVigilService()
+                }
             }
-            // UI 更新移至 updateUI() 或各个权限/服务状态改变的回调中
-            // updateServiceStatusUI() // 避免重复调用
-            // updateEnvironmentWarnings() // 避免重复调用
+            updateServiceStatusUI() // 无论如何都更新服务状态UI
             Log.d(TAG, "服务开关状态改变为: $isChecked。")
         }
 
@@ -215,25 +220,37 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.switchFilterApps.setOnCheckedChangeListener { _, isChecked ->
-            sharedPreferencesHelper.saveFilterAppsEnabledState(isChecked)
-            if (isChecked) {
-                sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
-                binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_on)
-                Log.i(TAG, "应用过滤已启用，监听预设通讯应用。")
+            // 检查授权状态，如果未授权，则阻止
+            val isLicensed = sharedPreferencesHelper.isAuthenticated()
+            if (isChecked && !isLicensed) {
+                Log.w(TAG, "尝试启用应用过滤但未授权。")
+                Toast.makeText(this, "请先激活授权码以启用应用过滤", Toast.LENGTH_SHORT).show()
+                binding.switchFilterApps.isChecked = false // 阻止开关开启
+                // 不保存状态
             } else {
-                sharedPreferencesHelper.saveFilteredAppPackages(emptySet())
-                binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_off)
-                Log.i(TAG, "应用过滤已禁用，监听所有应用。")
+                // 授权有效或用户尝试关闭，保存状态
+                sharedPreferencesHelper.saveFilterAppsEnabledState(isChecked)
+                if (isChecked) {
+                    sharedPreferencesHelper.saveFilteredAppPackages(PREDEFINED_COMMUNICATION_APPS)
+                    binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_on)
+                    Log.i(TAG, "应用过滤已启用，监听预设通讯应用。")
+                } else {
+                    sharedPreferencesHelper.saveFilteredAppPackages(emptySet())
+                    binding.textViewFilterAppsSummary.text = getString(R.string.filter_apps_switch_summary_off)
+                    Log.i(TAG, "应用过滤已禁用，监听所有应用。")
+                }
+                notifyServiceToUpdateSettings()
             }
-            notifyServiceToUpdateSettings()
         }
 
-        // 修改: 激活授权按钮点击监听器，调用 verifyLicense 方法
+        // 修改: 激活授权按钮点击监听器，调用 verifyLicense 方法并保存状态
         binding.buttonActivateLicense.setOnClickListener {
             val licenseKey = binding.editTextLicenseKey.text.toString().trim()
             if (licenseKey.isEmpty()) {
                 Toast.makeText(this, "请输入授权码", Toast.LENGTH_SHORT).show()
-                updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 输入为空时显示未授权
+                updateLicenseStatusUI(null) // 输入为空时显示未授权状态（通过 null）
+                sharedPreferencesHelper.saveLicenseStatus(null) // 清除授权状态
+                updateFeatureAvailabilityUI(false) // 禁用高级功能 UI
                 return@setOnClickListener
             }
 
@@ -243,22 +260,29 @@ class MainActivity : AppCompatActivity() {
             if (licensePayload != null) {
                 // 授权码有效
                 Log.i(TAG, "授权码验证成功: $licensePayload")
-                // TODO: 保存授权状态到 SharedPreferences
-                // sharedPreferencesHelper.saveLicenseStatus(...)
+                sharedPreferencesHelper.saveLicenseStatus(licensePayload) // 保存授权状态
                 updateLicenseStatusUI(licensePayload) // 更新 UI 显示授权信息
-                Toast.makeText(this, R.string.license_status_valid_premium, Toast.LENGTH_SHORT).show() // 暂时只显示高级版成功
-                // TODO: 根据授权状态启用/禁用高级功能相关的 UI
-                // updateFeatureAvailabilityUI(licensePayload)
+                Toast.makeText(this, R.string.license_status_valid_premium, Toast.LENGTH_SHORT).show()
+                updateFeatureAvailabilityUI(true) // 启用高级功能 UI
+                // 如果服务开关已打开但因无授权而未运行，尝试启动服务
+                if (binding.switchEnableService.isChecked && !PermissionUtils.isNotificationListenerEnabled(this)) {
+                    startVigilService()
+                }
 
             } else {
                 // 授权码无效（格式错误、签名不匹配、appId 不匹配或已过期）
                 Log.w(TAG, "授权码验证失败。")
+                sharedPreferencesHelper.saveLicenseStatus(null) // 清除授权状态
                 // TODO: 根据 LicenseManager 内部的日志判断具体失败原因，更新 UI 提示
                 updateLicenseStatusUI(getString(R.string.license_status_invalid)) // 显示无效状态
                 Toast.makeText(this, R.string.license_status_invalid, Toast.LENGTH_SHORT).show()
-                // TODO: 禁用高级功能相关的 UI
-                // updateFeatureAvailabilityUI(null)
+                updateFeatureAvailabilityUI(false) // 禁用高级功能 UI
+                // 如果服务正在运行（尽管不应该），考虑停止它（此场景较少见，因为无权限通常无法启动）
+                if (PermissionUtils.isNotificationListenerEnabled(this)) {
+                    // stopVigilService() // 暂不自动停止，避免用户误解
+                }
             }
+            updateServiceStatusUI() // 更新服务状态 UI (可能因为授权状态改变)
         }
 
         Log.d(TAG, "UI 监听器已设置。")
@@ -284,24 +308,25 @@ class MainActivity : AppCompatActivity() {
 
         binding.cardPermissions.isGone = allPermissionButtonsGone
 
+        // 核心功能权限状态不受授权码影响，但高级功能UI的启用受授权码影响
         val allCoreFunctionalityPermissionsGranted = notificationAccessGranted &&
                 overlayAccessGranted &&
                 postNotificationsAccessGranted
 
-        // TODO: 在后续阶段，这里的逻辑需要考虑授权状态
-        setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
-        setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
-        setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
-        binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
-        binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
-        // TODO: 授权卡片始终启用，用户总是可以尝试输入授权码
-        // setCardInteractive(binding.cardLicenseKey, true)
+        // setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted) // 由 updateFeatureAvailabilityUI 控制
+        // setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted) // 由 updateFeatureAvailabilityUI 控制
+        // setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted) // 由 updateFeatureAvailabilityUI 控制
+        // binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted // 由 updateFeatureAvailabilityUI 控制
+        // binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted // 由 updateFeatureAvailabilityUI 控制
+        // 授权卡片始终启用
+        setCardInteractive(binding.cardLicenseKey, true)
 
 
         if (!allCoreFunctionalityPermissionsGranted) {
             if (binding.switchEnableService.isChecked) {
                 Log.w(TAG, "核心权限不足，但服务开关为开。将关闭开关并保存状态。")
                 binding.switchEnableService.isChecked = false
+                sharedPreferencesHelper.saveServiceEnabledState(false) // 保存关闭状态
             }
             // if (binding.switchFilterApps.isChecked) { // isEnabled 会处理显示，无需强制关闭
             //     binding.switchFilterApps.isChecked = false
@@ -356,28 +381,16 @@ class MainActivity : AppCompatActivity() {
         }
         // updateFilterAppsSummary(filterAppsEnabled) // updateUI 会调用它
 
-        // TODO: 在后续阶段，这里需要加载保存的授权状态并更新 UI
-        // loadLicenseStatus() // 已移至 onResume
+        // 授权状态在 onResume 中加载和更新 UI
         Log.d(TAG, "设置已加载到 UI (不包括授权状态)。用户意图启用服务: $serviceEnabledByUserIntent, 应用过滤启用: $filterAppsEnabled")
     }
 
-    // TODO: 在后续阶段实现加载授权状态的方法
-    private fun loadLicenseStatus() {
-        // 从 SharedPreferencesHelper 加载授权状态
-        // val status = sharedPreferencesHelper.getLicenseStatus()
-        // val type = sharedPreferencesHelper.getLicenseType()
-        // val expiryTimestamp = sharedPreferencesHelper.getLicenseExpiryTimestamp()
-        // val features = sharedPreferencesHelper.getLicensedFeatures()
-
-        // 构建 LicensePayload 对象 (如果存在)
-        // val licensePayload = if (status != "unlicensed") { // 假设 unlicensed 是默认状态
-        //     LicensePayload(packageName, type ?: "unknown", 0L, expiryTimestamp, features) // issuedAt 暂时用 0L 占位
-        // } else null
-
-        // updateLicenseStatusUI(licensePayload)
-        // updateFeatureAvailabilityUI(licensePayload)
-        Log.d(TAG, "加载授权状态 (TODO)。")
-        updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 暂时显示未授权
+    // 新增: 加载授权状态并更新 UI 及功能可用性
+    private fun loadLicenseStatusAndUpdateUI() {
+        val licensePayload = sharedPreferencesHelper.getLicenseStatus()
+        updateLicenseStatusUI(licensePayload) // 更新授权状态 UI
+        updateFeatureAvailabilityUI(licensePayload != null) // 根据授权是否存在更新功能可用性
+        Log.d(TAG, "加载授权状态并更新UI及功能可用性完成。授权有效: ${licensePayload != null}")
     }
 
 
@@ -401,16 +414,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun notifyServiceToUpdateSettings() {
+        // 只有在服务开关打开且通知读取权限已授予的情况下才通知服务
         if (binding.switchEnableService.isChecked && PermissionUtils.isNotificationListenerEnabled(this)) {
             val intent = Intent(this, MyNotificationListenerService::class.java).apply {
                 action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
             }
             try {
-                ContextCompat.startForegroundService(this, intent) // Corrected: use 'intent' instead of 'serviceIntent'
+                ContextCompat.startForegroundService(this, intent)
                 Log.d(TAG, "已发送 ACTION_UPDATE_SETTINGS 到服务。")
             } catch (e: Exception) {
                 Log.e(TAG, "启动服务以更新设置时出错: ", e)
             }
+        } else {
+            Log.d(TAG, "不满足通知服务更新设置的条件 (开关状态或权限)。")
         }
     }
 
@@ -441,18 +457,7 @@ class MainActivity : AppCompatActivity() {
         updateEnvironmentWarnings()
         updateFilterAppsSummary(binding.switchFilterApps.isChecked)
 
-        val allCoreFunctionalityPermissionsGranted = PermissionUtils.isNotificationListenerEnabled(this) &&
-                PermissionUtils.canDrawOverlays(this) &&
-                PermissionUtils.canPostNotifications(this)
-
-        // TODO: 在后续阶段，这里的逻辑需要考虑授权状态
-        setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
-        setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
-        setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
-        binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
-        binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
-        // TODO: 授权卡片始终启用，用户总是可以尝试输入授权码
-        // setCardInteractive(binding.cardLicenseKey, true)
+        // updateFeatureAvailabilityUI() // 由 loadLicenseStatusAndUpdateUI 调用
     }
 
     private fun setCardInteractive(view: View, enabled: Boolean) {
@@ -461,14 +466,54 @@ class MainActivity : AppCompatActivity() {
         if (view is android.view.ViewGroup) {
             for (i in 0 until view.childCount) {
                 val child = view.getChildAt(i)
-                // MaterialSwitch 的 enabled 状态由 allCoreFunctionalityPermissionsGranted 单独控制，
-                // 因此这里不应根据父卡片的 enabled 状态来覆盖它。
+                // MaterialSwitch 的 enabled 状态由 updateFeatureAvailabilityUI 单独控制
                 if (child !is com.google.android.material.materialswitch.MaterialSwitch) {
                     child.isEnabled = enabled
                 }
             }
         }
     }
+
+    // 新增: 根据授权状态更新高级功能 UI 的可用性
+    private fun updateFeatureAvailabilityUI(isLicensed: Boolean) {
+        Log.d(TAG, "更新功能可用性 UI，授权状态: $isLicensed")
+
+        // 配置卡片
+        setCardInteractive(binding.cardConfiguration, isLicensed)
+        binding.editTextKeywords.isEnabled = isLicensed
+        binding.buttonSelectRingtone.isEnabled = isLicensed
+        binding.buttonSaveSettings.isEnabled = isLicensed
+
+        // 应用过滤卡片
+        setCardInteractive(binding.cardAppFilter, isLicensed)
+        binding.switchFilterApps.isEnabled = isLicensed
+        // 注意：switchFilterApps 的 CheckedChangeListener 已经处理了未授权时的阻止逻辑
+
+        // 服务控制卡片
+        setCardInteractive(binding.cardServiceControl, isLicensed)
+        binding.switchEnableService.isEnabled = isLicensed
+        // 注意：switchEnableService 的 CheckedChangeListener 已经处理了未授权时的阻止逻辑
+        // 重启按钮的可用性取决于服务状态，不受授权直接控制
+
+        // 授权卡片始终启用
+        setCardInteractive(binding.cardLicenseKey, true)
+
+        // 如果未授权，且服务开关是开的，强制关闭并保存状态
+        if (!isLicensed && binding.switchEnableService.isChecked) {
+            binding.switchEnableService.isChecked = false
+            sharedPreferencesHelper.saveServiceEnabledState(false)
+            updateServiceStatusUI() // 更新服务状态 UI
+            Log.w(TAG, "检测到未授权，已强制关闭服务开关。")
+        }
+        // 如果未授权，且应用过滤开关是开的，强制关闭并保存状态
+        if (!isLicensed && binding.switchFilterApps.isChecked) {
+            binding.switchFilterApps.isChecked = false
+            sharedPreferencesHelper.saveFilterAppsEnabledState(false)
+            updateFilterAppsSummary(false) // 更新应用过滤总结文本
+            Log.w(TAG, "检测到未授权，已强制关闭应用过滤开关。")
+        }
+    }
+
 
     // 修改: 更新授权状态 UI 的方法，接受 LicensePayload 对象或 null
     private fun updateLicenseStatusUI(licensePayload: LicensePayload?) {
@@ -485,20 +530,29 @@ class MainActivity : AppCompatActivity() {
             } else {
                 getString(R.string.license_status_valid_premium)
             }
-            textColor = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light // 需要在 colors.xml 中定义绿色
+            textColor = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light
 
         } else {
             // 授权无效、过期或未授权
-            // TODO: 根据 LicenseManager 内部的验证结果细化显示无效或过期状态
-            statusText = getString(R.string.license_status_invalid) // 暂时都显示无效
-            textColor = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light // 需要在 colors.xml 中定义红色
+            // 尝试从 SharedPreferencesHelper 获取更具体的无效原因（如果需要）
+            val savedLicense = sharedPreferencesHelper.getLicenseStatus() // 再次尝试获取，可能已过期
+            statusText = if (sharedPreferencesHelper.prefs.getBoolean(SharedPreferencesHelper.KEY_IS_LICENSED, false) && savedLicense == null) {
+                // 如果之前标记为已授权，但现在 getLicenseStatus 返回 null (可能是因为过期)
+                getString(R.string.license_status_expired) // 显示过期
+            } else {
+                // 未授权或验证失败
+                getString(R.string.license_status_unlicensed) // 默认显示未授权
+            }
+
+            textColor = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light // 无效和过期都显示红色
+
         }
 
         binding.textViewLicenseStatus.text = statusText
         binding.textViewLicenseStatus.setTextColor(ContextCompat.getColor(this, textColor))
     }
 
-    // 新增: 更新授权状态 UI 的方法，接受字符串（用于显示解析错误等临时状态）
+    // 保留此方法用于显示解析错误等临时字符串状态
     private fun updateLicenseStatusUI(statusString: String) {
         binding.textViewLicenseStatus.text = statusString
         val isDark = isDarkThemeActive()
@@ -519,6 +573,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateServiceStatusUI() {
         val serviceEnabledByUser = binding.switchEnableService.isChecked
         val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(this)
+        val isLicensed = sharedPreferencesHelper.isAuthenticated() // 检查授权状态
 
         var statusText: String
         val statusColorRes: Int
@@ -526,7 +581,7 @@ class MainActivity : AppCompatActivity() {
 
         val isDark = isDarkThemeActive()
 
-        if (serviceEnabledByUser) {
+        if (serviceEnabledByUser && isLicensed) { // 服务启用且已授权
             if (notificationAccessActuallyGranted) {
                 statusText = getString(R.string.service_running)
                 statusColorRes = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light
@@ -540,12 +595,17 @@ class MainActivity : AppCompatActivity() {
                     statusText += " (" + getString(R.string.service_alert_limited_permissions, missingAlertPermissions.joinToString(getString(R.string.joiner_comma))) + ")"
                 }
             } else {
-                statusText = getString(R.string.service_status_abnormal_no_permission) // 使用之前建议的更具体的字符串
+                statusText = getString(R.string.service_status_abnormal_no_permission) // 权限不足
                 statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
                 showRestartButton = true
-                Log.w(TAG, "服务开关已启用，但系统层面通知监听器未启用。")
+                Log.w(TAG, "服务开关已启用且已授权，但系统层面通知监听器未启用。")
             }
-        } else {
+        } else if (serviceEnabledByUser && !isLicensed) { // 服务启用但未授权
+            statusText = getString(R.string.service_status_abnormal) // 服务异常 (未连接) - 可以考虑更具体的文本
+            statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
+            Log.w(TAG, "服务开关已启用但未授权，服务不会真正运行。")
+        }
+        else { // 服务未启用
             statusText = getString(R.string.service_stopped)
             statusColorRes = if (isDark) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
         }
@@ -589,11 +649,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startVigilService() {
+        val isLicensed = sharedPreferencesHelper.isAuthenticated()
         if (!PermissionUtils.isNotificationListenerEnabled(this)) {
             Log.w(TAG, "尝试启动服务，但通知读取权限未授予。")
             updateUI() // 确保UI反映此状态
             return
         }
+        if (!isLicensed) {
+            Log.w(TAG, "尝试启动服务，但未授权。")
+            updateUI() // 确保UI反映此状态
+            return
+        }
+
 
         setNotificationListenerServiceComponentEnabled(true)
         val serviceIntent = Intent(this, MyNotificationListenerService::class.java)
@@ -603,8 +670,10 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "启动 Vigil 服务时出错: ", e)
             Toast.makeText(this, getString(R.string.error_starting_service, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
+            // 如果启动失败，强制关闭开关并保存状态
             if (binding.switchEnableService.isChecked) {
                 binding.switchEnableService.isChecked = false
+                sharedPreferencesHelper.saveServiceEnabledState(false)
             }
         }
         updateUI() // 服务启动尝试后更新UI

@@ -34,7 +34,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var currentRingtoneUri: Uri? = null
     private var keywords: List<String> = emptyList()
 
-    // 新增: 应用过滤相关状态
+    // 应用过滤相关状态
     private var filterAppsEnabled: Boolean = false
     private var filteredAppPackages: Set<String> = emptySet()
 
@@ -86,6 +86,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.w(TAG, "通知监听器已断开连接！")
+        // TODO: 通知 MainActivity 服务已断开，更新 UI
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -106,15 +107,26 @@ class MyNotificationListenerService : NotificationListenerService() {
         releaseWakeLock()
         stopForeground(Service.STOP_FOREGROUND_REMOVE)
         Log.w(TAG, "服务已销毁，资源已释放。")
+        // TODO: 通知 MainActivity 服务已停止，更新 UI
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        // 检查用户是否启用了服务
         if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
-            return // 服务未被用户启用
+            Log.d(TAG, "服务未被用户启用，忽略通知。")
+            return
         }
+
+        // 新增: 检查授权状态
+        val isLicensed = sharedPreferencesHelper.isAuthenticated()
+        if (!isLicensed) {
+            Log.w(TAG, "未授权，忽略通知处理。")
+            return
+        }
+
         if (sbn == null) { Log.w(TAG, "StatusBarNotification 为空，忽略。"); return }
 
-        // 新增: 应用过滤逻辑
+        // 应用过滤逻辑
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
             if (sbn.packageName !in filteredAppPackages) {
                 // Log.d(TAG, "通知来自未被监听的应用: ${sbn.packageName}，已忽略。") // 可选日志
@@ -247,11 +259,13 @@ class MyNotificationListenerService : NotificationListenerService() {
         keywords = sharedPreferencesHelper.getKeywords()
         currentRingtoneUri = sharedPreferencesHelper.getRingtoneUri()
 
-        // 新增: 加载应用过滤设置
+        // 加载应用过滤设置
         filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
 
-        Log.i(TAG, "设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
+        // 授权状态不在这里加载，由 MainActivity 管理
+
+        Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
     }
 
     private fun playRingtoneLooping() {

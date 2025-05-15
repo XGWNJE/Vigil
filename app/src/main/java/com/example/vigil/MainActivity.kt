@@ -26,6 +26,8 @@ import androidx.core.view.updatePadding
 import androidx.core.view.isGone
 import com.example.vigil.databinding.ActivityMainBinding
 import com.example.vigil.LicenseManager // 确保添加了此导入语句
+import java.text.SimpleDateFormat
+import java.util.* // 导入 Date 和 Locale 用于日期格式化
 
 class MainActivity : AppCompatActivity() {
 
@@ -130,7 +132,9 @@ class MainActivity : AppCompatActivity() {
         checkAndRequestPermissions()
         updateUI()
         // TODO: 在后续阶段，这里需要检查授权状态并更新 UI
-        updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 暂时显示未授权
+        // updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 暂时显示未授权
+        // 在 onResume 中加载并显示保存的授权状态
+        loadLicenseStatus()
     }
 
     private fun setupUIListeners() {
@@ -151,6 +155,7 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
                 putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, getString(R.string.ringtone_selection_title))
+                // Corrected the extra key here
                 putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, selectedRingtoneUri)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
                 putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
@@ -223,27 +228,36 @@ class MainActivity : AppCompatActivity() {
             notifyServiceToUpdateSettings()
         }
 
-        // 修改: 激活授权按钮点击监听器，调用新的解码方法
+        // 修改: 激活授权按钮点击监听器，调用 verifyLicense 方法
         binding.buttonActivateLicense.setOnClickListener {
             val licenseKey = binding.editTextLicenseKey.text.toString().trim()
             if (licenseKey.isEmpty()) {
                 Toast.makeText(this, "请输入授权码", Toast.LENGTH_SHORT).show()
+                updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 输入为空时显示未授权
                 return@setOnClickListener
             }
 
-            // 调用 LicenseManager 进行解析和解码
-            val decodedParts = licenseManager.decodeLicenseKey(licenseKey)
+            // 调用 LicenseManager 进行验证
+            val licensePayload = licenseManager.verifyLicense(licenseKey, packageName)
 
-            if (decodedParts != null) {
-                val (decodedPayloadString, decodedSignatureBytes) = decodedParts
-                // 暂时显示解码结果，后续阶段会进行验证
-                updateLicenseStatusUI("解码成功:\nPayload (String): $decodedPayloadString\nSignature (Bytes): ${decodedSignatureBytes.toHexString()}") // 使用 toHexString() 方便查看字节数组
-                Log.d(TAG, "授权码解码成功。")
+            if (licensePayload != null) {
+                // 授权码有效
+                Log.i(TAG, "授权码验证成功: $licensePayload")
+                // TODO: 保存授权状态到 SharedPreferences
+                // sharedPreferencesHelper.saveLicenseStatus(...)
+                updateLicenseStatusUI(licensePayload) // 更新 UI 显示授权信息
+                Toast.makeText(this, R.string.license_status_valid_premium, Toast.LENGTH_SHORT).show() // 暂时只显示高级版成功
+                // TODO: 根据授权状态启用/禁用高级功能相关的 UI
+                // updateFeatureAvailabilityUI(licensePayload)
+
             } else {
-                // 解析或解码失败，显示错误信息
-                updateLicenseStatusUI(getString(R.string.license_parsing_error))
-                Toast.makeText(this, R.string.license_parsing_error, Toast.LENGTH_SHORT).show()
-                Log.w(TAG, "授权码解析或解码失败。")
+                // 授权码无效（格式错误、签名不匹配、appId 不匹配或已过期）
+                Log.w(TAG, "授权码验证失败。")
+                // TODO: 根据 LicenseManager 内部的日志判断具体失败原因，更新 UI 提示
+                updateLicenseStatusUI(getString(R.string.license_status_invalid)) // 显示无效状态
+                Toast.makeText(this, R.string.license_status_invalid, Toast.LENGTH_SHORT).show()
+                // TODO: 禁用高级功能相关的 UI
+                // updateFeatureAvailabilityUI(null)
             }
         }
 
@@ -274,13 +288,14 @@ class MainActivity : AppCompatActivity() {
                 overlayAccessGranted &&
                 postNotificationsAccessGranted
 
+        // TODO: 在后续阶段，这里的逻辑需要考虑授权状态
         setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
         setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
         setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
         binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
         binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
-        // TODO: 在后续阶段，根据授权状态启用/禁用授权卡片内的输入框和按钮
-        // setCardInteractive(binding.cardLicenseKey, true) // 授权卡片始终启用，用户总是可以尝试输入授权码
+        // TODO: 授权卡片始终启用，用户总是可以尝试输入授权码
+        // setCardInteractive(binding.cardLicenseKey, true)
 
 
         if (!allCoreFunctionalityPermissionsGranted) {
@@ -342,10 +357,29 @@ class MainActivity : AppCompatActivity() {
         // updateFilterAppsSummary(filterAppsEnabled) // updateUI 会调用它
 
         // TODO: 在后续阶段，这里需要加载保存的授权状态并更新 UI
-        // updateLicenseStatusUI(...)
-
-        Log.d(TAG, "设置已加载到 UI。用户意图启用服务: $serviceEnabledByUserIntent, 应用过滤启用: $filterAppsEnabled")
+        // loadLicenseStatus() // 已移至 onResume
+        Log.d(TAG, "设置已加载到 UI (不包括授权状态)。用户意图启用服务: $serviceEnabledByUserIntent, 应用过滤启用: $filterAppsEnabled")
     }
+
+    // TODO: 在后续阶段实现加载授权状态的方法
+    private fun loadLicenseStatus() {
+        // 从 SharedPreferencesHelper 加载授权状态
+        // val status = sharedPreferencesHelper.getLicenseStatus()
+        // val type = sharedPreferencesHelper.getLicenseType()
+        // val expiryTimestamp = sharedPreferencesHelper.getLicenseExpiryTimestamp()
+        // val features = sharedPreferencesHelper.getLicensedFeatures()
+
+        // 构建 LicensePayload 对象 (如果存在)
+        // val licensePayload = if (status != "unlicensed") { // 假设 unlicensed 是默认状态
+        //     LicensePayload(packageName, type ?: "unknown", 0L, expiryTimestamp, features) // issuedAt 暂时用 0L 占位
+        // } else null
+
+        // updateLicenseStatusUI(licensePayload)
+        // updateFeatureAvailabilityUI(licensePayload)
+        Log.d(TAG, "加载授权状态 (TODO)。")
+        updateLicenseStatusUI(getString(R.string.license_status_unlicensed)) // 暂时显示未授权
+    }
+
 
     private fun saveSettings() {
         val keywordsText = binding.editTextKeywords.text.toString()
@@ -372,7 +406,7 @@ class MainActivity : AppCompatActivity() {
                 action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
             }
             try {
-                ContextCompat.startForegroundService(this, intent) // 推荐使用 ContextCompat
+                ContextCompat.startForegroundService(this, intent) // Corrected: use 'intent' instead of 'serviceIntent'
                 Log.d(TAG, "已发送 ACTION_UPDATE_SETTINGS 到服务。")
             } catch (e: Exception) {
                 Log.e(TAG, "启动服务以更新设置时出错: ", e)
@@ -411,13 +445,14 @@ class MainActivity : AppCompatActivity() {
                 PermissionUtils.canDrawOverlays(this) &&
                 PermissionUtils.canPostNotifications(this)
 
+        // TODO: 在后续阶段，这里的逻辑需要考虑授权状态
         setCardInteractive(binding.cardConfiguration, allCoreFunctionalityPermissionsGranted)
         setCardInteractive(binding.cardServiceControl, allCoreFunctionalityPermissionsGranted)
         setCardInteractive(binding.cardAppFilter, allCoreFunctionalityPermissionsGranted)
         binding.switchEnableService.isEnabled = allCoreFunctionalityPermissionsGranted
         binding.switchFilterApps.isEnabled = allCoreFunctionalityPermissionsGranted
-        // TODO: 在后续阶段，根据授权状态启用/禁用授权卡片内的输入框和按钮
-        // setCardInteractive(binding.cardLicenseKey, true) // 授权卡片始终启用，用户总是可以尝试输入授权码
+        // TODO: 授权卡片始终启用，用户总是可以尝试输入授权码
+        // setCardInteractive(binding.cardLicenseKey, true)
     }
 
     private fun setCardInteractive(view: View, enabled: Boolean) {
@@ -435,19 +470,45 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 新增: 更新授权状态 UI 的方法
-    private fun updateLicenseStatusUI(statusText: String) {
+    // 修改: 更新授权状态 UI 的方法，接受 LicensePayload 对象或 null
+    private fun updateLicenseStatusUI(licensePayload: LicensePayload?) {
+        val statusText: String
+        val textColor: Int // 用于存储最终解析的颜色整数值
+        val isDark = isDarkThemeActive()
+
+        if (licensePayload != null) {
+            // 授权有效
+            statusText = if (licensePayload.expiresAt != null) {
+                val expiryDate = Date(licensePayload.expiresAt * 1000) // 秒级时间戳转毫秒
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                getString(R.string.license_status_valid_premium_expiry_format, dateFormat.format(expiryDate))
+            } else {
+                getString(R.string.license_status_valid_premium)
+            }
+            textColor = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light // 需要在 colors.xml 中定义绿色
+
+        } else {
+            // 授权无效、过期或未授权
+            // TODO: 根据 LicenseManager 内部的验证结果细化显示无效或过期状态
+            statusText = getString(R.string.license_status_invalid) // 暂时都显示无效
+            textColor = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light // 需要在 colors.xml 中定义红色
+        }
+
         binding.textViewLicenseStatus.text = statusText
-        // TODO: 在后续阶段，根据不同的授权状态设置不同的颜色
-        // val textColor = when (statusText) {
-        //     getString(R.string.license_status_valid_premium),
-        //     getString(R.string.license_status_valid_premium_expiry_format) -> ContextCompat.getColor(this, R.color.status_positive_green_light) // 需要在 colors.xml 中定义绿色
-        //     getString(R.string.license_status_expired),
-        //     getString(R.string.license_status_invalid),
-        //     getString(R.string.license_parsing_error) -> ContextCompat.getColor(this, R.color.status_negative_red_light) // 需要在 colors.xml 中定义红色
-        //     else -> ContextCompat.getColor(this, R.color.status_neutral_grey_light) // 需要在 colors.xml 中定义灰色
-        // }
-        // binding.textViewLicenseStatus.setTextColor(textColor)
+        binding.textViewLicenseStatus.setTextColor(ContextCompat.getColor(this, textColor))
+    }
+
+    // 新增: 更新授权状态 UI 的方法，接受字符串（用于显示解析错误等临时状态）
+    private fun updateLicenseStatusUI(statusString: String) {
+        binding.textViewLicenseStatus.text = statusString
+        val isDark = isDarkThemeActive()
+        val textColor = when (statusString) {
+            getString(R.string.license_parsing_error) -> if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
+            getString(R.string.license_status_invalid) -> if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
+            getString(R.string.license_status_unlicensed) -> if (isDark) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
+            else -> if (isDark) R.color.md_theme_onSurface else R.color.md_theme_onSurface // 其他情况使用默认文本颜色
+        }
+        binding.textViewLicenseStatus.setTextColor(ContextCompat.getColor(this, textColor))
     }
 
 

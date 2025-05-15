@@ -40,7 +40,16 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private var mediaPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler = Handler(Looper.getMainLooper()) // 用于发送心跳和处理MediaPlayer回调
+
+    // 新增: 心跳相关 Runnable
+    private val heartbeatRunnable = object : Runnable {
+        override fun run() {
+            sendHeartbeat()
+            handler.postDelayed(this, HEARTBEAT_INTERVAL_MS) // 安排下一次心跳
+        }
+    }
+
 
     companion object {
         private const val TAG = "VigilListenerService"
@@ -50,6 +59,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val ALERT_NOTIFICATION_CHANNEL_ID = "vigil_alert_channel"
         private const val WAKELOCK_TIMEOUT_MS = 2 * 60 * 1000L // 2 minutes
         private const val FULL_SCREEN_NOTIFICATION_ID = 718
+
+        // 新增: 心跳 Action 和间隔
+        const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
+        private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L // 服务发送心跳间隔 30秒
     }
 
     private val alertConfirmedReceiver = object : BroadcastReceiver() {
@@ -81,12 +94,15 @@ class MyNotificationListenerService : NotificationListenerService() {
         super.onListenerConnected()
         Log.i(TAG, "通知监听器已连接。")
         loadSettings() // 确保连接后设置是最新的
+        startHeartbeat() // 服务连接后开始发送心跳
+        sendServiceStatusUpdate(true) // 通知 MainActivity 服务已连接
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.w(TAG, "通知监听器已断开连接！")
-        // TODO: 通知 MainActivity 服务已断开，更新 UI
+        stopHeartbeat() // 服务断开连接时停止发送心跳
+        sendServiceStatusUpdate(false) // 通知 MainActivity 服务已断开
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -94,6 +110,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (intent?.action == ACTION_UPDATE_SETTINGS) {
             Log.i(TAG, "收到 ACTION_UPDATE_SETTINGS，重新加载设置。")
             loadSettings()
+        } else if (intent?.action == null) {
+            // 如果是系统或 START_STICKY 重启的服务，这里 action 为 null
+            Log.i(TAG, "服务由系统或 START_STICKY 重启，开始发送心跳。")
+            startHeartbeat() // 如果服务被意外杀死后重启，确保心跳也能恢复
         }
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundServiceNotification())
         return START_STICKY
@@ -103,11 +123,12 @@ class MyNotificationListenerService : NotificationListenerService() {
         super.onDestroy()
         Log.w(TAG, "服务销毁中...")
         LocalBroadcastManager.getInstance(this).unregisterReceiver(alertConfirmedReceiver)
+        stopHeartbeat() // 服务销毁时停止发送心跳
         stopRingtone()
         releaseWakeLock()
         stopForeground(Service.STOP_FOREGROUND_REMOVE)
         Log.w(TAG, "服务已销毁，资源已释放。")
-        // TODO: 通知 MainActivity 服务已停止，更新 UI
+        sendServiceStatusUpdate(false) // 通知 MainActivity 服务已停止
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -201,6 +222,8 @@ class MyNotificationListenerService : NotificationListenerService() {
                     }
                 } else {
                     Log.e(TAG, "无发送通知权限 (通过 PermissionUtils 检测)。无法执行任何提醒操作。")
+                    // 即使没有发送通知权限，如果服务开关是开的，理论上服务还在运行，只是无法通过通知方式提醒
+                    // 这里可以考虑记录日志或以其他方式提示用户（如果需要）
                 }
             }
         }
@@ -386,4 +409,36 @@ class MyNotificationListenerService : NotificationListenerService() {
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
     }
+
+    // 新增方法: 发送心跳广播
+    private fun sendHeartbeat() {
+        val intent = Intent(ACTION_HEARTBEAT)
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        Log.d(TAG, "发送心跳广播。") // 心跳日志可能比较频繁，酌情开启
+    }
+
+    // 新增方法: 启动心跳发送
+    private fun startHeartbeat() {
+        // 先停止，确保不会重复发送
+        handler.removeCallbacks(heartbeatRunnable)
+        // 延迟一段时间发送第一个心跳，避免服务刚启动时过于频繁
+        handler.postDelayed(heartbeatRunnable, 1000) // 延迟1秒发送第一个心跳
+        Log.d(TAG, "已安排服务心跳发送 (每隔 ${HEARTBEAT_INTERVAL_MS / 1000} 秒)。")
+    }
+
+    // 新增方法: 停止心跳发送
+    private fun stopHeartbeat() {
+        handler.removeCallbacks(heartbeatRunnable)
+        Log.d(TAG, "已停止服务心跳发送。")
+    }
+
+    // 新增方法: 通知 MainActivity 服务连接状态
+    private fun sendServiceStatusUpdate(isConnected: Boolean) {
+        val intent = Intent(MainActivity.ACTION_SERVICE_STATUS_UPDATE).apply {
+            putExtra(MainActivity.EXTRA_SERVICE_CONNECTED, isConnected)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        Log.d(TAG, "发送服务连接状态更新广播: $isConnected")
+    }
+
 }

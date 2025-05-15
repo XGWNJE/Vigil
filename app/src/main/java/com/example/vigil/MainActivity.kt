@@ -2,8 +2,11 @@
 package com.example.vigil
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.media.RingtoneManager
@@ -12,9 +15,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.View
-// import android.widget.TextView // TextView 已通过 binding.tvAppTitleGithub 访问，无需单独导入
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,10 +27,11 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.core.view.isGone
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.vigil.databinding.ActivityMainBinding
-import com.example.vigil.LicenseManager // 确保添加了此导入语句
+import com.example.vigil.LicenseManager
 import java.text.SimpleDateFormat
-import java.util.* // 导入 Date 和 Locale 用于日期格式化
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,6 +51,16 @@ class MainActivity : AppCompatActivity() {
             "com.viber.voip", "com.skype.raider", "jp.naver.line.android",
             "com.snapchat.android", "com.discord"
         )
+
+        // 新增: 心跳检测相关常量
+        private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L // 服务发送心跳间隔 30秒
+        private const val HEARTBEAT_TOLERANCE_MS = 10 * 1000L // 容忍延迟 10秒
+        private const val HEARTBEAT_CHECK_INTERVAL_MS = 15 * 1000L // MainActivity 检查间隔 15秒
+        private const val HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS + HEARTBEAT_TOLERANCE_MS // 认为服务失效的超时时间
+
+        // 新增: 服务状态广播 Action
+        const val ACTION_SERVICE_STATUS_UPDATE = "com.example.vigil.SERVICE_STATUS_UPDATE"
+        const val EXTRA_SERVICE_CONNECTED = "extra_service_connected"
     }
 
     internal lateinit var appSettingsLauncher: ActivityResultLauncher<Intent>
@@ -65,6 +79,39 @@ class MainActivity : AppCompatActivity() {
                 Log.i(TAG, "用户${if (uri != null) "选择了新铃声: $uri" else "清除了铃声选择。"}")
             }
         }
+
+    // 新增: 服务心跳和状态广播接收器
+    private val serviceStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                MyNotificationListenerService.ACTION_HEARTBEAT -> {
+                    Log.d(TAG, "收到服务心跳。")
+                    lastHeartbeatTime = System.currentTimeMillis()
+                    updateServiceStatusUI() // 收到心跳后立即更新服务状态UI
+                }
+                ACTION_SERVICE_STATUS_UPDATE -> {
+                    val isConnected = intent.getBooleanExtra(EXTRA_SERVICE_CONNECTED, false)
+                    Log.i(TAG, "收到服务连接状态更新: $isConnected")
+                    // 当服务断开时，立即更新 UI
+                    if (!isConnected) {
+                        // 如果服务断开，即使开关是开的，也可能需要提示用户或显示重启按钮
+                        // 心跳超时检查也会处理这种情况，这里可以作为辅助
+                        updateServiceStatusUI()
+                    }
+                }
+            }
+        }
+    }
+    private var lastHeartbeatTime: Long = 0 // 记录最后一次心跳时间
+
+    private val heartbeatCheckHandler = Handler(Looper.getMainLooper())
+    private val heartbeatCheckRunnable = object : Runnable {
+        override fun run() {
+            checkServiceHeartbeatStatus() // 检查心跳状态
+            heartbeatCheckHandler.postDelayed(this, HEARTBEAT_CHECK_INTERVAL_MS) // 安排下一次检查
+        }
+    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,6 +138,14 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "从系统设置页面返回。")
             // onResume will handle UI updates.
         }
+
+        // 注册心跳和状态广播接收器
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            serviceStatusReceiver, IntentFilter().apply {
+                addAction(MyNotificationListenerService.ACTION_HEARTBEAT)
+                addAction(ACTION_SERVICE_STATUS_UPDATE)
+            }
+        )
 
         setupUIListeners()
         loadSettings()
@@ -133,6 +188,24 @@ class MainActivity : AppCompatActivity() {
         updateUI()
         // 在 onResume 中加载并显示保存的授权状态，并更新功能可用性
         loadLicenseStatusAndUpdateUI()
+        // 启动心跳检查
+        startHeartbeatCheck()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "MainActivity onPause。")
+        // 停止心跳检查（如果 Activity 不在前台）
+        stopHeartbeatCheck()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "MainActivity onDestroy。")
+        // 解注册心跳广播接收器
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceStatusReceiver)
+        // 停止心跳检查（确保在销毁时停止）
+        stopHeartbeatCheck()
     }
 
     private fun setupUIListeners() {
@@ -202,21 +275,24 @@ class MainActivity : AppCompatActivity() {
             val neutralColorRes = if (isDarkThemeActive()) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
             binding.textViewServiceStatus.setTextColor(ContextCompat.getColor(this, neutralColorRes))
 
+            // 禁用服务组件
             setNotificationListenerServiceComponentEnabled(false)
 
+            // 延迟一段时间后重新启用组件并尝试启动服务
             Handler(Looper.getMainLooper()).postDelayed({
                 Log.d(TAG, "重新启用服务组件...")
                 setNotificationListenerServiceComponentEnabled(true)
 
                 Handler(Looper.getMainLooper()).postDelayed({
                     Log.d(TAG, "尝试启动服务并更新UI...")
+                    // 只有在服务开关为开且通知读取权限已授予的情况下才尝试启动服务
                     if (binding.switchEnableService.isChecked && PermissionUtils.isNotificationListenerEnabled(this)) {
                         startVigilService()
                     }
-                    updateUI()
-                    binding.buttonRestartService.isEnabled = true
-                }, 700)
-            }, 300)
+                    updateUI() // 更新 UI 状态
+                    binding.buttonRestartService.isEnabled = true // 重新启用按钮
+                }, 700) // 再次延迟，给系统时间重新绑定服务
+            }, 300) // 延迟禁用，确保系统能处理禁用操作
         }
 
         binding.switchFilterApps.setOnCheckedChangeListener { _, isChecked ->
@@ -265,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, R.string.license_status_valid_premium, Toast.LENGTH_SHORT).show()
                 updateFeatureAvailabilityUI(true) // 启用高级功能 UI
                 // 如果服务开关已打开但因无授权而未运行，尝试启动服务
-                if (binding.switchEnableService.isChecked && !PermissionUtils.isNotificationListenerEnabled(this)) {
+                if (binding.switchEnableService.isChecked && PermissionUtils.isNotificationListenerEnabled(this)) {
                     startVigilService()
                 }
 
@@ -570,10 +646,13 @@ class MainActivity : AppCompatActivity() {
         return resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     }
 
+    // 修改 updateServiceStatusUI 方法，增加判断心跳的逻辑
     private fun updateServiceStatusUI() {
         val serviceEnabledByUser = binding.switchEnableService.isChecked
         val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(this)
-        val isLicensed = sharedPreferencesHelper.isAuthenticated() // 检查授权状态
+        val isLicensed = sharedPreferencesHelper.isAuthenticated()
+        val currentTime = System.currentTimeMillis()
+        val hasRecentHeartbeat = (currentTime - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS
 
         var statusText: String
         val statusColorRes: Int
@@ -583,38 +662,52 @@ class MainActivity : AppCompatActivity() {
 
         if (serviceEnabledByUser && isLicensed) { // 服务启用且已授权
             if (notificationAccessActuallyGranted) {
-                statusText = getString(R.string.service_running)
-                statusColorRes = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light
+                // 权限OK，进一步判断心跳
+                if (hasRecentHeartbeat) { // 如果有心跳
+                    statusText = getString(R.string.service_running)
+                    statusColorRes = if (isDark) R.color.status_positive_green_dark else R.color.status_positive_green_light
 
-                val missingAlertPermissions = mutableListOf<String>()
-                if (!PermissionUtils.canDrawOverlays(this)) missingAlertPermissions.add(getString(R.string.permission_overlay_short)) // 使用短名称
-                if (!PermissionUtils.canPostNotifications(this)) {
-                    missingAlertPermissions.add(getString(R.string.permission_post_notification_short)) // 使用短名称
+                    // 检查提醒相关权限
+                    val missingAlertPermissions = mutableListOf<String>()
+                    if (!PermissionUtils.canDrawOverlays(this)) missingAlertPermissions.add(getString(R.string.permission_overlay_short))
+                    if (!PermissionUtils.canPostNotifications(this)) {
+                        missingAlertPermissions.add(getString(R.string.permission_post_notification_short))
+                    }
+                    if (missingAlertPermissions.isNotEmpty()) {
+                        statusText += " (" + getString(R.string.service_alert_limited_permissions, missingAlertPermissions.joinToString(getString(R.string.joiner_comma))) + ")"
+                    }
+                    showRestartButton = false // 服务正常运行时不显示重启按钮
+                } else { // 没有收到心跳，认为异常
+                    statusText = getString(R.string.service_status_abnormal) // 标记为异常，即使权限看起来正常
+                    statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
+                    showRestartButton = true // 心跳异常时显示重启按钮
+                    Log.w(TAG, "服务开关已启用，权限已授予，但心跳超时。可能需要重启服务。")
                 }
-                if (missingAlertPermissions.isNotEmpty()) {
-                    statusText += " (" + getString(R.string.service_alert_limited_permissions, missingAlertPermissions.joinToString(getString(R.string.joiner_comma))) + ")"
-                }
+
             } else {
                 statusText = getString(R.string.service_status_abnormal_no_permission) // 权限不足
                 statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
-                showRestartButton = true
+                showRestartButton = true // 权限不足时显示重启按钮
                 Log.w(TAG, "服务开关已启用且已授权，但系统层面通知监听器未启用。")
             }
         } else if (serviceEnabledByUser && !isLicensed) { // 服务启用但未授权
-            statusText = getString(R.string.service_status_abnormal) // 服务异常 (未连接) - 可以考虑更具体的文本
+            statusText = getString(R.string.service_status_abnormal) // 服务异常 (未连接)
             statusColorRes = if (isDark) R.color.status_negative_red_dark else R.color.status_negative_red_light
+            // 未授权不显示重启按钮，提示用户激活授权
+            showRestartButton = false
             Log.w(TAG, "服务开关已启用但未授权，服务不会真正运行。")
         }
         else { // 服务未启用
             statusText = getString(R.string.service_stopped)
             statusColorRes = if (isDark) R.color.status_neutral_grey_dark else R.color.status_neutral_grey_light
+            showRestartButton = false // 服务未启用时不显示重启按钮
         }
 
         binding.textViewServiceStatus.text = statusText
         binding.textViewServiceStatus.setTextColor(ContextCompat.getColor(this, statusColorRes))
         binding.buttonRestartService.isGone = !showRestartButton
 
-        Log.d(TAG, "UI服务状态更新: $statusText, 重启按钮: $showRestartButton")
+        Log.d(TAG, "UI服务状态更新: $statusText, 重启按钮: $showRestartButton (基于心跳判断: $hasRecentHeartbeat)")
     }
 
 
@@ -698,13 +791,51 @@ class MainActivity : AppCompatActivity() {
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED
         }
         try {
+            // 只有当当前状态与目标状态不同时才设置，避免不必要的PackageManager操作
             if (packageManager.getComponentEnabledSetting(componentName) != newState) {
                 packageManager.setComponentEnabledSetting(componentName, newState, PackageManager.DONT_KILL_APP)
                 Log.i(TAG, "MyNotificationListenerService 组件状态设置为: ${if (enabled) "启用" else "禁用"}")
+            } else {
+                Log.d(TAG, "MyNotificationListenerService 组件已经是目标状态: ${if (enabled) "启用" else "禁用"}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "设置服务组件状态时出错: ", e)
         }
+    }
+
+    // 新增方法: 启动心跳检查
+    private fun startHeartbeatCheck() {
+        Log.d(TAG, "启动服务心跳检查。")
+        heartbeatCheckHandler.removeCallbacks(heartbeatCheckRunnable) // 移除之前的回调，避免重复
+        heartbeatCheckHandler.post(heartbeatCheckRunnable) // 立即执行一次并安排后续检查
+    }
+
+    // 新增方法: 停止心跳检查
+    private fun stopHeartbeatCheck() {
+        Log.d(TAG, "停止服务心跳检查。")
+        heartbeatCheckHandler.removeCallbacks(heartbeatCheckRunnable)
+    }
+
+    // 新增方法: 检查心跳状态并更新 UI
+    private fun checkServiceHeartbeatStatus() {
+        Log.d(TAG, "执行心跳状态检查。")
+        val currentTime = System.currentTimeMillis()
+        val serviceEnabledByUser = binding.switchEnableService.isChecked
+        val notificationAccessGranted = PermissionUtils.isNotificationListenerEnabled(this)
+        val isLicensed = sharedPreferencesHelper.isAuthenticated()
+
+        // 只有当服务应该运行时，才检查心跳是否超时
+        val shouldServiceBeRunning = serviceEnabledByUser && notificationAccessGranted && isLicensed
+        val hasRecentHeartbeat = if (shouldServiceBeRunning) {
+            (currentTime - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS
+        } else {
+            // 如果服务不应该运行，则不考虑心跳超时，认为状态正常（不显示重启按钮）
+            true // 或者根据您的逻辑返回 false 表示不活跃，但为了不显示重启按钮，返回 true 更合适
+        }
+
+
+        // 更新服务状态 UI
+        updateServiceStatusUI() // updateServiceStatusUI 现在内部会获取心跳状态
     }
 }
 

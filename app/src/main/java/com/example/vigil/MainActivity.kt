@@ -1,18 +1,22 @@
 // src/main/java/com/example/vigil/MainActivity.kt
 package com.example.vigil
 
-import android.app.Application // 保留以备 SettingsViewModelFactory 和 DefaultPreview 使用
+import android.app.Application
+import android.app.KeyguardManager // 新增：用于解锁屏幕
 import android.content.ComponentName
+import android.content.Context // 新增：用于获取 KeyguardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build // 新增：用于版本判断
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.WindowManager // 新增：用于设置窗口标志
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels // 导入 by viewModels
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
@@ -20,13 +24,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.ViewModelProvider // 如果需要自定义工厂
-// import androidx.lifecycle.viewmodel.compose.viewModel // 不再直接在 setContent 中使用
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -55,28 +58,27 @@ class MainActivity : AppCompatActivity() {
 
     internal lateinit var appSettingsLauncher: ActivityResultLauncher<Intent>
 
-    // 使用 by viewModels() 委托来获取 ViewModel 实例
-    // 假设 MonitoringViewModel 是 AndroidViewModel 或者有无参构造函数
-    // 如果 MonitoringViewModel 需要 Application 但不是 AndroidViewModel,
-    // 你需要为它创建一个类似 SettingsViewModelFactory 的工厂
     private val monitoringViewModel: MonitoringViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels {
         SettingsViewModelFactory(application)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d(TAG, "MainActivity onCreate. Intent Action: ${intent?.action}")
+        // 尝试在 super.onCreate 之前处理窗口标志，以便尽早生效
+        handleWindowFlagsForAlert(intent)
+
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "MainActivity onCreate。")
+        Log.d(TAG, "MainActivity super.onCreate called.")
 
         sharedPreferencesHelper = SharedPreferencesHelper(this)
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "Returned from system settings page.")
-            // ViewModel 状态更新现在应该通过它们自己的机制（例如，在 onResume 中或通过观察系统事件）处理
-            // SettingsViewModel 会在 onResume 中更新其权限状态
+            settingsViewModel.updatePermissionStates()
+            monitoringViewModel.updateEnvironmentWarnings()
         }
 
-        // 设置 ViewModel 回调
         monitoringViewModel.startServiceCallback = { hasPermission -> startVigilService(hasPermission) }
         monitoringViewModel.stopServiceCallback = { stopVigilService() }
         monitoringViewModel.restartServiceCallback = { restartService() }
@@ -84,13 +86,11 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             VigilTheme {
-                // 直接使用 Activity 级别的 ViewModel 实例
                 VigilApp(
                     monitoringViewModel = this.monitoringViewModel,
                     settingsViewModel = this.settingsViewModel
                 )
 
-                // KeywordAlertDialog 逻辑保持不变，因为它依赖于 ViewModel 的状态
                 val showDialog by this.monitoringViewModel.showKeywordAlertDialog
                 val matchedKeyword by this.monitoringViewModel.matchedKeywordForDialog
 
@@ -101,21 +101,87 @@ class MainActivity : AppCompatActivity() {
                         matchedKeyword = matchedKeyword
                     )
                 }
+
+                LaunchedEffect(intent) { // 使用 intent 作为 key，当 intent 变化时重新执行
+                    Log.d(TAG, "LaunchedEffect in setContent. Current intent action: ${this@MainActivity.intent?.action}")
+                    handleIntentForAlert(this@MainActivity.intent)
+                }
             }
         }
         Log.d(TAG, "MainActivity onCreate 完成。")
     }
 
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        Log.d(TAG, "MainActivity onNewIntent. Action: ${intent?.action}")
+        setIntent(intent) // 更新 Activity 持有的 Intent
+        // 当 Activity 已经运行时，也尝试设置窗口标志（如果适用）
+        handleWindowFlagsForAlert(intent)
+        handleIntentForAlert(intent)
+    }
+
+    /**
+     * 新增：根据启动 Intent 设置窗口标志，尝试将 Activity 带到前台并点亮屏幕。
+     */
+    private fun handleWindowFlagsForAlert(intent: Intent?) {
+        if (intent?.action == MyNotificationListenerService.ACTION_SHOW_ALERT_FROM_SERVICE) {
+            Log.i(TAG, "MainActivity 检测到 ACTION_SHOW_ALERT_FROM_SERVICE，尝试设置窗口标志。")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true)
+                setTurnScreenOn(true)
+                // 尝试解除键盘锁
+                val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                keyguardManager.requestDismissKeyguard(this, null)
+            } else {
+                @Suppress("DEPRECATION")
+                window.addFlags(
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or // 保持屏幕常亮
+                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON // 点亮屏幕
+                    // WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON // 允许在屏幕点亮时锁定
+                )
+            }
+            // 确保窗口获得焦点并可见
+            window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+
+            Log.d(TAG, "窗口标志已尝试设置。")
+        }
+    }
+
+    /**
+     * 处理传入的 Intent，检查是否包含显示提醒的指令。
+     */
+    private fun handleIntentForAlert(intent: Intent?) {
+        Log.d(TAG, "handleIntentForAlert called. Intent Action: ${intent?.action}")
+        if (intent?.action == MyNotificationListenerService.ACTION_SHOW_ALERT_FROM_SERVICE) {
+            val keyword = intent.getStringExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
+            if (!keyword.isNullOrEmpty()) {
+                Log.i(TAG, "MainActivity 从 Intent 中接收到显示提醒的指令，关键词: $keyword")
+                monitoringViewModel.triggerShowKeywordAlert(keyword)
+                // 清除 Action 和 Extra，避免在 Activity 因配置更改重建时重复处理
+                // 注意：这可能会影响 LaunchedEffect(intent) 的行为，如果 intent 被修改
+                // 考虑只在首次处理时执行，或者使用一个额外的标志位
+                intent.action = null // 清除 action，防止重复处理
+                intent.removeExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
+                Log.d(TAG, "Intent action and extra cleared after processing in handleIntentForAlert.")
+            } else {
+                Log.w(TAG, "MainActivity 收到 ACTION_SHOW_ALERT_FROM_SERVICE 但关键词为空。")
+            }
+        }
+    }
+
+
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "MainActivity onResume。")
-        // 直接使用 Activity 级别的 ViewModel 实例更新权限状态
-        try {
-            settingsViewModel.updatePermissionStates()
-        } catch (e: Exception) {
-            // 虽然我们移除了 setContent 中的 try-catch, 但这里的业务逻辑错误处理可以保留
-            Log.e(TAG, "Error updating permission states in onResume", e)
-        }
+        settingsViewModel.updatePermissionStates()
+        monitoringViewModel.updateEnvironmentWarnings()
+        // 检查在 onResume 时是否仍有未处理的提醒 Intent (例如，如果 Activity 被系统恢复)
+        // 但通常 handleIntentForAlert 在 onCreate 和 onNewIntent 中已经处理了
+        // Log.d(TAG, "onResume: Checking intent again. Action: ${intent?.action}")
+        // handleIntentForAlert(intent) // 谨慎：可能导致重复处理，除非 intent 已被清除
     }
 
     fun startVigilService(hasPermission: Boolean) {
@@ -169,7 +235,6 @@ class MainActivity : AppCompatActivity() {
             setNotificationListenerServiceComponentEnabled(true)
             Handler(Looper.getMainLooper()).postDelayed({
                 Log.d(TAG, "Attempting to start service after re-enabling component...")
-                // 使用 Activity 级别的 monitoringViewModel 实例
                 if (this.monitoringViewModel.serviceEnabled.value && PermissionUtils.isNotificationListenerEnabled(this)) {
                     startVigilService(true)
                 }
@@ -196,8 +261,8 @@ class MainActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun VigilApp(
-        monitoringViewModel: MonitoringViewModel, // 参数类型保持不变
-        settingsViewModel: SettingsViewModel   // 参数类型保持不变
+        monitoringViewModel: MonitoringViewModel,
+        settingsViewModel: SettingsViewModel
     ) {
         val navController = rememberNavController()
         Scaffold(
@@ -213,10 +278,10 @@ class MainActivity : AppCompatActivity() {
                     .fillMaxSize()
             ) {
                 composable(AppDestinations.Monitoring.route) {
-                    MonitoringScreen(viewModel = monitoringViewModel) // 传递 ViewModel
+                    MonitoringScreen(viewModel = monitoringViewModel)
                 }
                 composable(AppDestinations.Settings.route) {
-                    SettingsScreen(viewModel = settingsViewModel) // 传递 ViewModel
+                    SettingsScreen(viewModel = settingsViewModel)
                 }
             }
         }
@@ -248,13 +313,11 @@ class MainActivity : AppCompatActivity() {
     @Composable
     fun DefaultPreview() {
         VigilTheme {
-            // Preview 环境下，ViewModel 需要手动实例化。
-            // 确保这里的实例化方式与实际应用逻辑（如 Application 依赖）兼容。
             val context = LocalContext.current
             val app = context.applicationContext as Application
             VigilApp(
-                monitoringViewModel = MonitoringViewModel(app), // 或者使用 Preview 可接受的构造方式
-                settingsViewModel = SettingsViewModel(app)   // 或者使用 Preview 可接受的构造方式
+                monitoringViewModel = MonitoringViewModel(app),
+                settingsViewModel = SettingsViewModel(app)
             )
         }
     }

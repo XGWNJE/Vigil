@@ -2,12 +2,12 @@
 package com.example.vigil.ui.monitoring
 
 import android.app.Application
-import android.app.NotificationManager // 新增：用于监听勿扰模式变化
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioManager // 新增：用于监听铃声模式变化
+import android.media.AudioManager
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -21,10 +21,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.vigil.EnvironmentChecker
 import com.example.vigil.MainActivity
+import com.example.vigil.MyNotificationListenerService // 确保导入 MyNotificationListenerService
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.SharedPreferencesHelper
-import com.example.vigil.MyNotificationListenerService
 import kotlinx.coroutines.launch
 
 class MonitoringViewModel(application: Application) : AndroidViewModel(application) {
@@ -84,19 +84,22 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                     Log.i(TAG, "ViewModel received service connection status update: $isConnected")
                     updateServiceStatusUI()
                 }
-                ACTION_SHOW_KEYWORD_ALERT -> {
+                ACTION_SHOW_KEYWORD_ALERT -> { // 来自 LocalBroadcastManager
                     val matchedKeyword = intent.getStringExtra(EXTRA_KEYWORD_FOR_ALERT)
-                    Log.i(TAG, "ViewModel received request to show alert for keyword: $matchedKeyword")
+                    Log.i(TAG, "ViewModel received ACTION_SHOW_KEYWORD_ALERT (LocalBroadcast) for keyword: $matchedKeyword")
                     if (matchedKeyword != null) {
-                        _matchedKeywordForDialog.value = matchedKeyword
-                        _showKeywordAlertDialog.value = true
+                        // 确保在主线程更新 UI 状态
+                        viewModelScope.launch {
+                            _matchedKeywordForDialog.value = matchedKeyword
+                            _showKeywordAlertDialog.value = true
+                            Log.d(TAG, "Dialog state updated: show=true, keyword=$matchedKeyword")
+                        }
                     }
                 }
             }
         }
     }
 
-    // 新增：用于监听系统环境变化的广播接收器
     private val environmentChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             Log.d(TAG, "EnvironmentChangeReceiver received action: ${intent?.action}")
@@ -117,6 +120,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         private const val HEARTBEAT_CHECK_INTERVAL_MS = 15 * 1000L
         private const val HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS + HEARTBEAT_TOLERANCE_MS
 
+        // 与 MyNotificationListenerService 中的 ACTION_SHOW_KEYWORD_ALERT 保持一致
         const val ACTION_SHOW_KEYWORD_ALERT = "com.example.vigil.ACTION_SHOW_KEYWORD_ALERT"
         const val EXTRA_KEYWORD_FOR_ALERT = "com.example.vigil.EXTRA_KEYWORD_FOR_ALERT"
     }
@@ -124,25 +128,24 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     init {
         Log.d(TAG, "MonitoringViewModel created.")
         loadSettings()
-        updateEnvironmentWarnings() // 初始环境检查
+        updateEnvironmentWarnings()
 
-        // 注册应用内广播接收器
         LocalBroadcastManager.getInstance(context).registerReceiver(
             serviceAndAlertReceiver, IntentFilter().apply {
                 addAction(MyNotificationListenerService.ACTION_HEARTBEAT)
                 addAction(MainActivity.ACTION_SERVICE_STATUS_UPDATE)
-                addAction(ACTION_SHOW_KEYWORD_ALERT)
+                addAction(ACTION_SHOW_KEYWORD_ALERT) // 监听来自服务的本地广播
             }
         )
+        Log.d(TAG, "serviceAndAlertReceiver registered for ACTION_SHOW_KEYWORD_ALERT.")
 
-        // 新增：注册系统环境变化广播接收器
+
         val environmentIntentFilter = IntentFilter().apply {
             addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { // 勿扰模式监听仅 API 23+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
             }
         }
-        // 注意：系统广播应该使用 context.registerReceiver，而不是 LocalBroadcastManager
         context.registerReceiver(environmentChangeReceiver, environmentIntentFilter)
         Log.d(TAG, "EnvironmentChangeReceiver registered.")
 
@@ -154,10 +157,24 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         super.onCleared()
         Log.d(TAG, "MonitoringViewModel cleared.")
         LocalBroadcastManager.getInstance(context).unregisterReceiver(serviceAndAlertReceiver)
-        context.unregisterReceiver(environmentChangeReceiver) // 新增：注销系统广播接收器
+        context.unregisterReceiver(environmentChangeReceiver)
         Log.d(TAG, "EnvironmentChangeReceiver unregistered.")
         stopHeartbeatCheck()
     }
+
+    /**
+     * 新增：此方法由 MainActivity 在接收到特定 Intent (从服务启动) 时调用，
+     * 以确保即使 LocalBroadcast 未被及时处理，对话框也能显示。
+     */
+    fun triggerShowKeywordAlert(keyword: String) {
+        Log.i(TAG, "triggerShowKeywordAlert called by MainActivity for keyword: $keyword")
+        viewModelScope.launch {
+            _matchedKeywordForDialog.value = keyword
+            _showKeywordAlertDialog.value = true
+            Log.d(TAG, "Dialog state updated via trigger: show=true, keyword=$keyword")
+        }
+    }
+
 
     private fun loadSettings() {
         _keywords.value = sharedPreferencesHelper.getKeywords().joinToString(",")
@@ -268,11 +285,11 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 Log.w(TAG, "Service switch enabled and licensed, but notification listener is not enabled in system settings.")
             }
         } else if (serviceEnabledByUser && !isLicensed) {
-            statusTextResult = context.getString(R.string.service_status_abnormal) // 或者更具体的“未授权”状态
+            statusTextResult = context.getString(R.string.service_status_abnormal)
             showRestartBtnResult = false
             Log.w(TAG, "Service switch enabled but not licensed, service will not truly run.")
         }
-        else { // 服务未启用
+        else {
             statusTextResult = context.getString(R.string.service_stopped)
             showRestartBtnResult = false
         }
@@ -289,10 +306,8 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         restartServiceCallback()
     }
 
-    // 公开此方法，以便 Activity 的 onResume 可以调用，或通过其他机制触发
     fun updateEnvironmentWarnings() {
         viewModelScope.launch {
-            // 确保在主线程更新 State
             _environmentWarnings.value = EnvironmentChecker.getEnvironmentWarnings(context)
             Log.d(TAG, "Environment warnings updated via updateEnvironmentWarnings(): ${_environmentWarnings.value}")
         }
@@ -312,6 +327,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     fun onKeywordAlertDialogDismiss() {
         _showKeywordAlertDialog.value = false
         _matchedKeywordForDialog.value = null
+        Log.d(TAG, "Keyword alert dialog dismissed.")
     }
 
     fun onKeywordAlertDialogConfirm() {

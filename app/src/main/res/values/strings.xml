@@ -90,7 +90,12 @@
     <string name="permission_not_granted_desc">权限未授予</string>
 
     <string name="about_title">关于</string>
-    <string name="github_link_desc">GitHub 链接</string>
-    <string name="visit_project_link">访问项目地址</string>
+    <string name="github_link_desc">作者主页</string>
+    <string name="visit_project_link">作者B站主页</string>
+    <string name="permission_miui_background_popup_title">后台弹出界面</string>
+    <string name="permission_miui_background_popup_description">建议开启此权限以确保提醒窗口能从后台正常弹出。如果未开启，提醒可能仅在应用内或通过通知显示。</string>
+    <string name="permission_status_action_required">前往设置</string>
+    <string name="permission_status_unknown_or_not_applicable">状态未知或不适用</string>
+    <string name="error_opening_miui_settings">无法直接打开后台弹窗权限设置，请尝试手动前往“应用设置”或“权限管理”查找。</string>
 
 </resources>

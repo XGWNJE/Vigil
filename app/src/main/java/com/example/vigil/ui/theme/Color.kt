@@ -18,7 +18,11 @@ val Gray200 = Color(0xFFEEEEEE)
 val Gray500 = Color(0xFFC9C9C9)
 val Gray800 = Color(0xFF424242)
 val Gray900 = Color(0xFF212121)
-
+// 在 Color.kt 中添加或修改
+val RedError = Color(0xFFB00020)
+val RedErrorContainer = Color(0xFFFCD8DF) // 示例浅红色容器
+val RedErrorDark = Color(0xFFCF6679) // 示例深色主题错误颜色
+val RedErrorContainerDark = Color(0xFFB00020) // 示例深色主题错误容器 (可以与 RedError 相同或更暗)
 /*
 // 如果您想使用 Material 3 的动态颜色，可以参考以下代码
 // 但为了实现非 Material Design 风格，我们暂时不使用动态颜色

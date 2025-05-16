@@ -1,133 +1,133 @@
 // app/build.gradle 或 build.gradle (app)
 
 plugins {
+    // 应用 Android 应用程序插件
     alias(libs.plugins.android.application)
+    // 应用 Kotlin Android 插件
     alias(libs.plugins.kotlin.android)
+    // 应用 Kotlin Compose 插件 (如果您的 libs.versions.toml 中定义了此插件)
+    // 或者直接使用 id "org.jetbrains.kotlin.plugin.compose"
     alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.example.vigil"
-    compileSdk = 35 // 使用您提供的 compileSdk 版本
+    compileSdk = 35 // Android 编译 SDK 版本
 
     defaultConfig {
         applicationId = "com.example.vigil"
-        minSdk = 26 // 使用您提供的 minSdk 版本
-        targetSdk = 35 // 使用您提供的 targetSdk 版本
+        minSdk = 26 // 最低支持的 SDK 版本
+        targetSdk = 35 // 目标 SDK 版本
         versionCode = 1
-        versionName = "0.8.4" // 使用您提供的 versionName
+        versionName = "0.8.4" // 应用版本名
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" // 测试运行器
         vectorDrawables {
-            useSupportLibrary = true
+            useSupportLibrary = true // 启用对矢量图的支持库
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true //启用代码压缩（移除未使用的代码）。
-            isShrinkResources = true
+            isMinifyEnabled = true // 启用代码压缩（移除未使用的代码）
+            isShrinkResources = true // 启用资源压缩（移除未使用的资源）
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            ) //启用资源压缩（移除未使用的资源）。
+                "proguard-rules.pro" // Proguard 规则文件
+            )
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11 // 使用您提供的 Java 版本
-        targetCompatibility = JavaVersion.VERSION_11 // 使用您提供的 Java 版本
+        sourceCompatibility = JavaVersion.VERSION_11 // Java 源代码兼容性版本
+        targetCompatibility = JavaVersion.VERSION_11 // Java 目标代码兼容性版本
     }
     kotlinOptions {
-        jvmTarget = "11" // 使用您提供的 JVM Target
+        jvmTarget = "11" // Kotlin 编译到 JVM 的目标版本
     }
     buildFeatures {
-        compose = true // *** 启用 Compose ***
-        viewBinding = true // 如果还有其他 XML 布局使用 ViewBinding，则保留
+        compose = true // *** 启用 Jetpack Compose ***
+        viewBinding = true // 如果项目中仍有部分UI使用ViewBinding，则保留此项
     }
-
-
 
     packaging {
         resources {
-            excludes += "/META-INF/{AL2.0,LA2.0,LICENSE.md,LICENSE-notice.md}" // 更新排除规则，避免冲突
+            // 排除特定路径下的资源文件，以避免打包冲突
+            excludes += "/META-INF/{AL2.0,LGPL2.1,LICENSE.md,LICENSE-notice.md}"
         }
     }
 }
 
 dependencies {
 
-    // 核心 KTX 库 (使用您提供的版本)
+    // Android 核心 KTX 库
     implementation("androidx.core:core-ktx:1.12.0")
-    // AppCompat 库 (使用您提供的版本)
+    // AppCompat 库，提供向后兼容的 Material Design 组件
     implementation("androidx.appcompat:appcompat:1.6.1")
-    // Material Design 库 (旧的 XML 版本，如果只用 Compose UI，可以移除这个)
+    // Material Design 组件库 (这是用于传统 View 系统的 Material 组件库)
     implementation("com.google.android.material:material:1.11.0")
-    // ConstraintLayout (如果还有 XML 布局使用) (使用您提供的版本)
+    // ConstraintLayout 库 (如果传统 View 系统布局中使用)
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // LiveData (如果需要在 ViewModel 中使用 LiveData) (使用您提供的 libs 版本)
-    implementation(libs.androidx.lifecycle.livedata.ktx)
-    // ViewModel (使用您提供的 libs 版本)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    // Navigation Fragment KTX (如果保留 Fragment) (使用您提供的 libs 版本)
-    implementation(libs.androidx.navigation.fragment.ktx)
-    // Navigation UI KTX (如果保留 Fragment) (使用您提供的 libs 版本)
-    implementation(libs.androidx.navigation.ui.ktx)
+    // AndroidX Lifecycle 库 (LiveData 和 ViewModel)
+    implementation(libs.androidx.lifecycle.livedata.ktx)  // LiveData KTX 扩展
+    implementation(libs.androidx.lifecycle.viewmodel.ktx) // ViewModel KTX 扩展
 
-    // LocalBroadcastManager (如果继续使用本地广播)
-    implementation ("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
+    // AndroidX Navigation 库 (如果使用基于 Fragment 的导航)
+    implementation(libs.androidx.navigation.fragment.ktx) // Navigation Fragment KTX 扩展
+    implementation(libs.androidx.navigation.ui.ktx)       // Navigation UI KTX 扩展
+
+    // LocalBroadcastManager (用于应用内广播，但请注意它已被废弃)
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.1.0")
 
 
     // *** Jetpack Compose 依赖 ***
 
-    // Compose BOM (Bill of Materials) 推荐使用，它帮你管理所有 Compose 库的版本兼容性
-    // 如果你已经在项目根目录的 build.gradle (project) 中添加了 BOM，这里可以移除 platform()
-    // 使用与 compileSdk 35 兼容的 Compose BOM 版本
-    implementation(platform("androidx.compose:compose-bom:2024.02.00")) // *** 使用与 compileSdk 35 兼容的最新 BOM 版本 ***
+    // Compose BOM (Bill of Materials) - 推荐使用，它能统一管理所有 Compose 相关库的版本，确保兼容性
+    implementation(platform("androidx.compose:compose-bom:2024.02.00")) // 请查阅官方文档获取与您环境最匹配的最新稳定版
 
-    // Compose UI 基础库
+    // Compose UI 核心库
     implementation("androidx.compose.ui:ui")
-    // Compose Graphics
+    // Compose 图形处理库
     implementation("androidx.compose.ui:ui-graphics")
-    // Compose Tooling
-    implementation("androidx.compose.ui:ui-tooling")
-    // Compose Foundation (基础布局，手势等)
+    // Compose 预览工具支持 (用于 Android Studio 中的预览)
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    // Compose Foundation (提供 Compose 的基础构建块)
     implementation("androidx.compose.foundation:foundation")
-    // Compose Layout (更高级的布局)
-    implementation("androidx.compose.foundation:foundation-layout")
 
-    // Compose Material Design 2 (我们引入基础库，但会自定义样式，不使用其默认外观)
+    // Compose Material Design 2 (M2) 组件库
     implementation("androidx.compose.material:material")
-    // Compose Material Design 3 (可选，如果需要 Material 3 的基础 Composable 但自定义样式)
-    // implementation('androidx.compose.material3:material3')
+    // Compose Material Icons Core (M2 的核心图标，material 依赖通常会带上)
+    implementation("androidx.compose.material:material-icons-core")
+    // Compose Material Icons Extended (M2 的扩展图标，包含 Link 等)
+    // *** 添加此依赖以使用 Icons.Filled.Link 等更多图标 ***
+    implementation("androidx.compose.material:material-icons-extended")
 
-    // Activity 集成 Compose
-    implementation("androidx.activity:activity-compose:1.8.2") // *** 使用与 compileSdk 35 兼容的最新版本 ***
-    // Navigation 集成 Compose
-    implementation("androidx.navigation:navigation-compose:2.7.7") // *** 使用与 compileSdk 35 兼容的最新版本 ***
+    // Compose Material Design 3 (M3) 组件库
+    implementation("androidx.compose.material3:material3")
 
-    // Lifecycle ViewModel Compose integration (已在上面添加，但确保版本兼容)
-    // implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0") // 检查并更新到兼容版本
+    // Activity 与 Compose 的集成库
+    implementation("androidx.activity:activity-compose:1.8.2") // 保持版本与BOM推荐或最新稳定版一致
+    // Navigation 与 Compose 的集成库
+    implementation("androidx.navigation:navigation-compose:2.7.7") // 保持版本与BOM推荐或最新稳定版一致
 
-    // 如果你需要 LiveData 在 Compose 中观察
+    // ViewModel 与 Compose 的集成库
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose") // 版本由 BOM 控制
+
+    // LiveData 与 Compose 的集成库 (如果您需要在 Compose 中观察 LiveData)
     implementation("androidx.compose.runtime:runtime-livedata")
 
 
-    // 测试依赖 (保留您原有的测试依赖)
+    // *** 测试依赖 ***
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 
-    // Testing Compose
+    // Compose UI 测试依赖
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.00")) // 为测试也使用BOM
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-tooling-preview")
+    // Compose UI 调试工具 (例如 Layout Inspector)
+    debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // 其他你项目原有的依赖，请确保也复制过来
-    // 例如：
-    // implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.1'
-    // implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1'
-    // implementation 'com.google.code.gson:gson:2.10.1'
-    // ...
-
+    // 其他您项目原有的依赖...
 }

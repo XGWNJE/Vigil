@@ -85,4 +85,12 @@
     <string name="license_status_valid_premium_expiry_format">高级版已激活，有效期至 %s</string>
     <string name="license_parsing_error">授权码格式错误</string>
 
+    <string name="foreground_service_description">正在后台监听关键词。。。</string>
+    <string name="permission_granted_desc">权限已授予</string>
+    <string name="permission_not_granted_desc">权限未授予</string>
+
+    <string name="about_title">关于</string>
+    <string name="github_link_desc">GitHub 链接</string>
+    <string name="visit_project_link">访问项目地址</string>
+
 </resources>

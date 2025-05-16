@@ -2,6 +2,7 @@
 package com.example.vigil.ui.settings
 
 import android.app.Application
+import android.app.AppOpsManager // 新增
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -42,6 +43,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _canPostNotifications = mutableStateOf(false)
     val canPostNotifications: State<Boolean> = _canPostNotifications
 
+    // --- 新增：MIUI 相关状态 ---
+    private val _isMiuiDevice = mutableStateOf(false)
+    val isMiuiDevice: State<Boolean> = _isMiuiDevice
+
+    // 这个状态更多是用于UI提示，实际权限状态可能无法准确获取
+    private val _miuiBackgroundPopupPermissionStatus = mutableStateOf(AppOpsManager.MODE_ALLOWED)
+    val miuiBackgroundPopupPermissionStatus: State<Int> = _miuiBackgroundPopupPermissionStatus
+
+
     // --- 应用过滤 ---
     private val _isAppFilterEnabled = mutableStateOf(sharedPreferencesHelper.getFilterAppsEnabledState())
     val isAppFilterEnabled: State<Boolean> = _isAppFilterEnabled
@@ -59,8 +69,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         Log.d(TAG, "SettingsViewModel created.")
-        loadLicenseStatus() // 加载时更新授权状态
-        updatePermissionStates() // 初始化时更新一次权限状态
+        _isMiuiDevice.value = PermissionUtils.isMiui() // 初始化时检测是否为 MIUI
+        loadLicenseStatus()
+        updatePermissionStates()
     }
 
     fun updatePermissionStates() {
@@ -68,7 +79,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _hasDndAccess.value = PermissionUtils.isDndAccessGranted(context)
         _canDrawOverlays.value = PermissionUtils.canDrawOverlays(context)
         _canPostNotifications.value = PermissionUtils.canPostNotifications(context)
-        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}, Overlay=${_canDrawOverlays.value}, PostNotify=${_canPostNotifications.value}")
+
+        if (_isMiuiDevice.value) {
+            _miuiBackgroundPopupPermissionStatus.value = PermissionUtils.checkMiuiBackgroundPopupPermissionStatus(context)
+            Log.d(TAG, "MIUI Background Popup Permission (heuristic check) status: ${_miuiBackgroundPopupPermissionStatus.value}")
+        }
+
+        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}, Overlay=${_canDrawOverlays.value}, PostNotify=${_canPostNotifications.value}, IsMIUI=${_isMiuiDevice.value}")
     }
 
     // --- 权限请求回调 (由 Activity 调用) ---
@@ -76,6 +93,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     var requestDndAccessPermissionCallback: (() -> Unit)? = null
     var requestOverlayPermissionCallback: (() -> Unit)? = null
     var requestPostNotificationsPermissionCallback: (() -> Unit)? = null
+    var requestMiuiBackgroundPopupPermissionCallback: (() -> Unit)? = null // 新增 MIUI 回调
 
 
     // --- 应用过滤 ---
@@ -83,8 +101,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _isAppFilterEnabled.value = enabled
         sharedPreferencesHelper.saveFilterAppsEnabledState(enabled)
         Log.i(TAG, "App filter enabled state changed to: $enabled and saved.")
-        // TODO: 如果启用，可能需要触发服务更新设置
-        // notifyServiceToUpdateSettingsCallback?.invoke() // 这个回调应该属于 MonitoringViewModel
     }
 
     // --- 授权逻辑 ---
@@ -102,7 +118,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             val key = _licenseKeyInput.value.trim()
             if (key.isEmpty()) {
-                _licenseStatusText.value = context.getString(R.string.license_key_hint) // 或其他提示
+                _licenseStatusText.value = context.getString(R.string.license_key_hint)
                 return@launch
             }
 
@@ -113,7 +129,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
             if (payload != null) {
                 Log.i(TAG, "License activated successfully: ${payload.licenseType}")
-                _licenseKeyInput.value = "" // 清空输入框
+                _licenseKeyInput.value = ""
             } else {
                 Log.w(TAG, "License activation failed for key: $key")
             }
@@ -127,20 +143,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun getDetailedLicenseStatusMessage(
         context: Context,
         payload: LicensePayload?,
-        licenseManager: LicenseManager, // 传入实例
+        licenseManager: LicenseManager,
         attemptedKey: String?
     ): String {
         if (payload != null) {
-            // 检查授权是否已过期 (如果之前保存的 payload 是过期的，getLicenseStatus() 会返回 null)
             if (payload.expiresAt != null && (payload.expiresAt * 1000 < System.currentTimeMillis())) {
-                sharedPreferencesHelper.saveLicenseStatus(null) // 清除已过期的授权
+                sharedPreferencesHelper.saveLicenseStatus(null)
                 return context.getString(R.string.license_status_expired)
             }
 
             return when (payload.licenseType.lowercase(Locale.getDefault())) {
                 "premium" -> {
                     if (payload.expiresAt != null) {
-                        val expiryDate = Date(payload.expiresAt * 1000) // 确保时间戳是毫秒
+                        val expiryDate = Date(payload.expiresAt * 1000)
                         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                         context.getString(R.string.license_status_valid_premium_expiry_format, dateFormat.format(expiryDate))
                     } else {
@@ -150,17 +165,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 else -> context.getString(R.string.license_status_invalid)
             }
         } else {
-            // 如果尝试过一个密钥但验证失败
             if (!attemptedKey.isNullOrBlank()) {
-                // 尝试解码以判断是否是格式错误
                 val decodedParts = licenseManager.decodeLicenseKey(attemptedKey)
-                if (decodedParts == null) { // 解码失败，可能是格式问题
+                if (decodedParts == null) {
                     return context.getString(R.string.license_parsing_error)
                 }
-                // 如果解码成功但验证仍然失败（例如签名不对，或 appId 不匹配，或已过期但在 verifyLicense 中被置为 null）
                 return context.getString(R.string.license_status_invalid)
             }
-            // 默认未授权状态
             return context.getString(R.string.license_status_unlicensed)
         }
     }

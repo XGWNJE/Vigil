@@ -2,17 +2,17 @@
 package com.example.vigil
 
 import android.app.Application
-import android.app.KeyguardManager // 新增：用于解锁屏幕
+import android.app.KeyguardManager
 import android.content.ComponentName
-import android.content.Context // 新增：用于获取 KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build // 新增：用于版本判断
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.WindowManager // 新增：用于设置窗口标志
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -65,7 +65,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "MainActivity onCreate. Intent Action: ${intent?.action}")
-        // 尝试在 super.onCreate 之前处理窗口标志，以便尽早生效
         handleWindowFlagsForAlert(intent)
 
         super.onCreate(savedInstanceState)
@@ -75,14 +74,22 @@ class MainActivity : AppCompatActivity() {
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "Returned from system settings page.")
+            // 刷新所有相关权限状态，包括MIUI的（如果适用）
             settingsViewModel.updatePermissionStates()
             monitoringViewModel.updateEnvironmentWarnings()
         }
 
+        // 设置 ViewModel 回调
         monitoringViewModel.startServiceCallback = { hasPermission -> startVigilService(hasPermission) }
         monitoringViewModel.stopServiceCallback = { stopVigilService() }
         monitoringViewModel.restartServiceCallback = { restartService() }
         monitoringViewModel.notifyServiceToUpdateSettingsCallback = { notifyServiceToUpdateSettings() }
+
+        // 新增：为 SettingsViewModel 设置 MIUI 权限请求回调
+        settingsViewModel.requestMiuiBackgroundPopupPermissionCallback = {
+            PermissionUtils.requestMiuiBackgroundPopupPermission(this)
+        }
+
 
         setContent {
             VigilTheme {
@@ -102,7 +109,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
-                LaunchedEffect(intent) { // 使用 intent 作为 key，当 intent 变化时重新执行
+                LaunchedEffect(intent) {
                     Log.d(TAG, "LaunchedEffect in setContent. Current intent action: ${this@MainActivity.intent?.action}")
                     handleIntentForAlert(this@MainActivity.intent)
                 }
@@ -114,22 +121,17 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         Log.d(TAG, "MainActivity onNewIntent. Action: ${intent?.action}")
-        setIntent(intent) // 更新 Activity 持有的 Intent
-        // 当 Activity 已经运行时，也尝试设置窗口标志（如果适用）
+        setIntent(intent)
         handleWindowFlagsForAlert(intent)
         handleIntentForAlert(intent)
     }
 
-    /**
-     * 新增：根据启动 Intent 设置窗口标志，尝试将 Activity 带到前台并点亮屏幕。
-     */
     private fun handleWindowFlagsForAlert(intent: Intent?) {
         if (intent?.action == MyNotificationListenerService.ACTION_SHOW_ALERT_FROM_SERVICE) {
             Log.i(TAG, "MainActivity 检测到 ACTION_SHOW_ALERT_FROM_SERVICE，尝试设置窗口标志。")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 setShowWhenLocked(true)
                 setTurnScreenOn(true)
-                // 尝试解除键盘锁
                 val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
                 keyguardManager.requestDismissKeyguard(this, null)
             } else {
@@ -137,22 +139,16 @@ class MainActivity : AppCompatActivity() {
                 window.addFlags(
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or // 保持屏幕常亮
-                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON // 点亮屏幕
-                    // WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON // 允许在屏幕点亮时锁定
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
                 )
             }
-            // 确保窗口获得焦点并可见
             window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
             window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-
             Log.d(TAG, "窗口标志已尝试设置。")
         }
     }
 
-    /**
-     * 处理传入的 Intent，检查是否包含显示提醒的指令。
-     */
     private fun handleIntentForAlert(intent: Intent?) {
         Log.d(TAG, "handleIntentForAlert called. Intent Action: ${intent?.action}")
         if (intent?.action == MyNotificationListenerService.ACTION_SHOW_ALERT_FROM_SERVICE) {
@@ -160,10 +156,7 @@ class MainActivity : AppCompatActivity() {
             if (!keyword.isNullOrEmpty()) {
                 Log.i(TAG, "MainActivity 从 Intent 中接收到显示提醒的指令，关键词: $keyword")
                 monitoringViewModel.triggerShowKeywordAlert(keyword)
-                // 清除 Action 和 Extra，避免在 Activity 因配置更改重建时重复处理
-                // 注意：这可能会影响 LaunchedEffect(intent) 的行为，如果 intent 被修改
-                // 考虑只在首次处理时执行，或者使用一个额外的标志位
-                intent.action = null // 清除 action，防止重复处理
+                intent.action = null
                 intent.removeExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
                 Log.d(TAG, "Intent action and extra cleared after processing in handleIntentForAlert.")
             } else {
@@ -172,16 +165,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "MainActivity onResume。")
-        settingsViewModel.updatePermissionStates()
+        settingsViewModel.updatePermissionStates() // 会同时更新MIUI权限（如果适用）
         monitoringViewModel.updateEnvironmentWarnings()
-        // 检查在 onResume 时是否仍有未处理的提醒 Intent (例如，如果 Activity 被系统恢复)
-        // 但通常 handleIntentForAlert 在 onCreate 和 onNewIntent 中已经处理了
-        // Log.d(TAG, "onResume: Checking intent again. Action: ${intent?.action}")
-        // handleIntentForAlert(intent) // 谨慎：可能导致重复处理，除非 intent 已被清除
     }
 
     fun startVigilService(hasPermission: Boolean) {

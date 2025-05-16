@@ -2,10 +2,12 @@
 package com.example.vigil.ui.monitoring
 
 import android.app.Application
+import android.app.NotificationManager // 新增：用于监听勿扰模式变化
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager // 新增：用于监听铃声模式变化
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -18,27 +20,19 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.vigil.EnvironmentChecker
-import com.example.vigil.MainActivity // 保持导入
+import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.SharedPreferencesHelper
 import com.example.vigil.MyNotificationListenerService
 import kotlinx.coroutines.launch
-// import java.text.SimpleDateFormat // 如果未使用，可以移除
-// import java.util.* // 如果未使用，可以移除
-// import android.app.Activity // 如果未使用，可以移除
 
-/**
- * ViewModel for the Monitoring screen.
- * Manages UI state and logic related to service control, keywords, ringtone, environment check,
- * and the keyword alert dialog.
- */
 class MonitoringViewModel(application: Application) : AndroidViewModel(application) {
 
     private val context = application.applicationContext
     private val sharedPreferencesHelper = SharedPreferencesHelper(context)
 
-    // State for UI elements
+    // UI 状态
     private val _keywords = mutableStateOf("")
     val keywords: State<String> = _keywords
 
@@ -60,53 +54,30 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     private val _environmentWarnings = mutableStateOf(context.getString(R.string.all_clear))
     val environmentWarnings: State<String> = _environmentWarnings
 
-    // --- 关键词提醒对话框状态 ---
     private val _showKeywordAlertDialog = mutableStateOf(false)
     val showKeywordAlertDialog: State<Boolean> = _showKeywordAlertDialog
 
     private val _matchedKeywordForDialog = mutableStateOf<String?>(null)
     val matchedKeywordForDialog: State<String?> = _matchedKeywordForDialog
-    // --- 结束 ---
 
-
-    // Heartbeat and service status monitoring
+    // 服务心跳监控
     private var lastHeartbeatTime: Long = 0
     private val heartbeatCheckHandler = Handler(Looper.getMainLooper())
     private val heartbeatCheckRunnable = object : Runnable {
         override fun run() {
-            // *** 调用 ViewModel 内部的方法 ***
             this@MonitoringViewModel.checkServiceHeartbeatStatus()
             heartbeatCheckHandler.postDelayed(this, HEARTBEAT_CHECK_INTERVAL_MS)
         }
     }
 
-    // *** 将可见性改为 internal 或 public 进行测试，如果 private 确实是问题所在 ***
-    // private fun checkServiceHeartbeatStatus() {
-    internal fun checkServiceHeartbeatStatus() { // 改为 internal 尝试
-        Log.d(TAG, "Executing ViewModel heartbeat status check.")
-        val currentTime = System.currentTimeMillis()
-        val serviceEnabledByUser = _serviceEnabled.value
-        val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(context)
-        val isLicensed = sharedPreferencesHelper.isAuthenticated()
-
-        val shouldServiceBeRunning = serviceEnabledByUser && notificationAccessActuallyGranted && isLicensed
-        val hasRecentHeartbeat = if (shouldServiceBeRunning) {
-            (currentTime - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS
-        } else {
-            // 如果服务不应该运行，则认为心跳是“最近的”，状态将反映为停止或未授权
-            true
-        }
-        updateServiceStatusUI(hasRecentHeartbeat)
-    }
-
-
+    // 应用内服务状态和关键词提醒的广播接收器
     private val serviceAndAlertReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 MyNotificationListenerService.ACTION_HEARTBEAT -> {
                     Log.d(TAG, "ViewModel received service heartbeat.")
                     lastHeartbeatTime = System.currentTimeMillis()
-                    updateServiceStatusUI() // 根据新的心跳时间更新UI
+                    updateServiceStatusUI()
                 }
                 MainActivity.ACTION_SERVICE_STATUS_UPDATE -> {
                     val isConnected = intent.getBooleanExtra(MainActivity.EXTRA_SERVICE_CONNECTED, false)
@@ -125,13 +96,26 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    // 新增：用于监听系统环境变化的广播接收器
+    private val environmentChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Log.d(TAG, "EnvironmentChangeReceiver received action: ${intent?.action}")
+            when (intent?.action) {
+                AudioManager.RINGER_MODE_CHANGED_ACTION,
+                NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED -> {
+                    Log.i(TAG, "环境变化 (${intent.action}), 更新环境警告信息。")
+                    updateEnvironmentWarnings()
+                }
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "MonitoringViewModel"
-        private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L // 服务发送心跳间隔 30秒
-        private const val HEARTBEAT_TOLERANCE_MS = 10 * 1000L // 容忍延迟
-        private const val HEARTBEAT_CHECK_INTERVAL_MS = 15 * 1000L // ViewModel 检查间隔 15秒
-        private const val HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS + HEARTBEAT_TOLERANCE_MS // 超时阈值
+        private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
+        private const val HEARTBEAT_TOLERANCE_MS = 10 * 1000L
+        private const val HEARTBEAT_CHECK_INTERVAL_MS = 15 * 1000L
+        private const val HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS + HEARTBEAT_TOLERANCE_MS
 
         const val ACTION_SHOW_KEYWORD_ALERT = "com.example.vigil.ACTION_SHOW_KEYWORD_ALERT"
         const val EXTRA_KEYWORD_FOR_ALERT = "com.example.vigil.EXTRA_KEYWORD_FOR_ALERT"
@@ -141,6 +125,8 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         Log.d(TAG, "MonitoringViewModel created.")
         loadSettings()
         updateEnvironmentWarnings() // 初始环境检查
+
+        // 注册应用内广播接收器
         LocalBroadcastManager.getInstance(context).registerReceiver(
             serviceAndAlertReceiver, IntentFilter().apply {
                 addAction(MyNotificationListenerService.ACTION_HEARTBEAT)
@@ -148,14 +134,28 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 addAction(ACTION_SHOW_KEYWORD_ALERT)
             }
         )
-        startHeartbeatCheck() // 开始监控心跳
-        updateServiceStatusUI() // 初始UI状态更新
+
+        // 新增：注册系统环境变化广播接收器
+        val environmentIntentFilter = IntentFilter().apply {
+            addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { // 勿扰模式监听仅 API 23+
+                addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
+            }
+        }
+        // 注意：系统广播应该使用 context.registerReceiver，而不是 LocalBroadcastManager
+        context.registerReceiver(environmentChangeReceiver, environmentIntentFilter)
+        Log.d(TAG, "EnvironmentChangeReceiver registered.")
+
+        startHeartbeatCheck()
+        updateServiceStatusUI()
     }
 
     override fun onCleared() {
         super.onCleared()
         Log.d(TAG, "MonitoringViewModel cleared.")
         LocalBroadcastManager.getInstance(context).unregisterReceiver(serviceAndAlertReceiver)
+        context.unregisterReceiver(environmentChangeReceiver) // 新增：注销系统广播接收器
+        Log.d(TAG, "EnvironmentChangeReceiver unregistered.")
         stopHeartbeatCheck()
     }
 
@@ -193,7 +193,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 RingtoneManager.getRingtone(context, _selectedRingtoneUri.value)?.getTitle(context) ?: context.getString(R.string.default_ringtone_name)
             } catch (e: Exception) {
                 Log.e(TAG, "Error getting ringtone title: ${_selectedRingtoneUri.value}", e)
-                "未知铃声" // 可以考虑使用字符串资源
+                "未知铃声"
             }
         } else {
             context.getString(R.string.no_ringtone_selected)
@@ -203,7 +203,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     fun onServiceEnabledChange(enabled: Boolean, isLicensed: Boolean, startServiceCallback: (Boolean) -> Unit, stopServiceCallback: () -> Unit) {
         if (enabled && !isLicensed) {
             Log.w(TAG, "Attempted to enable service but not licensed.")
-            _serviceEnabled.value = false // 确保UI状态与实际状态一致
+            _serviceEnabled.value = false
         } else {
             _serviceEnabled.value = enabled
             sharedPreferencesHelper.saveServiceEnabledState(enabled)
@@ -215,14 +215,23 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 stopServiceCallback()
             }
         }
-        updateServiceStatusUI() // 立即更新状态文本
+        updateServiceStatusUI()
     }
 
-    fun onRestartServiceClick(restartServiceCallback: () -> Unit) {
-        Log.i(TAG, "User clicked restart service.")
-        _serviceStatusText.value = context.getString(R.string.service_status_recovering)
-        _showRestartButton.value = false // 尝试重启时隐藏按钮
-        restartServiceCallback()
+    internal fun checkServiceHeartbeatStatus() {
+        Log.d(TAG, "Executing ViewModel heartbeat status check.")
+        val currentTime = System.currentTimeMillis()
+        val serviceEnabledByUser = _serviceEnabled.value
+        val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(context)
+        val isLicensed = sharedPreferencesHelper.isAuthenticated()
+
+        val shouldServiceBeRunning = serviceEnabledByUser && notificationAccessActuallyGranted && isLicensed
+        val hasRecentHeartbeat = if (shouldServiceBeRunning) {
+            (currentTime - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS
+        } else {
+            true
+        }
+        updateServiceStatusUI(hasRecentHeartbeat)
     }
 
     private fun updateServiceStatusUI(hasRecentHeartbeat: Boolean? = null) {
@@ -230,7 +239,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(context)
         val isLicensed = sharedPreferencesHelper.isAuthenticated()
 
-        var statusTextResult: String // 使用不同的变量名以避免与 State 属性冲突
+        var statusTextResult: String
         var showRestartBtnResult = false
 
         val currentHeartbeatStatus = hasRecentHeartbeat ?: ((System.currentTimeMillis() - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS)
@@ -273,16 +282,25 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         Log.d(TAG, "ViewModel service status updated: ${_serviceStatusText.value}, ShowRestartButton: ${_showRestartButton.value} (Heartbeat recent: $currentHeartbeatStatus)")
     }
 
+    fun onRestartServiceClick(restartServiceCallback: () -> Unit) {
+        Log.i(TAG, "User clicked restart service.")
+        _serviceStatusText.value = context.getString(R.string.service_status_recovering)
+        _showRestartButton.value = false
+        restartServiceCallback()
+    }
+
+    // 公开此方法，以便 Activity 的 onResume 可以调用，或通过其他机制触发
     fun updateEnvironmentWarnings() {
         viewModelScope.launch {
+            // 确保在主线程更新 State
             _environmentWarnings.value = EnvironmentChecker.getEnvironmentWarnings(context)
-            Log.d(TAG, "Environment warnings updated: ${_environmentWarnings.value}")
+            Log.d(TAG, "Environment warnings updated via updateEnvironmentWarnings(): ${_environmentWarnings.value}")
         }
     }
 
     private fun startHeartbeatCheck() {
         Log.d(TAG, "Starting ViewModel heartbeat check.")
-        heartbeatCheckHandler.removeCallbacks(heartbeatCheckRunnable) // 确保只有一个 runnable 在运行
+        heartbeatCheckHandler.removeCallbacks(heartbeatCheckRunnable)
         heartbeatCheckHandler.post(heartbeatCheckRunnable)
     }
 

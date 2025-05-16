@@ -23,22 +23,19 @@ object EnvironmentChecker {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val notificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            if (!notificationManager.isNotificationPolicyAccessGranted) {
-                Log.w(TAG, "无权检查DND状态 (isDndEnabled)")
-                // 返回 false 表示我们无法确认 DND 是否开启，或者可以返回一个特定状态
-                return false // 在 getEnvironmentWarnings 中会单独处理权限缺失的提示
-            }
+            // 权限检查已移至 getEnvironmentWarnings，这里假设调用时已检查或不关心权限（由调用者决定）
+            // if (!notificationManager.isNotificationPolicyAccessGranted) {
+            //     Log.w(TAG, "无权检查DND状态 (isDndEnabled)")
+            //     return false
+            // }
             val filter = notificationManager.currentInterruptionFilter
-            // INTERRUPTION_FILTER_ALL 表示所有通知都可通行
-            // INTERRUPTION_FILTER_UNKNOWN 通常在服务刚启动或状态未知时
-            // 其他状态（PRIORITY, ALARMS, NONE）都表示勿扰模式在某种程度上是激活的
             val isDndActive = filter != NotificationManager.INTERRUPTION_FILTER_ALL &&
                     filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
-            Log.d(TAG, "勿扰模式检查: filter=$filter, isDndActive=$isDndActive")
+            Log.d(TAG, "勿扰模式检查: filter=$filter, isDndActive=$isDndActive (权限已在 getEnvironmentWarnings 处理)")
             return isDndActive
         }
         Log.d(TAG, "系统版本低于 M，不检查DND (isDndEnabled)")
-        return false // API 23 以下，DND 功能不标准或不存在
+        return false
     }
 
     /**
@@ -92,16 +89,19 @@ object EnvironmentChecker {
      */
     fun getEnvironmentWarnings(context: Context): String {
         val warnings = mutableListOf<String>()
+        Log.d(TAG, "开始执行 getEnvironmentWarnings")
 
         // 1. 检查DND权限和状态
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (!nm.isNotificationPolicyAccessGranted) {
                 warnings.add(context.getString(R.string.info_dnd_permission_needed))
-                Log.w(TAG, "需要勿扰权限来进行完整DND检查。")
+                Log.w(TAG, "警告: 需要勿扰权限来进行完整DND检查。")
             } else {
+                // 只有在有权限的情况下才调用 isDndEnabled
                 if (isDndEnabled(context)) {
                     warnings.add(context.getString(R.string.warning_dnd_enabled))
+                    Log.i(TAG, "警告: 勿扰模式已开启。")
                 }
             }
         }
@@ -109,27 +109,33 @@ object EnvironmentChecker {
         // 2. 检查静音模式
         if (isSilentModeActive(context)) {
             warnings.add(context.getString(R.string.warning_silent_mode_enabled))
+            Log.i(TAG, "警告: 静音模式已开启。")
         }
 
         // 3. 检查铃声音量是否为最大
         if (isStreamVolumeNotMax(context, AudioManager.STREAM_RING)) {
             warnings.add(context.getString(R.string.warning_ringer_volume_not_max))
+            Log.i(TAG, "警告: 铃声音量未设置为最大。")
         }
 
         // 4. 检查通知音量是否为最大
         if (isStreamVolumeNotMax(context, AudioManager.STREAM_NOTIFICATION)) {
             warnings.add(context.getString(R.string.warning_notification_volume_not_max))
+            Log.i(TAG, "警告: 通知音量未设置为最大。")
         }
 
         // 5. 检查媒体音量是否为0 (针对自定义铃声可能使用媒体流的情况)
         if (isMediaVolumeZero(context)) {
             warnings.add(context.getString(R.string.warning_media_volume_low))
+            Log.i(TAG, "警告: 媒体音量过低。")
         }
 
-        return if (warnings.isEmpty()) {
+        val result = if (warnings.isEmpty()) {
             context.getString(R.string.all_clear)
         } else {
             warnings.joinToString("\n")
         }
+        Log.d(TAG, "getEnvironmentWarnings 结果: $result")
+        return result
     }
 }

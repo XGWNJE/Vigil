@@ -1,7 +1,7 @@
-# Vigil 通知助手
+# Vigil守夜人（通知助手）
 
 ## 项目简介
-Vigil 通知助手是一款 Android 应用程序，旨在监控设备接收到的通知。当通知内容包含用户预设的关键词时，应用会触发一个强提醒（例如自定义铃声和全屏弹窗），以确保用户不会错过重要信息。
+Vigil 通知助手是一款 Android 应用程序，旨在监控设备接收到的通知。当通知内容包含用户预设的关键词时，应用会触发一个强提醒（例如自定义铃声和全屏弹窗），以确保用户不会错过重要信息。这个作品是本人第一个软件处女座，本程序的亮点不在于功能如何，而是实践验证 AI 写代码如今到达如什么程度。特别是对于零基础或只懂少量基础语法的人，AI 编程是否能完整开发一款原生android。对于正经程序员来说就是个小玩具，大佬莫要嘲笑。
 
 ## 核心功能
 - **关键词监控**：实时监听所有应用通知，匹配用户自定义的关键词列表。
@@ -36,21 +36,29 @@ Vigil 通知助手是一款 Android 应用程序，旨在监控设备接收到�
 ### 权限授予
 应用启动后，会引导您授予必要的权限。请按照提示在系统设置中完成授权。
 
-## 主要组件
-- **{insert\_element\_1\_YE1haW5BY3Rpdml0eS5rdGA=}**: 应用的主界面，负责用户交互、设置管理、权限请求和服务控制。
-- **{insert\_element\_2\_YE15Tm90aWZpY2F0aW9uTGlzdGVuZXJTZXJ2aWNlLmt0YA==}**: 核心的通知监听服务，在后台运行，处理通知的接收、关键词匹配和触发提醒。
-- **{insert\_element\_3\_YEFsZXJ0RGlhbG9nQWN0aXZpdHkua3Rg}**: 用于显示全屏提醒的界面，确保用户能够注意到关键词匹配事件。
-- **{insert\_element\_4\_YFNoYXJlZFByZWZlcmVuY2VzSGVscGVyLmt0YA==}**: 工具类，用于持久化存储应用的配置信息，如关键词列表和选择的铃声 URI。
-- **{insert\_element\_5\_YFBlcm1pc3Npb25VdGlscy5rdGA=}**: 工具类，封装了权限检查和请求的相关逻辑。
-- **{insert\_element\_6\_YEVudmlyb25tZW50Q2hlY2tlci5rdGA=}**: 工具类，用于检查设备环境（如勿扰模式、音量设置）是否适合发出提醒。
-
-## 当前开发进度
-- **核心功能已实现**：包括关键词匹配、自定义铃声播放、全屏弹窗提醒、备选通知机制。
-- **用户界面基本完善**：`MainActivity` 提供了对关键词、铃声、服务开关的配置管理。
-- **权限处理流程清晰**：应用内会引导用户授予必要的权限，并在界面上反馈权限状态。
-- **服务状态监控与恢复**：UI 会显示服务的实际运行状态，并在服务意外停止时提供“尝试重启服务”的选项。
-- **代码健壮性提升**：已根据 IDE 的提示修复了多处警告，包括废弃 API 的使用、不必要的 SDK 版本检查、冗余代码的移除等。
-- **日志系统**：调试日志主要使用中文输出，便于开发和问题定位。
+### 主要组件和技术：
+- ** MyNotificationListenerService: 这是应用的核心，一个继承自 NotificationListenerService 的服务。它负责在后台运行，监听新通知，提取通知内容，与用户设定的关键词进行比对，并在匹配成功后触发上述的提醒流程（播放铃声、显示 AlertDialogActivity）。它还管理着前台服务状态，以确保在 Android 较新版本上能够持续运行。
+- ** MainActivity: 这是用户交互的主要界面。用户可以在这里：
+    - 设置需要监控的关键词（用逗号分隔）。
+    * 保存这些设置。
+    * 授予应用运行所必需的各项权限（如通知读取权限、发送通知权限、悬浮窗权限、勿扰模式读取权限等）。
+    * 启动或停止关键词监听服务。
+    * 查看当前服务的运行状态以及一些环境警告（例如，手机是否处于勿扰模式、音量是否过低等，这些由 EnvironmentChecker 提供）。
+- ** SharedPreferencesHelper: 工具类，用于将用户的设置（关键词、铃声 URI、服务启用状态）持久化存储在本地。
+- ** PermissionUtils: 工具类，集中处理应用所需的各种权限的检查和请求逻辑，包括引导用户到系统设置页面开启特殊权限。
+- ** EnvironmentChecker: 工具类，用于检测当前手机的系统环境，如勿扰模式是否开启、各种音量（铃声、通知、媒体）是否合适，并生成警告信息显示在 MainActivity。
+- ** build.gradle 配置:  
+    * 应用基于 Kotlin 语言开发。
+    * 使用了 Android Gradle Plugin，针对 Android 应用打包。
+    * compileSdk 和 targetSdk 为 35，minSdk 为 26 (Android 8.0)。
+    * 启用了 ViewBinding，方便在代码中访问布局文件中的视图。Compose 相关配置被注释掉了。
+    * 依赖库包括了 AndroidX核心库、UI组件（AppCompat, Material Design, ConstraintLayout）、生命周期管理、导航组件以及测试库。
+- ** AndroidManifest.xml:  
+    * 声明了应用的核心组件：MainActivity, AlertDialogActivity, MyNotificationListenerService。
+    * 请求了多项权限，包括 BIND_NOTIFICATION_LISTENER_SERVICE (监听通知的核心)、POST_NOTIFICATIONS (Android 13+ 发送通知，用于全屏提醒)、SYSTEM_ALERT_WINDOW (悬浮窗)、WAKE_LOCK (唤醒锁，确保提醒时设备不休眠)、ACCESS_NOTIFICATION_POLICY (访问勿扰策略) 和 FOREGROUND_SERVICE (运行前台服务)。
+- ** 资源文件 (res/):
+    * 包含应用的布局 (XML)、字符串 (多为中文)、颜色、主题 (Material 3)、图标等。
+    * 界面设计遵循 Material Design 规范。
 
 ## 安装与使用步骤
 ### 安装
@@ -65,24 +73,11 @@ Vigil 通知助手是一款 Android 应用程序，旨在监控设备接收到�
 
 ## 已知问题与未来改进方向
 - **日志中的敏感信息**：`MyNotificationListenerService` 中的 `Log.i` 级别日志仍然会记录匹配到的关键词和来源应用包名。在发布版本中，应移除这些敏感信息的日志记录，或将其级别降至 `Log.d/v` 并通过 Proguard 规则在 release 构建中移除。
-- **用户体验 (UX)**：可以进一步打磨 UI 设计和交互流程，使其更加直观易用。
 - **错误处理**：针对一些边缘情况（如存储空间不足、特定设备兼容性问题）可以增加更完善的错误处理和用户反馈机制。
 - **国际化/本地化**：当前应用的 UI 字符串主要为中文。未来可以考虑添加多语言支持。
-- **铃声播放焦点管理**：虽然使用了 `USAGE_ALARM`，但在非常复杂的音频场景下，可以进一步细化音频焦点的请求和管理。
 
-## 贡献指南
-如果您想为 Vigil 通知助手项目做出贡献，请遵循以下步骤：
-1. Fork 本仓库。
-2. 创建一个新的分支：`git checkout -b feature/your-feature-name`。
-3. 进行代码修改和测试。
-4. 提交您的更改：`git commit -m "Add your commit message"`。
-5. 将更改推送到您的分支：`git push origin feature/your-feature-name`。
-6. 打开一个 Pull Request，详细描述您的更改。
-
-## 许可证
-本项目采用 [MIT 许可证](LICENSE)。
 
 ## 联系方式
-如果您有任何问题或建议，请通过以下方式联系我们：
-- 邮箱：[xgwnje@qq.com]                    
+如果您有任何问题或建议，请通过以下方式联系我：
+- 邮箱：[xgwnje@qq.com]                      
 - GitHub Issues：[https://github.com/your-repo/Vigil/issues](https://github.com/your-repo/Vigil/issues)

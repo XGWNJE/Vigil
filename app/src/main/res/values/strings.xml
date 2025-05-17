@@ -64,7 +64,7 @@
     <string name="filter_apps_switch_summary_off">当前监听所有应用的通知</string>
     <string name="filter_apps_description">开启后，将只处理来自常见通讯应用（如微信、QQ、Telegram等）的通知。关闭则监听所有应用的通知。</string>
 
-    <string name="github_url">https://space.bilibili.com/70443483</string>
+    <string name="github_url">https://github.com/XGWNJE/Vigil</string>
 
     <string name="permission_overlay_short">悬浮窗</string>
     <string name="permission_post_notification_short">发送通知</string>

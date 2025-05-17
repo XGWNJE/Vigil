@@ -19,7 +19,7 @@ android {
         minSdk = 26 // 最低支持的 SDK 版本
         targetSdk = 35 // 目标 SDK 版本
         versionCode = 1
-        versionName = "0.8.4" // 应用版本名
+        versionName = "1.0" // 应用版本名
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" // 测试运行器
         vectorDrawables {

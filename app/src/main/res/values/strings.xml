@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vigil 守夜人</string>
+    <string name="app_name">Vigil</string>
     <string name="keywords_hint">输入关键词，用英文逗号分隔</string>
     <string name="select_ringtone_button">选择铃声</string>
     <string name="selected_ringtone_label">当前铃声: %s</string>

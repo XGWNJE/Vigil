@@ -75,7 +75,7 @@
     <string name="app_count_format">共 %1$d 个应用，已选择 %2$d 个</string>
 
     <!-- 捐赠相关字符串 -->
-    <string name="donate_url">https://afdian.net/a/kennygcw</string>
+    <string name="donate_url">https://github.com/XGWNJE/Vigil</string>
     <string name="about_title">关于与支持</string>
     <string name="donate_description">此应用完全免费且开源，如果觉得好用，欢迎支持开发者继续维护和改进。您的捐赠将用于：服务器与开发设备费用、新功能开发、缺陷修复等。</string>
     <string name="donate_button">支持开发者</string>

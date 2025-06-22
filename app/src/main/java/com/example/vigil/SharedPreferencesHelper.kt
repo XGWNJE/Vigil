@@ -30,6 +30,10 @@ class SharedPreferencesHelper(context: Context) {
         // 新增: 授权状态相关键
         private const val KEY_LICENSE_TYPE = "license_type"
         private const val KEY_LICENSE_EXPIRY_TIMESTAMP = "license_expiry_timestamp" // 使用 Long 存储秒级时间戳
+        // 新增: 首次使用和捐赠提示相关键
+        private const val KEY_IS_FIRST_LAUNCH = "is_first_launch"
+        private const val KEY_HAS_SHOWN_DONATE_DIALOG = "has_shown_donate_dialog"
+
         // 将 KEY_IS_LICENSED 的访问修饰符改为 internal
         internal const val KEY_IS_LICENSED = "is_licensed" // 标记是否已成功验证过有效授权码
 
@@ -71,7 +75,7 @@ class SharedPreferencesHelper(context: Context) {
     // --- 应用过滤相关方法 ---
 
     /**
-     * 保存“仅监听指定应用”功能的启用状态。
+     * 保存"仅监听指定应用"功能的启用状态。
      * @param enabled true 表示启用过滤，false 表示监听所有应用。
      */
     fun saveFilterAppsEnabledState(enabled: Boolean) {
@@ -80,7 +84,7 @@ class SharedPreferencesHelper(context: Context) {
     }
 
     /**
-     * 获取“仅监听指定应用”功能的启用状态。
+     * 获取"仅监听指定应用"功能的启用状态。
      * @return true 如果用户启用了应用过滤，默认为 false。
      */
     fun getFilterAppsEnabledState(): Boolean {
@@ -105,6 +109,40 @@ class SharedPreferencesHelper(context: Context) {
      */
     fun getFilteredAppPackages(): Set<String> {
         return prefs.getStringSet(KEY_FILTERED_APP_PACKAGES, emptySet()) ?: emptySet()
+    }
+
+    // --- 首次启动和捐赠提示相关方法 ---
+
+    /**
+     * 检查是否是首次启动应用
+     * @return true 如果是首次启动，否则返回 false
+     */
+    fun isFirstLaunch(): Boolean {
+        return prefs.getBoolean(KEY_IS_FIRST_LAUNCH, true)
+    }
+
+    /**
+     * 标记应用已经首次启动
+     */
+    fun markFirstLaunchDone() {
+        prefs.edit().putBoolean(KEY_IS_FIRST_LAUNCH, false).apply()
+        Log.i("SharedPreferencesHelper", "已标记首次启动完成")
+    }
+
+    /**
+     * 检查是否已经显示过捐赠提示对话框
+     * @return true 如果已经显示过，否则返回 false
+     */
+    fun hasShownDonateDialog(): Boolean {
+        return prefs.getBoolean(KEY_HAS_SHOWN_DONATE_DIALOG, false)
+    }
+
+    /**
+     * 标记已经显示过捐赠提示对话框
+     */
+    fun markDonateDialogShown() {
+        prefs.edit().putBoolean(KEY_HAS_SHOWN_DONATE_DIALOG, true).apply()
+        Log.i("SharedPreferencesHelper", "已标记捐赠提示对话框已显示")
     }
 
     // --- 新增: 授权状态相关方法 ---
@@ -179,10 +217,10 @@ class SharedPreferencesHelper(context: Context) {
 
     /**
      * 检查当前是否存在有效且未过期的授权。
-     * @return true 如果授权有效且未过期，否则返回 false。
+     * @return true 表示授权有效且未过期，否则返回 false。
      */
     fun isAuthenticated(): Boolean {
-        val licensePayload = getLicenseStatus()
-        return licensePayload != null
+        // 移除授权码验证，让应用完全免费
+        return true
     }
 }

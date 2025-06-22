@@ -1,12 +1,14 @@
 // src/main/java/com/example/vigil/MainActivity.kt
 package com.example.vigil
 
+import android.app.AlertDialog
 import android.app.Application
 import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -89,7 +91,8 @@ class MainActivity : AppCompatActivity() {
         settingsViewModel.requestMiuiBackgroundPopupPermissionCallback = {
             PermissionUtils.requestMiuiBackgroundPopupPermission(this)
         }
-
+        // 设置通知服务更新设置的回调
+        settingsViewModel.notifyServiceToUpdateSettingsCallback = { notifyServiceToUpdateSettings() }
 
         setContent {
             VigilTheme {
@@ -182,10 +185,38 @@ class MainActivity : AppCompatActivity() {
         try {
             ContextCompat.startForegroundService(this, serviceIntent)
             Log.i(TAG, "Vigil Notification Service has been attempted to start.")
+            
+            // 检查是否是首次启动服务且尚未显示过捐赠提示
+            if (!sharedPreferencesHelper.hasShownDonateDialog()) {
+                showDonateDialog()
+                sharedPreferencesHelper.markDonateDialogShown()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error starting Vigil service: ", e)
             Toast.makeText(this, getString(R.string.error_starting_service, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun showDonateDialog() {
+        Log.i(TAG, "显示捐赠对话框")
+        AlertDialog.Builder(this)
+            .setTitle(R.string.donate_dialog_title)
+            .setMessage(R.string.donate_dialog_message)
+            .setPositiveButton(R.string.donate_button) { _, _ ->
+                // 打开捐赠链接
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.donate_url)))
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "打开捐赠链接失败", e)
+                    Toast.makeText(this, R.string.error_opening_url, Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton(R.string.donate_later) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setCancelable(true)
+            .show()
     }
 
     fun stopVigilService() {
@@ -196,7 +227,8 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping Vigil service: ", e)
         }
-        setNotificationListenerServiceComponentEnabled(false)
+        // 不再禁用通知监听服务组件，这样系统不会回收权限
+        // setNotificationListenerServiceComponentEnabled(false)
     }
 
     fun setNotificationListenerServiceComponentEnabled(enabled: Boolean) {

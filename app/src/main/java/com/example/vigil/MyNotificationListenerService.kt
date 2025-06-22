@@ -142,8 +142,10 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
             if (sbn.packageName !in filteredAppPackages) {
+                Log.d(TAG, "通知来自 ${sbn.packageName}，不在过滤列表中，忽略。当前过滤应用列表: $filteredAppPackages")
                 return
             }
+            Log.d(TAG, "通知来自 ${sbn.packageName}，在过滤列表中，继续处理。")
         }
 
         if (sbn.packageName == packageName && (sbn.id == FOREGROUND_NOTIFICATION_ID)) {
@@ -256,6 +258,14 @@ class MyNotificationListenerService : NotificationListenerService() {
         filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
         Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
+        // 添加详细日志以便调试
+        if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
+            Log.d(TAG, "应用过滤已启用，包含的应用包名: ${filteredAppPackages.joinToString()}")
+        } else if (filterAppsEnabled) {
+            Log.w(TAG, "应用过滤已启用，但过滤列表为空，将监听所有应用")
+        } else {
+            Log.d(TAG, "应用过滤未启用，将监听所有应用")
+        }
     }
 
     private fun playRingtoneLooping() {

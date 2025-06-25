@@ -4,10 +4,16 @@ package com.example.vigil.ui.settings
 import android.app.Activity
 import android.app.Application
 import android.app.AppOpsManager // 新增
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,6 +105,26 @@ fun SettingsScreen(
     val showOnlySelected by viewModel.showOnlySelectedApps
     val searchQuery by viewModel.searchQuery
     val filteredApps = viewModel.getFilteredApps()
+    
+    // 关键词和铃声设置
+    val keywords by viewModel.keywords
+    val selectedRingtoneName by viewModel.selectedRingtoneName
+
+    val ringtoneSelectionTitle = stringResource(R.string.ringtone_selection_title)
+
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
+            viewModel.onRingtoneUriSelected(uri)
+        }
+    }
 
     // 监听权限变化，当获取通知权限后刷新应用列表
     LaunchedEffect(hasNotificationAccess) {
@@ -135,6 +161,61 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 添加关键词设置卡片
+        SettingsCard(title = stringResource(R.string.notification_configuration_title)) {
+            OutlinedTextField(
+                value = keywords,
+                onValueChange = { viewModel.onKeywordsChange(it) },
+                label = { Text(stringResource(R.string.keywords_label)) },
+                placeholder = { Text(stringResource(R.string.keywords_hint)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .padding(bottom = 16.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Button(
+                    onClick = {
+                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, ringtoneSelectionTitle)
+                            viewModel.selectedRingtoneUri.value?.let { uri ->
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, uri)
+                            }
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                        }
+                        try {
+                            ringtonePickerLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.select_ringtone_button))
+                }
+                Text(
+                    text = selectedRingtoneName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+
+            Button(
+                onClick = { viewModel.saveSettings() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+            ) {
+                Text(stringResource(R.string.save_settings_button))
+            }
+        }
+        
         SettingsCard(title = stringResource(R.string.permissions_settings_title)) {
             PermissionItem(
                 title = stringResource(R.string.grant_notification_access_button),

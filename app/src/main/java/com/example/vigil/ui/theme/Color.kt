@@ -23,6 +23,11 @@ val RedError = Color(0xFFB00020)
 val RedErrorContainer = Color(0xFFFCD8DF) // 示例浅红色容器
 val RedErrorDark = Color(0xFFCF6679) // 示例深色主题错误颜色
 val RedErrorContainerDark = Color(0xFFB00020) // 示例深色主题错误容器 (可以与 RedError 相同或更暗)
+
+// 初始化状态颜色
+val Initializing = Color(0xFF5C6BC0) // 蓝色系，表示中性进行中状态
+val InitializingContainer = Color(0xFFE8EAF6) // 浅蓝色背景
+
 /*
 // 如果您想使用 Material 3 的动态颜色，可以参考以下代码
 // 但为了实现非 Material Design 风格，我们暂时不使用动态颜色

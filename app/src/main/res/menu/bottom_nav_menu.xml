@@ -2,8 +2,10 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
             android:id="@+id/monitoring"
-            android:icon="@drawable/ic_alert_bell"
-            android:title="@string/environment_check_label" /> <item
+            android:icon="@drawable/ic_notification_icon"
+            android:title="@string/notification_configuration_title" />
+    <item
         android:id="@+id/settings"
-        android:icon="@drawable/ic_dashboard_black_24dp"
-        android:title="@string/permissions_settings_title" /> </menu>
+        android:icon="@drawable/ic_settings"
+        android:title="@string/permissions_settings_title" />
+</menu>

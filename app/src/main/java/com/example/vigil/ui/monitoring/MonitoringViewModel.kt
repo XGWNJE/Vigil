@@ -7,7 +7,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioManager
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -19,7 +18,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.example.vigil.EnvironmentChecker
 import com.example.vigil.MainActivity
 import com.example.vigil.MyNotificationListenerService // 确保导入 MyNotificationListenerService
 import com.example.vigil.PermissionUtils
@@ -51,14 +49,38 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     private val _showRestartButton = mutableStateOf(false)
     val showRestartButton: State<Boolean> = _showRestartButton
 
-    private val _environmentWarnings = mutableStateOf(context.getString(R.string.all_clear))
-    val environmentWarnings: State<String> = _environmentWarnings
-
     private val _showKeywordAlertDialog = mutableStateOf(false)
     val showKeywordAlertDialog: State<Boolean> = _showKeywordAlertDialog
 
     private val _matchedKeywordForDialog = mutableStateOf<String?>(null)
     val matchedKeywordForDialog: State<String?> = _matchedKeywordForDialog
+    
+    // 添加初始化状态标志，用于控制启动阶段显示
+    private var isInitializing = true
+    private var hasReceivedHeartbeat = false // 记录是否收到过心跳
+    private var lastConnectionState = false // 记录最后一次连接状态
+    private val initTimeoutHandler = Handler(Looper.getMainLooper())
+    private val initTimeoutRunnable = Runnable {
+        Log.d(TAG, "初始化超时，检查服务状态")
+        // 不直接设置isInitializing=false，而是检查连接状态
+        // 如果从未收到过心跳或连接状态更新，则保持初始化状态
+        if (!hasReceivedHeartbeat && !lastConnectionState) {
+            Log.d(TAG, "初始化超时，但未收到心跳且连接状态为false，尝试再等待一段时间")
+            // 延长初始化时间，再等待一段时间
+            initTimeoutHandler.postDelayed(this.extendedInitTimeoutRunnable, EXTENDED_INIT_TIMEOUT_MS)
+        } else {
+            Log.d(TAG, "初始化超时，已收到心跳或连接状态为true，结束初始化状态")
+            isInitializing = false
+            updateServiceStatusUI()
+        }
+    }
+    
+    // 扩展的初始化超时处理
+    private val extendedInitTimeoutRunnable = Runnable {
+        Log.d(TAG, "扩展初始化时间结束，无论如何结束初始化状态")
+        isInitializing = false
+        updateServiceStatusUI()
+    }
 
     // 服务心跳监控
     private var lastHeartbeatTime: Long = 0
@@ -77,11 +99,17 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 MyNotificationListenerService.ACTION_HEARTBEAT -> {
                     Log.d(TAG, "ViewModel received service heartbeat.")
                     lastHeartbeatTime = System.currentTimeMillis()
+                    hasReceivedHeartbeat = true // 标记已收到心跳
+                    isInitializing = false // 收到心跳后初始化完成
                     updateServiceStatusUI()
                 }
                 MainActivity.ACTION_SERVICE_STATUS_UPDATE -> {
                     val isConnected = intent.getBooleanExtra(MainActivity.EXTRA_SERVICE_CONNECTED, false)
                     Log.i(TAG, "ViewModel received service connection status update: $isConnected")
+                    lastConnectionState = isConnected // 记录连接状态
+                    if (isConnected) {
+                        isInitializing = false // 连接成功后初始化完成
+                    }
                     updateServiceStatusUI()
                 }
                 ACTION_SHOW_KEYWORD_ALERT -> { // 来自 LocalBroadcastManager
@@ -100,25 +128,14 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private val environmentChangeReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d(TAG, "EnvironmentChangeReceiver received action: ${intent?.action}")
-            when (intent?.action) {
-                AudioManager.RINGER_MODE_CHANGED_ACTION,
-                NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED -> {
-                    Log.i(TAG, "环境变化 (${intent.action}), 更新环境警告信息。")
-                    updateEnvironmentWarnings()
-                }
-            }
-        }
-    }
-
     companion object {
         private const val TAG = "MonitoringViewModel"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
         private const val HEARTBEAT_TOLERANCE_MS = 10 * 1000L
         private const val HEARTBEAT_CHECK_INTERVAL_MS = 15 * 1000L
         private const val HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS + HEARTBEAT_TOLERANCE_MS
+        private const val INITIALIZATION_TIMEOUT_MS = 5 * 1000L // 初始化超时时间：5秒
+        private const val EXTENDED_INIT_TIMEOUT_MS = 8 * 1000L // 扩展初始化超时时间：8秒
 
         // 与 MyNotificationListenerService 中的 ACTION_SHOW_KEYWORD_ALERT 保持一致
         const val ACTION_SHOW_KEYWORD_ALERT = "com.example.vigil.ACTION_SHOW_KEYWORD_ALERT"
@@ -128,7 +145,6 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     init {
         Log.d(TAG, "MonitoringViewModel created.")
         loadSettings()
-        updateEnvironmentWarnings()
 
         LocalBroadcastManager.getInstance(context).registerReceiver(
             serviceAndAlertReceiver, IntentFilter().apply {
@@ -139,17 +155,14 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         )
         Log.d(TAG, "serviceAndAlertReceiver registered for ACTION_SHOW_KEYWORD_ALERT.")
 
-
-        val environmentIntentFilter = IntentFilter().apply {
-            addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
-            }
-        }
-        context.registerReceiver(environmentChangeReceiver, environmentIntentFilter)
-        Log.d(TAG, "EnvironmentChangeReceiver registered.")
-
         startHeartbeatCheck()
+        
+        // 开始初始化计时
+        isInitializing = true
+        hasReceivedHeartbeat = false
+        lastConnectionState = false
+        initTimeoutHandler.postDelayed(initTimeoutRunnable, INITIALIZATION_TIMEOUT_MS)
+        
         updateServiceStatusUI()
     }
 
@@ -157,9 +170,10 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         super.onCleared()
         Log.d(TAG, "MonitoringViewModel cleared.")
         LocalBroadcastManager.getInstance(context).unregisterReceiver(serviceAndAlertReceiver)
-        context.unregisterReceiver(environmentChangeReceiver)
-        Log.d(TAG, "EnvironmentChangeReceiver unregistered.")
+        Log.d(TAG, "ViewModel receivers unregistered.")
         stopHeartbeatCheck()
+        initTimeoutHandler.removeCallbacks(initTimeoutRunnable)
+        initTimeoutHandler.removeCallbacks(extendedInitTimeoutRunnable)
     }
 
     /**
@@ -174,7 +188,6 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             Log.d(TAG, "Dialog state updated via trigger: show=true, keyword=$keyword")
         }
     }
-
 
     private fun loadSettings() {
         _keywords.value = sharedPreferencesHelper.getKeywords().joinToString(",")
@@ -222,17 +235,48 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             Log.w(TAG, "Attempted to enable service but not licensed.")
             _serviceEnabled.value = false
         } else {
+            val oldValue = _serviceEnabled.value
             _serviceEnabled.value = enabled
+            
+            // 先保存服务启用状态
             sharedPreferencesHelper.saveServiceEnabledState(enabled)
+            
+            // 然后执行相应操作
             if (enabled) {
                 Log.i(TAG, "Service switch enabled, attempting to start service.")
+                // 如果是启用，则重置初始化状态
+                isInitializing = true
+                hasReceivedHeartbeat = false
+                lastConnectionState = false
+                initTimeoutHandler.removeCallbacks(initTimeoutRunnable)
+                initTimeoutHandler.removeCallbacks(extendedInitTimeoutRunnable)
+                initTimeoutHandler.postDelayed(initTimeoutRunnable, INITIALIZATION_TIMEOUT_MS)
+                
+                // 先启动服务
                 startServiceCallback(PermissionUtils.isNotificationListenerEnabled(context))
+                
+                // 无论状态是否改变，都强制通知服务更新
+                Log.i(TAG, "Force notifying service to update settings after enabling")
+                notifyServiceToUpdateSettingsCallback?.invoke()
             } else {
                 Log.i(TAG, "Service switch disabled, stopping service.")
+                // 关闭时不是初始化状态
+                isInitializing = false
+                initTimeoutHandler.removeCallbacks(initTimeoutRunnable)
+                initTimeoutHandler.removeCallbacks(extendedInitTimeoutRunnable)
+                
+                // 先通知服务更新（可能导致通知状态改变）
+                Log.i(TAG, "Force notifying service to update settings before stopping")
+                notifyServiceToUpdateSettingsCallback?.invoke()
+                
+                // 然后停止服务
                 stopServiceCallback()
             }
         }
         updateServiceStatusUI()
+        
+        // 额外的日志，帮助排查问题
+        Log.d(TAG, "Service status after change: enabled=${_serviceEnabled.value}, status=${_serviceStatusText.value}")
     }
 
     internal fun checkServiceHeartbeatStatus() {
@@ -261,7 +305,20 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
         val currentHeartbeatStatus = hasRecentHeartbeat ?: ((System.currentTimeMillis() - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS)
 
-        if (serviceEnabledByUser && isLicensed) {
+        // 如果处于初始化阶段且服务已启用，直接显示初始化状态
+        if (isInitializing && serviceEnabledByUser) {
+            statusTextResult = context.getString(R.string.service_initializing)
+            showRestartBtnResult = false
+            Log.d(TAG, "服务正在初始化中，等待连接...")
+        } 
+        // 如果服务已启用，但从未收到过心跳且连接状态为false，且不在初始化阶段，则可能是服务启动中
+        else if (serviceEnabledByUser && isLicensed && !hasReceivedHeartbeat && !lastConnectionState && !isInitializing) {
+            // 这种情况可能是服务正在启动但尚未连接，显示为初始化状态而非异常
+            statusTextResult = context.getString(R.string.service_initializing)
+            showRestartBtnResult = false
+            Log.d(TAG, "服务可能正在启动中，尚未收到心跳或连接状态更新")
+        }
+        else if (serviceEnabledByUser && isLicensed) {
             if (notificationAccessActuallyGranted) {
                 if (currentHeartbeatStatus) {
                     statusTextResult = context.getString(R.string.service_running)
@@ -271,13 +328,28 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                         missingAlertPermissions.add(context.getString(R.string.permission_post_notification_short))
                     }
                     if (missingAlertPermissions.isNotEmpty()) {
-                        statusTextResult += " (" + context.getString(R.string.service_alert_limited_permissions, missingAlertPermissions.joinToString(context.getString(R.string.joiner_comma))) + ")"
+                        // 简化权限提示，使其更简洁
+                        val permissionText = missingAlertPermissions.joinToString(context.getString(R.string.joiner_comma))
+                        // 如果权限文本过长，则只显示权限数量
+                        if (permissionText.length > 10) {
+                            statusTextResult += " (" + context.getString(R.string.service_alert_limited_permissions, missingAlertPermissions.size.toString() + "项") + ")"
+                        } else {
+                            statusTextResult += " (" + context.getString(R.string.service_alert_limited_permissions, permissionText) + ")"
+                        }
                     }
                     showRestartBtnResult = false
                 } else {
-                    statusTextResult = context.getString(R.string.service_status_abnormal)
-                    showRestartBtnResult = true
-                    Log.w(TAG, "Service switch enabled, permission granted, but heartbeat timed out. Restart might be needed.")
+                    // 如果曾经收到过心跳，但现在超时，则确实是异常状态
+                    if (hasReceivedHeartbeat) {
+                        statusTextResult = context.getString(R.string.service_status_abnormal)
+                        showRestartBtnResult = true
+                        Log.w(TAG, "Service switch enabled, permission granted, but heartbeat timed out. Restart might be needed.")
+                    } else {
+                        // 如果从未收到过心跳，可能是服务启动中或系统限制，显示为初始化状态
+                        statusTextResult = context.getString(R.string.service_initializing)
+                        showRestartBtnResult = false
+                        Log.d(TAG, "服务可能正在启动中，尚未收到任何心跳")
+                    }
                 }
             } else {
                 statusTextResult = context.getString(R.string.service_status_abnormal_no_permission)
@@ -296,21 +368,23 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
         _serviceStatusText.value = statusTextResult
         _showRestartButton.value = showRestartBtnResult
-        Log.d(TAG, "ViewModel service status updated: ${_serviceStatusText.value}, ShowRestartButton: ${_showRestartButton.value} (Heartbeat recent: $currentHeartbeatStatus)")
+        Log.d(TAG, "ViewModel service status updated: ${_serviceStatusText.value}, ShowRestartButton: ${_showRestartButton.value} (Heartbeat recent: $currentHeartbeatStatus, Initializing: $isInitializing, HasReceivedHeartbeat: $hasReceivedHeartbeat, LastConnectionState: $lastConnectionState)")
     }
 
     fun onRestartServiceClick(restartServiceCallback: () -> Unit) {
         Log.i(TAG, "User clicked restart service.")
         _serviceStatusText.value = context.getString(R.string.service_status_recovering)
         _showRestartButton.value = false
+        
+        // 重置初始化状态并设置超时
+        isInitializing = true
+        hasReceivedHeartbeat = false
+        lastConnectionState = false
+        initTimeoutHandler.removeCallbacks(initTimeoutRunnable)
+        initTimeoutHandler.removeCallbacks(extendedInitTimeoutRunnable)
+        initTimeoutHandler.postDelayed(initTimeoutRunnable, INITIALIZATION_TIMEOUT_MS)
+        
         restartServiceCallback()
-    }
-
-    fun updateEnvironmentWarnings() {
-        viewModelScope.launch {
-            _environmentWarnings.value = EnvironmentChecker.getEnvironmentWarnings(context)
-            Log.d(TAG, "Environment warnings updated via updateEnvironmentWarnings(): ${_environmentWarnings.value}")
-        }
     }
 
     private fun startHeartbeatCheck() {

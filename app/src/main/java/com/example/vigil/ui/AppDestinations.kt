@@ -3,25 +3,39 @@ package com.example.vigil.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.annotation.StringRes // 导入 StringRes
-import com.example.vigil.R // *** 添加这行导入语句 ***
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.runtime.Composable
+import com.example.vigil.R
+
 /**
  * 定义应用的导航目的地（屏幕）。
  * 使用密封类来限制可能的目的地，并包含路由字符串和底部导航图标。
  */
 sealed class AppDestinations(
     val route: String,
-    val icon: ImageVector,
+    val iconResId: Int, // 使用资源ID而不是ImageVector
     @StringRes val titleResId: Int // 使用 StringRes 引用字符串资源ID
 ) {
-    // 监控屏幕
-    // 使用您提供的 R.string.environment_check_label 作为标题资源的示例
-    object Monitoring : AppDestinations("monitoring", Icons.Default.Warning, R.string.environment_check_label) // 使用 Warning 图标作为监控占位符，关联环境检测的字符串
+    // 通知屏幕
+    object Monitoring : AppDestinations(
+        "monitoring", 
+        R.drawable.ic_notification_icon, 
+        R.string.notification_configuration_title
+    )
     // 设置屏幕
-    // 使用您提供的 R.string.permissions_settings_title 作为标题资源的示例
-    object Settings : AppDestinations("settings", Icons.Default.Settings, R.string.permissions_settings_title) // 关联权限设置的字符串
+    object Settings : AppDestinations(
+        "settings", 
+        R.drawable.ic_settings, 
+        R.string.permissions_settings_title
+    )
+
+    @Composable
+    fun getIcon(): ImageVector {
+        return ImageVector.vectorResource(id = iconResId)
+    }
 }
 
 /**

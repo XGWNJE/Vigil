@@ -64,8 +64,13 @@ class SharedPreferencesHelper(context: Context) {
     }
 
     fun saveServiceEnabledState(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_SERVICE_ENABLED, enabled).apply()
-        Log.i("SharedPreferencesHelper", "服务启用状态已保存: $enabled")
+        val oldValue = getServiceEnabledState()
+        if (oldValue != enabled) {
+            prefs.edit().putBoolean(KEY_SERVICE_ENABLED, enabled).apply()
+            Log.i("SharedPreferencesHelper", "服务启用状态已改变: $oldValue -> $enabled")
+        } else {
+            Log.d("SharedPreferencesHelper", "服务启用状态未变化: $enabled")
+        }
     }
 
     fun getServiceEnabledState(): Boolean {

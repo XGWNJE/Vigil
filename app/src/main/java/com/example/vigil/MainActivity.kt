@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG = "VigilMainActivity"
         const val ACTION_SERVICE_STATUS_UPDATE = "com.example.vigil.SERVICE_STATUS_UPDATE"
         const val EXTRA_SERVICE_CONNECTED = "extra_service_connected"
+        const val ACTION_UPDATE_SERVICE_CONFIG = "com.example.vigil.ACTION_UPDATE_SERVICE_CONFIG"
     }
 
     internal lateinit var appSettingsLauncher: ActivityResultLauncher<Intent>
@@ -78,7 +79,6 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Returned from system settings page.")
             // 刷新所有相关权限状态，包括MIUI的（如果适用）
             settingsViewModel.updatePermissionStates()
-            monitoringViewModel.updateEnvironmentWarnings()
         }
 
         // 设置 ViewModel 回调
@@ -172,7 +172,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         Log.d(TAG, "MainActivity onResume。")
         settingsViewModel.updatePermissionStates() // 会同时更新MIUI权限（如果适用）
-        monitoringViewModel.updateEnvironmentWarnings()
     }
 
     fun startVigilService(hasPermission: Boolean) {
@@ -263,18 +262,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun notifyServiceToUpdateSettings() {
-        if (sharedPreferencesHelper.getServiceEnabledState() && PermissionUtils.isNotificationListenerEnabled(this)) {
-            val intent = Intent(this, MyNotificationListenerService::class.java).apply {
-                action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
-            }
+        // 无论服务状态如何，都尝试发送更新命令
+        val intent = Intent(this, MyNotificationListenerService::class.java).apply {
+            action = MyNotificationListenerService.ACTION_UPDATE_SETTINGS
+        }
+        
+        try {
+            // 使用startService而不是startForegroundService
+            // 这样即使服务没有运行也不会崩溃，而且服务已运行时会正常接收命令
+            startService(intent)
+            Log.d(TAG, "Sent ACTION_UPDATE_SETTINGS to service (unconditional).")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending update settings command to service: ", e)
+            
+            // 如果失败，再尝试使用startForegroundService
             try {
                 ContextCompat.startForegroundService(this, intent)
-                Log.d(TAG, "Sent ACTION_UPDATE_SETTINGS to service.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting service to update settings: ", e)
+                Log.d(TAG, "Sent ACTION_UPDATE_SETTINGS to service using startForegroundService.")
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed both ways to send update command to service: ", e2)
             }
-        } else {
-            Log.d(TAG, "Conditions not met to notify service to update settings (switch state or permission).")
         }
     }
 
@@ -314,8 +321,6 @@ class MainActivity : AppCompatActivity() {
         NavigationBar {
             BottomNavDestinations.forEach { destination ->
                 NavigationBarItem(
-                    icon = { Icon(destination.icon, contentDescription = stringResource(id = destination.titleResId)) },
-                    label = { Text(stringResource(id = destination.titleResId)) },
                     selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true,
                     onClick = {
                         navController.navigate(destination.route) {
@@ -323,7 +328,9 @@ class MainActivity : AppCompatActivity() {
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    icon = { Icon(destination.getIcon(), contentDescription = stringResource(id = destination.titleResId)) },
+                    label = { Text(stringResource(id = destination.titleResId)) }
                 )
             }
         }

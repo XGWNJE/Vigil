@@ -52,7 +52,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         const val ACTION_UPDATE_SETTINGS = "com.example.vigil.UPDATE_SETTINGS"
         private const val WAKELOCK_TAG = "Vigil::KeywordAlertWakeLock"
         private const val FOREGROUND_NOTIFICATION_ID = 717
-        private const val ALERT_NOTIFICATION_CHANNEL_ID = "vigil_alert_channel"
+        private const val FOREGROUND_CHANNEL_ID = "vigil_foreground_channel"
         private const val WAKELOCK_TIMEOUT_MS = 2 * 60 * 1000L
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
@@ -83,7 +83,10 @@ class MyNotificationListenerService : NotificationListenerService() {
             IntentFilter(ACTION_ALERT_CONFIRMED_FROM_UI)
         )
         createNotificationChannel()
-        startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundServiceNotification())
+        
+        // 使用简单方式启动前台服务
+        val notification = createForegroundServiceNotification()
+        startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         Log.i(TAG, "服务已创建并启动为前台服务。")
     }
 
@@ -93,6 +96,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         loadSettings()
         startHeartbeat()
         sendServiceStatusUpdate(true)
+        
+        // 确保更新通知以反映最新状态
+        updateForegroundNotification()
+        Log.d(TAG, "监听器连接后已更新前台通知")
     }
 
     override fun onListenerDisconnected() {
@@ -100,18 +107,27 @@ class MyNotificationListenerService : NotificationListenerService() {
         Log.w(TAG, "通知监听器已断开连接！")
         stopHeartbeat()
         sendServiceStatusUpdate(false)
+        
+        // 确保更新通知以反映最新状态
+        updateForegroundNotification()
+        Log.d(TAG, "监听器断开连接后已更新前台通知")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "收到命令: ${intent?.action}")
         if (intent?.action == ACTION_UPDATE_SETTINGS) {
             Log.i(TAG, "收到 ACTION_UPDATE_SETTINGS，重新加载设置。")
-            loadSettings()
+            loadSettings() // loadSettings内部会调用updateForegroundNotification
         } else if (intent?.action == null) {
             Log.i(TAG, "服务由系统或 START_STICKY 重启，开始发送心跳。")
             startHeartbeat()
+            // 确保通知也会更新
+            updateForegroundNotification()
+        } else {
+            // 其他任何命令也确保通知更新
+            updateForegroundNotification()
         }
-        startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundServiceNotification())
+        
         return START_STICKY
     }
 
@@ -127,13 +143,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
-            Log.d(TAG, "服务未被用户启用，忽略通知。")
-            return
-        }
-
-        val isLicensed = sharedPreferencesHelper.isAuthenticated()
-        if (!isLicensed) {
+        if (!sharedPreferencesHelper.isAuthenticated()) {
             Log.w(TAG, "未授权，忽略通知处理。")
             return
         }
@@ -149,6 +159,12 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
 
         if (sbn.packageName == packageName && (sbn.id == FOREGROUND_NOTIFICATION_ID)) {
+            return
+        }
+
+        // 检查服务是否被用户启用 - 只在这里检查，因为我们想保持前台服务运行，即使通知提醒功能被禁用
+        if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
+            Log.d(TAG, "服务未被用户启用，忽略通知。")
             return
         }
 
@@ -231,11 +247,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         val notificationTitle = getString(R.string.app_name) // 使用应用名称作为标题
         val baseMessage = getString(R.string.alert_dialog_message_keyword_format, keyword) // "检测到关键词: '%1$s'"
 
-        val builder = NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, FOREGROUND_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_icon)
             .setContentTitle(notificationTitle)
             .setContentText(baseMessage)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(baseMessage))
             .setPriority(NotificationCompat.PRIORITY_HIGH) // 提高优先级
             .setAutoCancel(true)
             .setContentIntent(intentAction)
@@ -243,7 +258,14 @@ class MyNotificationListenerService : NotificationListenerService() {
             .setFullScreenIntent(intentAction, true) // 尝试使用全屏 Intent (需要 USE_FULL_SCREEN_INTENT 权限)
 
         try {
-            CoreNotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), builder.build())
+            // 使用随机ID以避免覆盖前台服务通知
+            val alertNotificationId = System.currentTimeMillis().toInt() % 10000
+            if (alertNotificationId == FOREGROUND_NOTIFICATION_ID) {
+                // 避免与前台服务通知ID冲突
+                CoreNotificationManagerCompat.from(this).notify(alertNotificationId + 1, builder.build())
+            } else {
+                CoreNotificationManagerCompat.from(this).notify(alertNotificationId, builder.build())
+            }
             Log.i(TAG, "已发送备选通知 (关键词: $keyword)。")
         } catch (e: SecurityException) {
             Log.e(TAG, "发送备选通知时捕获到 SecurityException", e)
@@ -265,6 +287,20 @@ class MyNotificationListenerService : NotificationListenerService() {
             Log.w(TAG, "应用过滤已启用，但过滤列表为空，将监听所有应用")
         } else {
             Log.d(TAG, "应用过滤未启用，将监听所有应用")
+        }
+        
+        // 设置更新后刷新前台服务通知
+        updateForegroundNotification()
+    }
+    
+    private fun updateForegroundNotification() {
+        try {
+            // 使用简单明确的方式更新通知
+            val notification = createForegroundServiceNotification()
+            startForeground(FOREGROUND_NOTIFICATION_ID, notification)
+            Log.d(TAG, "已更新前台服务通知")
+        } catch (e: Exception) {
+            Log.e(TAG, "更新前台服务通知时出错", e)
         }
     }
 
@@ -367,18 +403,23 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = getString(R.string.notification_channel_name)
-            val descriptionText = getString(R.string.notification_channel_description)
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(ALERT_NOTIFICATION_CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-                enableLights(true)
-                lightColor = android.graphics.Color.RED
+            // 只创建前台服务通知渠道
+            val foregroundChannelName = "监控服务状态"
+            val foregroundChannelDesc = "Vigil服务运行状态通知"
+            val foregroundChannel = NotificationChannel(
+                FOREGROUND_CHANNEL_ID, 
+                foregroundChannelName, 
+                NotificationManager.IMPORTANCE_LOW // 使用低重要性避免干扰用户
+            ).apply {
+                description = foregroundChannelDesc
+                setShowBadge(false) // 不显示角标
             }
+            
             val notificationManager: NotificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
-            Log.d(TAG,"通知渠道 '$ALERT_NOTIFICATION_CHANNEL_ID' 已创建/更新。")
+            notificationManager.createNotificationChannel(foregroundChannel)
+            
+            Log.d(TAG,"前台服务通知渠道已创建/更新")
         }
     }
 
@@ -387,14 +428,49 @@ class MyNotificationListenerService : NotificationListenerService() {
         val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags)
 
-        return NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("${getString(R.string.app_name)} ${getString(R.string.service_running)}")
-            .setContentText(getString(R.string.foreground_service_description))
+        // 检查通知监听服务是否已连接（无论用户是否启用了服务）
+        val isListenerConnected = try {
+            activeNotifications != null
+            true
+        } catch (e: Exception) {
+            false
+        }
+
+        // 获取服务状态
+        val serviceEnabled = SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)
+        
+        // 简化通知标题
+        val notificationTitle = if (isListenerConnected && serviceEnabled) {
+            "Vigil监听中"
+        } else if (isListenerConnected && !serviceEnabled) {
+            "Vigil已就绪(已关闭提醒)"
+        } else {
+            "Vigil未连接"
+        }
+        
+        // 简化关键词显示
+        val keywordsText = if (keywords.isNotEmpty() && serviceEnabled) {
+            if (keywords.size <= 2) {
+                // 关键词少时显示全部
+                "关键词:${keywords.joinToString(",")}"
+            } else {
+                // 关键词多时只显示数量
+                "监听${keywords.size}个关键词"
+            }
+        } else if (!serviceEnabled) {
+            "点击进入应用设置"
+        } else {
+            "请设置关键词"
+        }
+        
+        return NotificationCompat.Builder(this, FOREGROUND_CHANNEL_ID)
+            .setContentTitle(notificationTitle)
+            .setContentText(keywordsText)
             .setSmallIcon(R.drawable.ic_notification_icon)
             .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setOngoing(true)  // 设置为常驻通知
+            .setSilent(true)   // 不发出声音
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 

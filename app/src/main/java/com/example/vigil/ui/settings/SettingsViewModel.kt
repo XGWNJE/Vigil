@@ -4,8 +4,11 @@ package com.example.vigil.ui.settings
 import android.app.Application
 import android.app.AppOpsManager // 新增
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.compose.runtime.State
@@ -13,6 +16,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.SharedPreferencesHelper
@@ -36,6 +40,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     companion object {
         private const val TAG = "SettingsViewModel"
     }
+
+    // --- 关键词和铃声设置 ---
+    private val _keywords = mutableStateOf("")
+    val keywords: State<String> = _keywords
+
+    private val _selectedRingtoneUri = mutableStateOf<Uri?>(null)
+    val selectedRingtoneUri: State<Uri?> = _selectedRingtoneUri
+
+    private val _selectedRingtoneName = mutableStateOf(context.getString(R.string.no_ringtone_selected))
+    val selectedRingtoneName: State<String> = _selectedRingtoneName
 
     // --- 权限状态 ---
     private val _hasNotificationAccess = mutableStateOf(false)
@@ -81,6 +95,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _isMiuiDevice.value = PermissionUtils.isMiui() // 初始化时检测是否为 MIUI
         updatePermissionStates()
         loadInstalledApps() // 加载已安装应用列表
+        loadSettings() // 加载关键词和铃声设置
     }
 
     fun updatePermissionStates() {
@@ -246,4 +261,59 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     
     // 通知服务更新设置的回调
     var notifyServiceToUpdateSettingsCallback: (() -> Unit)? = null
+
+    // --- 关键词和铃声相关方法 ---
+    private fun loadSettings() {
+        _keywords.value = sharedPreferencesHelper.getKeywords().joinToString(",")
+        _selectedRingtoneUri.value = sharedPreferencesHelper.getRingtoneUri()
+        updateSelectedRingtoneName()
+    }
+
+    fun onKeywordsChange(newKeywords: String) {
+        _keywords.value = newKeywords
+    }
+
+    fun onRingtoneUriSelected(uri: Uri?) {
+        _selectedRingtoneUri.value = uri
+        updateSelectedRingtoneName()
+    }
+
+    private fun updateSelectedRingtoneName() {
+        _selectedRingtoneName.value = if (_selectedRingtoneUri.value != null) {
+            try {
+                RingtoneManager.getRingtone(context, _selectedRingtoneUri.value)?.getTitle(context) ?: context.getString(R.string.default_ringtone_name)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting ringtone title: ${_selectedRingtoneUri.value}", e)
+                "未知铃声"
+            }
+        } else {
+            context.getString(R.string.no_ringtone_selected)
+        }
+    }
+
+    fun saveSettings() {
+        viewModelScope.launch {
+            // 保存关键词
+            val keywordsText = _keywords.value
+            val keywordsList = keywordsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            sharedPreferencesHelper.saveKeywords(keywordsList)
+            
+            // 保存铃声
+            sharedPreferencesHelper.saveRingtoneUri(_selectedRingtoneUri.value)
+            
+            // 保存过滤应用列表
+            saveFilteredApps()
+            
+            // 通知服务更新设置
+            try {
+                val intent = Intent(MainActivity.ACTION_UPDATE_SERVICE_CONFIG)
+                context.sendBroadcast(intent)
+                Log.i(TAG, "Broadcast sent to update service configuration")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending broadcast to update service", e)
+            }
+            
+            Log.i(TAG, "设置已保存: 关键词=${keywordsList.size}个, 铃声URI=${_selectedRingtoneUri.value}")
+        }
+    }
 }

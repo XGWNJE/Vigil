@@ -15,11 +15,13 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,32 +30,39 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Error // 新增：用于表示需要操作或未授权
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid // 新增：MIUI 图标示例
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton // 新增：用于权限项的按钮
 import androidx.compose.runtime.Composable
@@ -161,128 +170,251 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 添加关键词设置卡片
-        SettingsCard(title = stringResource(R.string.notification_configuration_title)) {
-            OutlinedTextField(
-                value = keywords,
-                onValueChange = { viewModel.onKeywordsChange(it) },
-                label = { Text(stringResource(R.string.keywords_label)) },
-                placeholder = { Text(stringResource(R.string.keywords_hint)) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .padding(bottom = 16.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Button(
-                    onClick = {
-                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, ringtoneSelectionTitle)
-                            viewModel.selectedRingtoneUri.value?.let { uri ->
-                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, uri)
-                            }
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                        }
-                        try {
-                            ringtonePickerLauncher.launch(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.select_ringtone_button))
-                }
-                Text(
-                    text = selectedRingtoneName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-
-            Button(
-                onClick = { viewModel.saveSettings() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp)
-            ) {
-                Text(stringResource(R.string.save_settings_button))
-            }
-        }
-        
-        SettingsCard(title = stringResource(R.string.permissions_settings_title)) {
+        // 必需权限设置区域
+        SettingsSection(title = stringResource(R.string.permissions_settings_title)) {
+            // 通知监听权限
             PermissionItem(
                 title = stringResource(R.string.grant_notification_access_button),
                 isChecked = hasNotificationAccess,
-                onClick = { viewModel.requestNotificationListenerPermissionCallback?.invoke() },
+                onClick = { 
+                    viewModel.requestNotificationListenerPermissionCallback?.invoke()
+                    // 显示一个Toast提示，帮助用户知道点击有效果
+                    Toast.makeText(context, "正在跳转到通知使用权设置", Toast.LENGTH_SHORT).show()
+                },
                 icon = Icons.Filled.Notifications
             )
+            
+            // 勿扰模式权限
             PermissionItem(
                 title = stringResource(R.string.grant_dnd_access_button),
                 isChecked = hasDndAccess,
-                onClick = { viewModel.requestDndAccessPermissionCallback?.invoke() },
-                icon = Icons.Filled.Notifications // Consider a DND specific icon
+                onClick = { 
+                    viewModel.requestDndAccessPermissionCallback?.invoke()
+                    Toast.makeText(context, "正在跳转到勿扰模式权限设置", Toast.LENGTH_SHORT).show()
+                },
+                icon = Icons.Filled.Notifications
             )
+            
+            // 悬浮窗权限
             PermissionItem(
                 title = stringResource(R.string.grant_overlay_permission_button),
                 isChecked = canDrawOverlays,
-                onClick = { viewModel.requestOverlayPermissionCallback?.invoke() },
-                icon = Icons.Filled.Settings // Consider an overlay specific icon
+                onClick = { 
+                    viewModel.requestOverlayPermissionCallback?.invoke()
+                    Toast.makeText(context, "正在跳转到悬浮窗权限设置", Toast.LENGTH_SHORT).show()
+                },
+                icon = Icons.Filled.Settings
             )
+            
+            // 发送通知权限(Android 13+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 PermissionItem(
                     title = stringResource(R.string.grant_post_notifications_permission_button),
                     isChecked = canPostNotifications,
-                    onClick = { viewModel.requestPostNotificationsPermissionCallback?.invoke() },
-                    icon = Icons.Filled.Notifications // Consider a post notification specific icon
+                    onClick = { 
+                        viewModel.requestPostNotificationsPermissionCallback?.invoke()
+                        Toast.makeText(context, "正在请求发送通知权限", Toast.LENGTH_SHORT).show()
+                    },
+                    icon = Icons.Filled.Notifications
                 )
             }
-            // MIUI 后台弹窗权限引导
+            
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+            
+            // 后台弹窗权限 - 现在适用于所有设备
+            PermissionItem(
+                title = stringResource(R.string.permission_background_popup_title),
+                description = stringResource(R.string.permission_background_popup_description),
+                isChecked = canDrawOverlays, // 与悬浮窗权限保持一致
+                onClick = { 
+                    // 对于MIUI设备使用专用方法，其他设备则直接使用悬浮窗权限方法
+                    if (isMiuiDevice) {
+                        viewModel.requestMiuiBackgroundPopupPermissionCallback?.invoke()
+                        Toast.makeText(context, "正在跳转到后台弹窗权限设置", Toast.LENGTH_SHORT).show()
+                    } else {
+                        viewModel.requestOverlayPermissionCallback?.invoke()
+                        Toast.makeText(context, "正在跳转到悬浮窗权限设置", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                icon = Icons.Filled.PhoneAndroid
+            )
+
+            // 为MIUI设备添加额外提示
             if (isMiuiDevice) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                MiuiPermissionItem(
-                    title = stringResource(R.string.permission_miui_background_popup_title),
-                    description = stringResource(R.string.permission_miui_background_popup_description),
-                    // 对于 MIUI，我们不直接显示 "已授予/未授予"，而是提供一个操作按钮
-                    // isChecked 的概念在这里不完全适用，因为我们无法准确检测状态
-                    // 我们用 status 来决定右侧显示什么
-                    status = miuiBackgroundPopupPermissionStatus,
-                    onClick = { viewModel.requestMiuiBackgroundPopupPermissionCallback?.invoke() },
-                    icon = Icons.Filled.PhoneAndroid // MIUI 特有权限的图标
+                Text(
+                    text = stringResource(R.string.miui_permission_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(start = 56.dp, top = 4.dp)
                 )
             }
         }
+        
+        // 关键词监控设置区域
+        SettingsSection(title = stringResource(R.string.notification_configuration_title)) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 关键词输入框的标签
+                Text(
+                    text = stringResource(R.string.keywords_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                // 格式化显示已输入的关键词
+                KeywordChips(keywords)
+                
+                OutlinedTextField(
+                    value = keywords,
+                    onValueChange = { viewModel.onKeywordsChange(it) },
+                    placeholder = { Text(stringResource(R.string.keywords_hint)) },
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small,
+                    minLines = 2,
+                    maxLines = 4
+                )
+                
+                // 添加提示文本
+                Text(
+                    text = "系统将自动监控包含上述关键词的通知",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // 提醒音设置
+                Text(
+                    text = stringResource(R.string.select_ringtone_button),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline,
+                            shape = MaterialTheme.shapes.small
+                        )
+                        .clickable {
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, ringtoneSelectionTitle)
+                                viewModel.selectedRingtoneUri.value?.let { uri ->
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, uri)
+                                }
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                            }
+                            try {
+                                ringtonePickerLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = selectedRingtoneName,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                Button(
+                    onClick = { viewModel.saveSettings() },
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(stringResource(R.string.save_settings_button))
+                }
+            }
+        }
 
-        SettingsCard(title = stringResource(R.string.app_filter_settings_title)) {
+        // 应用过滤设置区域
+        SettingsSection(title = stringResource(R.string.app_filter_settings_title)) {
             // 应用过滤开关
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 8.dp)
+                    .clickable { viewModel.onAppFilterEnabledChange(!isAppFilterEnabled) },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.filter_apps_switch_label),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = if (isAppFilterEnabled) stringResource(R.string.filter_apps_switch_summary_on)
-                        else stringResource(R.string.filter_apps_switch_summary_off),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        color = if (isAppFilterEnabled) 
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else 
+                            MaterialTheme.colorScheme.surfaceVariant,
+                        shape = MaterialTheme.shapes.small,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                tint = if (isAppFilterEnabled) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
+                    Column {
+                        Text(
+                            text = stringResource(R.string.filter_apps_switch_label),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (isAppFilterEnabled) stringResource(R.string.filter_apps_switch_summary_on)
+                            else stringResource(R.string.filter_apps_switch_summary_off),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
+                
                 Switch(
                     checked = isAppFilterEnabled,
-                    onCheckedChange = { viewModel.onAppFilterEnabledChange(it) }
+                    onCheckedChange = { viewModel.onAppFilterEnabledChange(it) },
+                    modifier = Modifier.padding(start = 8.dp)
                 )
             }
             
@@ -293,9 +425,12 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
             )
             
-            // 添加刷新按钮
+            // 替换刷新按钮部分
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // 添加应用计数显示
@@ -307,14 +442,28 @@ fun SettingsScreen(
                             filteredApps.count { it.isSelected }
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.align(Alignment.CenterVertically)
+                        modifier = Modifier.padding(start = 4.dp)
                     )
                 }
                 
-                TextButton(
-                    onClick = { viewModel.loadInstalledApps() }
+                Button(
+                    onClick = { viewModel.loadInstalledApps() },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    shape = MaterialTheme.shapes.small
                 ) {
-                    Text(stringResource(R.string.refresh_app_list))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh, 
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.refresh_app_list))
+                    }
                 }
             }
             
@@ -325,6 +474,7 @@ fun SettingsScreen(
                 label = { Text(stringResource(R.string.search_apps_label)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
@@ -377,12 +527,14 @@ fun SettingsScreen(
                     )
                 }
             } else {
-                Card(
+                // 移除应用列表周围的卡片，直接显示列表
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(400.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    tonalElevation = 0.dp
                 ) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
@@ -408,7 +560,8 @@ fun SettingsScreen(
         val uriHandler = LocalUriHandler.current
         val donateUrl = stringResource(R.string.donate_url)
         
-        SettingsCard(title = stringResource(R.string.about_title)) {
+        // 关于与支持区域
+        SettingsSection(title = stringResource(R.string.about_title)) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -422,7 +575,8 @@ fun SettingsScreen(
                 // 捐赠按钮
                 Button(
                     onClick = { try { uriHandler.openUri(donateUrl) } catch (e: Exception) { /* 处理错误 */ } },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small
                 ) {
                     Icon(
                         Icons.Filled.Favorite,
@@ -430,6 +584,130 @@ fun SettingsScreen(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     Text(stringResource(R.string.donate_button))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp)
+    ) {
+        // 分区标题
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        // 分隔线
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 内容
+        this.content()
+    }
+}
+
+@Composable
+fun PermissionItem(
+    title: String,
+    isChecked: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    description: String? = null // 可选的描述文本
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() } // 确保点击响应整个区域
+            .padding(vertical = 8.dp),
+        color = Color.Transparent
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                // 图标使用圆形背景
+                Surface(
+                    color = if (isChecked) 
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    else 
+                        MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = title,
+                            tint = if (isChecked) 
+                                MaterialTheme.colorScheme.primary 
+                            else 
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(16.dp))
+                
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (description != null) {
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            // 状态指示器
+            if (isChecked) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = stringResource(R.string.permission_granted_desc),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            } else {
+                // 当权限未授予时，显示"前往设置"按钮而不是图标
+                Button(
+                    onClick = onClick,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(R.string.permission_status_action_required),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
             }
         }
@@ -486,11 +764,9 @@ fun AppItem(
                 
                 // 添加系统应用标记
                 if (app.isSystemApp) {
-                    Card(
+                    Surface(
                         modifier = Modifier.padding(start = 4.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
                         shape = MaterialTheme.shapes.extraSmall
                     ) {
                         Text(
@@ -530,125 +806,31 @@ fun AppItem(
 }
 
 @Composable
-fun SettingsCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
+fun KeywordChips(keywords: String) {
+    val keywordList = keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    if (keywordList.isNotEmpty()) {
+        LazyRow(
             modifier = Modifier
-                .padding(16.dp)
                 .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(modifier = Modifier.height(12.dp))
-            this.content()
-        }
-    }
-}
-
-@Composable
-fun PermissionItem(
-    title: String,
-    isChecked: Boolean,
-    onClick: () -> Unit,
-    icon: ImageVector,
-    description: String? = null // 可选的描述文本
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp), // 调整垂直内边距
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (description != null) {
+            items(keywordList) { keyword ->
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
                     Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = keyword,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
         }
-        Icon(
-            imageVector = if (isChecked) Icons.Filled.CheckCircle else Icons.Filled.Error, // 根据状态显示不同图标
-            contentDescription = if (isChecked) stringResource(R.string.permission_granted_desc) else stringResource(R.string.permission_not_granted_desc),
-            tint = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error.copy(alpha = 0.7f) // 未授予时使用错误颜色
-        )
     }
 }
-
-// 专门为 MIUI 权限项设计的 Composable
-@Composable
-fun MiuiPermissionItem(
-    title: String,
-    description: String,
-    status: Int, // 使用 AppOpsManager 的 MODE_* 常量
-    onClick: () -> Unit,
-    icon: ImageVector
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick) // 整个行可点击
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant // 中性颜色
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        // 右侧显示一个操作按钮，而不是简单的勾选状态
-        TextButton(onClick = onClick) {
-            Text(
-                text = stringResource(R.string.permission_status_action_required),
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
 
 class SettingsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {

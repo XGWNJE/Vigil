@@ -2,25 +2,25 @@
 <resources>
     <string name="app_name">Vigil</string>
     <string name="keywords_hint">输入关键词，用英文逗号分隔</string>
-    <string name="select_ringtone_button">选择铃声</string>
+    <string name="select_ringtone_button">选择提醒音</string>
     <string name="selected_ringtone_label">当前铃声: %s</string>
-    <string name="no_ringtone_selected">未选择铃声</string>
-    <string name="enable_service_switch">通知提醒</string>
+    <string name="no_ringtone_selected">未选择提醒音</string>
+    <string name="enable_service_switch">通知监听</string>
     <string name="service_status_label">服务状态:</string>
     <string name="service_running">监听中</string>
     <string name="service_stopped">已停止</string>
     <string name="service_initializing">初始化中</string>
-    <string name="grant_notification_access_button">授予通知读取权限</string>
-    <string name="grant_dnd_access_button">授予勿扰模式读取权限</string>
+    <string name="grant_notification_access_button">通知监听权限</string>
+    <string name="grant_dnd_access_button">勿扰模式权限</string>
     <string name="notification_listener_service_label">Vigil 通知监听服务</string>
     <string name="permission_notification_access_missing">需要通知读取权限以运行服务。</string>
     <string name="permission_dnd_access_missing_for_check">需要勿扰模式读取权限以检查状态。</string>
     <string name="keywords_label">监控关键词</string>
-    <string name="ringtone_selection_title">选择一个铃声</string>
+    <string name="ringtone_selection_title">选择提醒音</string>
     <string name="save_settings_button">保存设置</string>
     <string name="settings_saved">设置已保存</string>
     <string name="error_saving_settings">保存设置失败</string>
-    <string name="default_ringtone_name">默认铃声</string>
+    <string name="default_ringtone_name">默认提醒音</string>
     <string name="notification_permission_dialog_title">权限请求</string>
     <string name="notification_permission_dialog_message">为了使应用正常工作，请在系统设置中授予"通知使用权"。</string>
     <string name="dnd_permission_dialog_message">为了检查勿扰模式状态，请在系统设置中授予"勿扰权限"。</string>
@@ -32,14 +32,14 @@
     <string name="alert_dialog_confirm_button_long">收到提醒</string>
     <string name="alert_dialog_message_default">检测到匹配的关键词通知。</string>
     <string name="alert_dialog_confirm_button">知道了</string>
-    <string name="grant_overlay_permission_button">授予悬浮窗权限</string>
+    <string name="grant_overlay_permission_button">悬浮窗权限</string>
     <string name="overlay_permission_dialog_title">悬浮窗权限</string>
     <string name="overlay_permission_dialog_message">为了在您使用其他应用或锁屏时弹出提醒窗口，请授予"在其他应用上层显示"的权限。</string>
     <string name="overlay_permission_missing">需要悬浮窗权限以弹出提醒窗口。</string>
     <string name="notification_channel_name">关键词提醒</string>
     <string name="notification_channel_description">当检测到关键词时发出的通知和提醒</string>
     <string name="alert_dialog_message_format">通知内容: %1$s</string>
-    <string name="grant_post_notifications_permission_button">授予发送通知权限 (Android 13+)</string>
+    <string name="grant_post_notifications_permission_button">发送通知权限</string>
     <string name="post_notifications_permission_dialog_title">发送通知权限</string>
     <string name="post_notifications_permission_dialog_message">为了在匹配到关键词时发送备选通知，请授予应用发送通知的权限 (Android 13+)。</string>
     <string name="post_notifications_permission_missing">需要发送通知权限以发送备选提醒。</string>
@@ -48,10 +48,10 @@
     <string name="service_status_recovering">恢复中</string>
     <string name="restart_service_button">重启服务</string>
 
-    <string name="permissions_settings_title">设置</string>
-    <string name="notification_configuration_title">通知</string>
-    <string name="app_filter_settings_title">应用过滤设定</string>
-    <string name="filter_apps_switch_label">仅监听指定通讯应用</string>
+    <string name="permissions_settings_title">权限设置</string>
+    <string name="notification_configuration_title">提醒设置</string>
+    <string name="app_filter_settings_title">应用过滤</string>
+    <string name="filter_apps_switch_label">仅监听指定应用</string>
     <string name="filter_apps_switch_summary_on">当前仅监听选中的应用通知</string>
     <string name="filter_apps_switch_summary_off">当前监听所有应用的通知</string>
     <string name="filter_apps_description">开启后，将只处理来自您选中应用的通知。关闭则监听所有应用的通知。请在下方选择您想要监听的应用。</string>
@@ -63,7 +63,7 @@
     <string name="no_apps_found">未找到应用</string>
     <string name="loading_apps">正在加载应用...</string>
     <string name="refresh_app_list">刷新应用列表</string>
-    <string name="system_app_label">系统应用</string>
+    <string name="system_app_label">系统</string>
     <string name="app_count_format">共 %1$d 个应用，已选择 %2$d 个</string>
 
     <!-- 捐赠相关字符串 -->
@@ -84,13 +84,15 @@
     <string name="error_starting_service">启动失败: %s</string>
 
     <string name="foreground_service_description">Vigil 后台运行</string>
-    <string name="permission_granted_desc">权限已授予</string>
-    <string name="permission_not_granted_desc">权限未授予</string>
+    <string name="permission_granted_desc">已授权</string>
+    <string name="permission_not_granted_desc">未授权</string>
 
-    <string name="permission_miui_background_popup_title">后台弹出界面</string>
-    <string name="permission_miui_background_popup_description">建议开启此权限以确保提醒窗口能从后台正常弹出。如果未开启，提醒可能仅在应用内或通过通知显示。</string>
-    <string name="permission_status_action_required">前往设置</string>
-    <string name="permission_status_unknown_or_not_applicable">状态未知或不适用</string>
+    <string name="permission_background_popup_title">后台弹窗权限</string>
+    <string name="permission_background_popup_description">需要此权限以确保在锁屏状态和使用其他应用时能正常弹出提醒窗口</string>
+    <string name="permission_status_action_required">前往授权</string>
+    <string name="permission_status_unknown_or_not_applicable">状态未知</string>
     <string name="error_opening_miui_settings">无法直接打开后台弹窗权限设置，请尝试手动前往"应用设置"或"权限管理"查找。</string>
+
+    <string name="miui_permission_note">MIUI系统需要额外在"安全中心"授权</string>
 
 </resources>

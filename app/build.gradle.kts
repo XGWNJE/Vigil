@@ -116,6 +116,9 @@ dependencies {
     // LiveData 与 Compose 的集成库 (如果您需要在 Compose 中观察 LiveData)
     implementation("androidx.compose.runtime:runtime-livedata")
 
+    // Google Accompanist 库 - Flow Layout (用于FlowRow)
+    implementation("com.google.accompanist:accompanist-flowlayout:0.32.0")
+
 
     // *** 测试依赖 ***
     testImplementation("junit:junit:4.13.2")

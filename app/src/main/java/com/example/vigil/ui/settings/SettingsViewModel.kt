@@ -94,7 +94,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "SettingsViewModel created.")
         _isMiuiDevice.value = PermissionUtils.isMiui() // 初始化时检测是否为 MIUI
         updatePermissionStates()
-        loadInstalledApps() // 加载已安装应用列表
+        loadInstalledApps() // 只在初始化时加载应用列表
         loadSettings() // 加载关键词和铃声设置
     }
 

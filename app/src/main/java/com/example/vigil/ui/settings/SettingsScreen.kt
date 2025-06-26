@@ -150,11 +150,7 @@ fun SettingsScreen(
     LaunchedEffect(hasNotificationAccess) {
         viewModel.updatePermissionStates() // This will also update MIUI permission status
         
-        // 当通知访问权限获得时，刷新应用列表
-        if (hasNotificationAccess) {
-            Log.d("SettingsScreen", "通知权限已获取，正在刷新应用列表")
-            viewModel.loadInstalledApps()
-        }
+        // 移除自动刷新应用列表的代码，仅在用户主动刷新时获取列表
         
         viewModel.requestNotificationListenerPermissionCallback = {
             activity?.let { PermissionUtils.requestNotificationListenerPermission(it) }
@@ -433,23 +429,33 @@ fun SettingsScreen(
             ) {
                 // 添加应用计数显示
                 if (!isLoadingApps) {
-                    Text(
-                        text = stringResource(
-                            R.string.app_count_format, 
-                            filteredApps.size, 
-                            filteredApps.count { it.isSelected }
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 4.dp)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(
+                                R.string.app_count_format, 
+                                filteredApps.size, 
+                                filteredApps.count { it.isSelected }
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                        
+                        // 添加刷新提示
+                        Text(
+                            text = stringResource(R.string.app_list_refresh_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                        )
+                    }
                 }
                 
                 Button(
                     onClick = { viewModel.loadInstalledApps() },
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
                     shape = MaterialTheme.shapes.small
                 ) {
@@ -457,7 +463,7 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.Default.Refresh, 
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(stringResource(R.string.refresh_app_list))

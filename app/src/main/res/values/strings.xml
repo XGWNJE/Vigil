@@ -65,6 +65,7 @@
     <string name="refresh_app_list">刷新应用列表</string>
     <string name="system_app_label">系统</string>
     <string name="app_count_format">共 %1$d 个应用，已选择 %2$d 个</string>
+    <string name="app_list_refresh_hint">应用列表仅在启动时和手动刷新时更新</string>
 
     <!-- 捐赠相关字符串 -->
     <string name="donate_url">https://github.com/XGWNJE/Vigil</string>

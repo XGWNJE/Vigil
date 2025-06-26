@@ -27,6 +27,15 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../keystore/vigil.keystore")
+            storePassword = "vigilapp"
+            keyAlias = "vigil"
+            keyPassword = "vigilapp"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true // 启用代码压缩（移除未使用的代码）
@@ -35,6 +44,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro" // Proguard 规则文件
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

@@ -14,6 +14,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,9 +40,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error // 新增：用于表示需要操作或未授权
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Link
@@ -55,29 +61,33 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton // 新增：用于权限项的按钮
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -89,6 +99,7 @@ import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.ui.theme.VigilTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.vector.ImageVector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -242,69 +253,30 @@ fun SettingsScreen(
                 },
                 icon = Icons.Filled.PhoneAndroid
             )
-
-            // 为MIUI设备添加额外提示
-            if (isMiuiDevice) {
-                Text(
-                    text = stringResource(R.string.miui_permission_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(start = 56.dp, top = 4.dp)
-                )
-            }
         }
         
         // 关键词监控设置区域
         SettingsSection(title = stringResource(R.string.notification_configuration_title)) {
-            Column(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                // 关键词输入框的标签
-                Text(
-                    text = stringResource(R.string.keywords_label),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                // 格式化显示已输入的关键词
-                KeywordChips(keywords)
-                
-                OutlinedTextField(
-                    value = keywords,
-                    onValueChange = { viewModel.onKeywordsChange(it) },
-                    placeholder = { Text(stringResource(R.string.keywords_hint)) },
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small,
-                    minLines = 2,
-                    maxLines = 4
-                )
-                
-                // 添加提示文本
-                Text(
-                    text = "系统将自动监控包含上述关键词的通知",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // 使用提取出来的关键词输入组件
+                KeywordInput(
+                    keywords = keywords,
+                    onKeywordsChange = { viewModel.onKeywordsChange(it) },
+                    onSave = { viewModel.saveSettings() }
                 )
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // 提醒音设置
+                // 提醒音设置部分
                 Text(
                     text = stringResource(R.string.select_ringtone_button),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 
-                Row(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline,
-                            shape = MaterialTheme.shapes.small
-                        )
                         .clickable {
                             val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
                                 putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
@@ -320,38 +292,64 @@ fun SettingsScreen(
                             } catch (e: Exception) {
                                 Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
-                        }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Notifications,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = selectedRingtoneName,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Button(
-                    onClick = { viewModel.saveSettings() },
-                    modifier = Modifier
-                        .fillMaxWidth(),
+                        },
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     shape = MaterialTheme.shapes.small
                 ) {
-                    Text(stringResource(R.string.save_settings_button))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = selectedRingtoneName,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                // 提示文本
+                Text(
+                    text = "当检测到关键词时，将播放此提醒音",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+                )
+                
+                // 保存按钮
+                Button(
+                    onClick = { viewModel.saveSettings() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.save_settings_button))
+                    }
                 }
             }
         }
@@ -809,27 +807,179 @@ fun AppItem(
 fun KeywordChips(keywords: String) {
     val keywordList = keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
     if (keywordList.isNotEmpty()) {
-        LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(keywordList) { keyword ->
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    shape = MaterialTheme.shapes.small
+        Column(modifier = Modifier.fillMaxWidth()) {
+            var currentRowTags = mutableListOf<String>()
+            var currentRowWidth = 0f
+            val density = LocalDensity.current
+            val maxWidth = with(density) { 
+                LocalConfiguration.current.screenWidthDp.dp.toPx() - 32.dp.toPx() 
+            }
+            
+            // 测量每个标签的宽度并组织成多行
+            keywordList.forEachIndexed { index, keyword ->
+                val textMeasurer = rememberTextMeasurer()
+                val textLayoutResult = textMeasurer.measure(
+                    text = AnnotatedString(keyword),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                val tagWidth = with(density) { 
+                    textLayoutResult.size.width.toFloat() + 16.dp.toPx() + 16.dp.toPx() // 文本宽度+左右padding
+                }
+                
+                // 如果当前行放不下这个标签，开始一个新行
+                if (currentRowWidth + tagWidth > maxWidth) {
+                    // 显示当前行的所有标签
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        currentRowTags.forEach { tag ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    // 重置当前行，将当前标签作为新行的第一个
+                    currentRowTags = mutableListOf(keyword)
+                    currentRowWidth = tagWidth
+                } else {
+                    // 当前行可以放下这个标签
+                    currentRowTags.add(keyword)
+                    currentRowWidth += tagWidth
+                }
+                
+                // 如果是最后一个标签，确保显示最后一行
+                if (index == keywordList.size - 1 && currentRowTags.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        currentRowTags.forEach { tag ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                shape = MaterialTheme.shapes.small,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 创建一个组件专门处理关键词输入、显示和编辑
+@Composable
+fun KeywordInput(
+    keywords: String,
+    onKeywordsChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    var isEditing by remember { mutableStateOf(false) }
+    
+    // 标题和关键词编辑按钮
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.keywords_label),
+            style = MaterialTheme.typography.titleMedium
+        )
+        
+        // 编辑/确认按钮
+        if (!isEditing) {
+            IconButton(onClick = { isEditing = true }) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "编辑关键词",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        } else {
+            Row {
+                // 取消按钮
+                IconButton(onClick = { isEditing = false }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "取消",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+                
+                // 保存按钮
+                IconButton(
+                    onClick = { 
+                        isEditing = false
+                        onSave()
+                    }
                 ) {
-                    Text(
-                        text = keyword,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "保存",
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
             }
         }
     }
+    
+    Spacer(modifier = Modifier.height(8.dp))
+    
+    // 显示格式化的关键词
+    KeywordChips(keywords)
+    
+    // 可编辑文本框，仅在编辑状态下显示
+    AnimatedVisibility(
+        visible = isEditing,
+        enter = expandVertically(),
+        exit = shrinkVertically()
+    ) {
+        OutlinedTextField(
+            value = keywords,
+            onValueChange = onKeywordsChange,
+            placeholder = { Text(stringResource(R.string.keywords_hint)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            shape = MaterialTheme.shapes.small,
+            minLines = 2,
+            maxLines = 4
+        )
+    }
+    
+    // 添加提示文本
+    val keywordList = keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    Text(
+        text = if (keywordList.isEmpty()) 
+            "请添加需要监控的关键词" 
+        else 
+            "系统将自动监控包含上述关键词的通知",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+    )
 }
 
 class SettingsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {

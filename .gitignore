@@ -1,15 +1,69 @@
+# Built outputs
 *.iml
-.gradle
+.gradle/
 /local.properties
-/.idea/caches
-/.idea/libraries
+/build/
+/captures/
+/app/build/
+.externalNativeBuild/
+.cxx/
+
+# IntelliJ / Android Studio
+/.idea/caches/
+/.idea/libraries/
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
+/.idea/.gitignore
+/.idea/gradle.xml
+/.idea/deploymentTargetDropDown.xml
+/.idea/migrations.xml
+*.ipr
+*.iws
+
+# macOS
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Signing & secrets
+*.jks
+*.keystore
+keystore.properties
+release.properties
+google-services.json
+*.p12
+*.pfx
+
+# Kotlin / Java
+*.class
+*.jar
+*.war
+*.ear
+*.aar
+
+# Gradle wrapper (keep gradlew scripts, ignore generated jars)
+gradle/wrapper/gradle-wrapper.jar
+
+# Generated / temp
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+out/
+
+# NDK / CMake
+*.so
+*.o
+*.a
+CMakeFiles/
+CMakeCache.txt

@@ -6,7 +6,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.annotation.StringRes
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.runtime.Composable
 import com.example.vigil.R
 
@@ -16,26 +15,28 @@ import com.example.vigil.R
  */
 sealed class AppDestinations(
     val route: String,
-    val iconResId: Int, // 使用资源ID而不是ImageVector
-    @StringRes val titleResId: Int // 使用 StringRes 引用字符串资源ID
+    val icon: ImageVector,
+    @StringRes val titleResId: Int
 ) {
     // 通知屏幕
     object Monitoring : AppDestinations(
-        "monitoring", 
-        R.drawable.ic_notification_icon, 
+        "monitoring",
+        Icons.Filled.Notifications,
         R.string.notification_configuration_title
     )
     // 设置屏幕
     object Settings : AppDestinations(
-        "settings", 
-        R.drawable.ic_settings, 
+        "settings",
+        Icons.Filled.Settings,
         R.string.permissions_settings_title
     )
 
-    @Composable
-    fun getIcon(): ImageVector {
-        return ImageVector.vectorResource(id = iconResId)
-    }
+    // 应用过滤屏幕（不在底部导航栏，从 Settings 页面进入）
+    object AppFilter : AppDestinations(
+        "app_filter",
+        Icons.Filled.Settings,
+        R.string.app_filter_settings_title
+    )
 }
 
 /**

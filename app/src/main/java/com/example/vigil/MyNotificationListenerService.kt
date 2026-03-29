@@ -7,10 +7,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -24,21 +22,29 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat as CoreNotificationManagerCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.vigil.ui.monitoring.MonitoringViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class MyNotificationListenerService : NotificationListenerService() {
 
     private lateinit var sharedPreferencesHelper: SharedPreferencesHelper
     private var currentRingtoneUri: Uri? = null
-    private var keywords: List<String> = emptyList()
+    @Volatile private var keywords: List<String> = emptyList()
 
-    private var filterAppsEnabled: Boolean = false
-    private var filteredAppPackages: Set<String> = emptySet()
+    @Volatile private var filterAppsEnabled: Boolean = false
+    @Volatile private var filteredAppPackages: Set<String> = emptySet()
 
     private var mediaPlayer: MediaPlayer? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private enum class PlayerState { IDLE, PREPARING, PLAYING, STOPPED }
+    @Volatile private var playerState = PlayerState.IDLE
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
@@ -53,7 +59,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val WAKELOCK_TAG = "Vigil::KeywordAlertWakeLock"
         private const val FOREGROUND_NOTIFICATION_ID = 717
         private const val FOREGROUND_CHANNEL_ID = "vigil_foreground_channel"
-        private const val WAKELOCK_TIMEOUT_MS = 2 * 60 * 1000L
+        private const val WAKELOCK_TIMEOUT_MS = 5 * 60 * 1000L  // 5 分钟，应对激进电池优化设备
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
@@ -64,24 +70,18 @@ class MyNotificationListenerService : NotificationListenerService() {
         const val EXTRA_ALERT_KEYWORD_FROM_SERVICE = "com.example.vigil.EXTRA_ALERT_KEYWORD_FROM_SERVICE"
     }
 
-    private val alertConfirmedReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_ALERT_CONFIRMED_FROM_UI) {
-                Log.i(TAG, "收到来自 UI 的确认广播，停止铃声和释放锁。")
-                stopRingtoneAndLock()
-            }
-        }
-    }
-
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "服务创建中...")
         sharedPreferencesHelper = SharedPreferencesHelper(applicationContext)
         loadSettings()
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            alertConfirmedReceiver,
-            IntentFilter(ACTION_ALERT_CONFIRMED_FROM_UI)
-        )
+        // 监听 UI 确认报警事件（替代 LocalBroadcastManager alertConfirmedReceiver）
+        serviceScope.launch {
+            VigilEventBus.alertConfirmed.collect {
+                Log.i(TAG, "收到来自 UI 的确认事件，停止铃声和释放锁。")
+                stopRingtoneAndLock()
+            }
+        }
         createNotificationChannel()
         
         // 使用简单方式启动前台服务
@@ -96,7 +96,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         loadSettings()
         startHeartbeat()
         sendServiceStatusUpdate(true)
-        
+
         // 确保更新通知以反映最新状态
         updateForegroundNotification()
         Log.d(TAG, "监听器连接后已更新前台通知")
@@ -107,7 +107,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         Log.w(TAG, "通知监听器已断开连接！")
         stopHeartbeat()
         sendServiceStatusUpdate(false)
-        
+
         // 确保更新通知以反映最新状态
         updateForegroundNotification()
         Log.d(TAG, "监听器断开连接后已更新前台通知")
@@ -134,7 +134,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.w(TAG, "服务销毁中...")
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(alertConfirmedReceiver)
+        serviceScope.cancel()
         stopHeartbeat()
         stopRingtoneAndLock()
         stopForeground(Service.STOP_FOREGROUND_REMOVE)
@@ -194,21 +194,27 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         if (matchedKeyword != null) {
             val finalMatchedKeyword = matchedKeyword
+            // 获取来源应用名称（用于 Dialog 展示）
+            val sourceAppName = try {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(sbn.packageName, 0)
+                ).toString()
+            } catch (e: Exception) { null }
+            val snippet = "$title $text".trim().take(100).ifEmpty { null }
+
             handler.post {
                 acquireWakeLock()
                 playRingtoneLooping()
 
-                // 1. 发送 LocalBroadcast 给 ViewModel (如果应用在前台，ViewModel 可以直接响应)
-                val localAlertIntent = Intent(MonitoringViewModel.ACTION_SHOW_KEYWORD_ALERT).apply {
-                    putExtra(MonitoringViewModel.EXTRA_KEYWORD_FOR_ALERT, finalMatchedKeyword)
+                // 通过 VigilEventBus 通知 ViewModel 显示报警 Dialog（替代 LocalBroadcastManager）
+                serviceScope.launch {
+                    VigilEventBus.keywordAlert.emit(AlertEvent(finalMatchedKeyword, sourceAppName, snippet))
                 }
-                LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(localAlertIntent)
-                Log.i(TAG, "已发送 LocalBroadcast (ACTION_SHOW_KEYWORD_ALERT) 以显示关键词提醒对话框 (关键词: $finalMatchedKeyword)。")
+                Log.i(TAG, "已发送 AlertEvent (关键词: $finalMatchedKeyword, 来源: $sourceAppName)。")
 
-                // 2. 尝试启动 MainActivity 并将其带到前台，传递显示提醒的指令
-                // 这有助于在应用不在前台时也能触发对话框
+                // 启动 MainActivity 带到前台（应用不在前台时确保 Dialog 可见）
                 val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
-                    action = ACTION_SHOW_ALERT_FROM_SERVICE // 自定义 Action
+                    action = ACTION_SHOW_ALERT_FROM_SERVICE
                     putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, finalMatchedKeyword)
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                 }
@@ -217,7 +223,6 @@ class MyNotificationListenerService : NotificationListenerService() {
                     Log.i(TAG, "已尝试启动 MainActivity 以显示提醒 (关键词: $finalMatchedKeyword)。")
                 } catch (e: Exception) {
                     Log.e(TAG, "启动 MainActivity 时发生错误: ", e)
-                    // 如果启动 Activity 失败，可以考虑发送一个高优先级通知作为备选
                     sendFallbackNotification(finalMatchedKeyword, "请打开应用查看详情")
                 }
             }
@@ -305,6 +310,11 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun playRingtoneLooping() {
+        // 防止并发触发：正在准备或播放中则忽略新请求
+        if (playerState == PlayerState.PREPARING || playerState == PlayerState.PLAYING) {
+            Log.d(TAG, "playRingtoneLooping: 已在播放中 ($playerState)，忽略重复请求。")
+            return
+        }
         stopRingtone()
         val ringtoneUriToPlay = currentRingtoneUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         if (ringtoneUriToPlay == null) {
@@ -312,6 +322,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             releaseWakeLock()
             return
         }
+        playerState = PlayerState.PREPARING
         try {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(applicationContext, ringtoneUriToPlay)
@@ -323,29 +334,38 @@ class MyNotificationListenerService : NotificationListenerService() {
                 isLooping = true
                 prepareAsync()
                 setOnPreparedListener { mp ->
-                    Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
-                    try {
-                        if (!mp.isPlaying) {
+                    if (playerState == PlayerState.PREPARING) {
+                        playerState = PlayerState.PLAYING
+                        Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
+                        try {
                             mp.start()
+                        } catch (startEx: IllegalStateException) {
+                            Log.e(TAG, "MediaPlayer 调用 start() 时出错", startEx)
+                            playerState = PlayerState.STOPPED
+                            stopRingtoneAndLock()
                         }
-                    } catch (startEx: IllegalStateException) {
-                        Log.e(TAG, "MediaPlayer 调用 start() 时出错", startEx)
-                        stopRingtoneAndLock()
+                    } else {
+                        // 在 prepare 期间已被取消，释放此孤立实例
+                        Log.d(TAG, "onPrepared: 播放已取消 ($playerState)，释放孤立 MediaPlayer。")
+                        mp.release()
                     }
                 }
                 setOnErrorListener { _, what, extra ->
                     Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, URI: $ringtoneUriToPlay")
+                    playerState = PlayerState.STOPPED
                     stopRingtoneAndLock()
                     true
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "设置 MediaPlayer 数据源或准备时出错", e)
+            playerState = PlayerState.STOPPED
             stopRingtoneAndLock()
         }
     }
 
     private fun stopRingtone() {
+        playerState = PlayerState.STOPPED
         mediaPlayer?.let {
             try {
                 if (it.isPlaying) {
@@ -357,6 +377,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 Log.e(TAG, "停止或释放 MediaPlayer 时出错", e)
             } finally {
                 mediaPlayer = null
+                playerState = PlayerState.IDLE
             }
         }
     }
@@ -475,8 +496,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun sendHeartbeat() {
-        val intent = Intent(ACTION_HEARTBEAT)
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        serviceScope.launch { VigilEventBus.heartbeat.emit(Unit) }
     }
 
     private fun startHeartbeat() {
@@ -491,10 +511,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun sendServiceStatusUpdate(isConnected: Boolean) {
-        val intent = Intent(MainActivity.ACTION_SERVICE_STATUS_UPDATE).apply {
-            putExtra(MainActivity.EXTRA_SERVICE_CONNECTED, isConnected)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
-        Log.d(TAG, "发送服务连接状态更新广播: $isConnected")
+        serviceScope.launch { VigilEventBus.serviceStatus.emit(isConnected) }
+        Log.d(TAG, "发送服务连接状态更新: $isConnected")
     }
 }

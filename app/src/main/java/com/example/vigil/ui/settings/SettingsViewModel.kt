@@ -42,8 +42,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     // --- 关键词和铃声设置 ---
-    private val _keywords = mutableStateOf("")
-    val keywords: State<String> = _keywords
+    // 用 mutableStateListOf 替代逗号字符串，支持 Chip 标签式输入
+    private val _keywordList = mutableStateListOf<String>()
+    val keywordList: List<String> = _keywordList
 
     private val _selectedRingtoneUri = mutableStateOf<Uri?>(null)
     val selectedRingtoneUri: State<Uri?> = _selectedRingtoneUri
@@ -264,13 +265,32 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // --- 关键词和铃声相关方法 ---
     private fun loadSettings() {
-        _keywords.value = sharedPreferencesHelper.getKeywords().joinToString(",")
+        _keywordList.clear()
+        _keywordList.addAll(sharedPreferencesHelper.getKeywords())
         _selectedRingtoneUri.value = sharedPreferencesHelper.getRingtoneUri()
         updateSelectedRingtoneName()
     }
 
+    fun addKeyword(keyword: String) {
+        val trimmed = keyword.trim()
+        if (trimmed.isNotEmpty() && !_keywordList.contains(trimmed)) {
+            _keywordList.add(trimmed)
+            sharedPreferencesHelper.saveKeywords(_keywordList.toList())
+            notifyServiceToUpdateSettingsCallback?.invoke()
+        }
+    }
+
+    fun removeKeyword(keyword: String) {
+        _keywordList.remove(keyword)
+        sharedPreferencesHelper.saveKeywords(_keywordList.toList())
+        notifyServiceToUpdateSettingsCallback?.invoke()
+    }
+
+    @Deprecated("Use addKeyword/removeKeyword instead")
     fun onKeywordsChange(newKeywords: String) {
-        _keywords.value = newKeywords
+        // 保留兼容性：将逗号分隔字符串解析为列表
+        _keywordList.clear()
+        _keywordList.addAll(newKeywords.split(",").map { it.trim() }.filter { it.isNotEmpty() })
     }
 
     fun onRingtoneUriSelected(uri: Uri?) {
@@ -293,10 +313,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun saveSettings() {
         viewModelScope.launch {
-            // 保存关键词
-            val keywordsText = _keywords.value
-            val keywordsList = keywordsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-            sharedPreferencesHelper.saveKeywords(keywordsList)
+            // 保存关键词（keywordList 已实时自动保存，这里再确保一次）
+            sharedPreferencesHelper.saveKeywords(_keywordList.toList())
             
             // 保存铃声
             sharedPreferencesHelper.saveRingtoneUri(_selectedRingtoneUri.value)
@@ -312,8 +330,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending broadcast to update service", e)
             }
-            
-            Log.i(TAG, "设置已保存: 关键词=${keywordsList.size}个, 铃声URI=${_selectedRingtoneUri.value}")
+
+            Log.i(TAG, "设置已保存: 关键词=${keywordList.size}个, 铃声URI=${_selectedRingtoneUri.value}")
         }
     }
 }

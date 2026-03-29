@@ -3,23 +3,14 @@ package com.example.vigil.ui.settings
 
 import android.app.Activity
 import android.app.Application
-import android.app.AppOpsManager // 新增
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,9 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -43,23 +32,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Error // 新增：用于表示需要操作或未授权
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PhoneAndroid // 新增：MIUI 图标示例
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -67,7 +44,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -79,32 +55,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.ui.theme.VigilTheme
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.vector.ImageVector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    viewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory(LocalContext.current.applicationContext as Application))
+    viewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory(LocalContext.current.applicationContext as Application)),
+    onNavigateToAppFilter: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -115,21 +83,12 @@ fun SettingsScreen(
     val canDrawOverlays by viewModel.canDrawOverlays
     val canPostNotifications by viewModel.canPostNotifications
 
-    // MIUI 相关状态
-    val isMiuiDevice by viewModel.isMiuiDevice
-    val miuiBackgroundPopupPermissionStatus by viewModel.miuiBackgroundPopupPermissionStatus
-
-    // 应用过滤状态
+    // 应用过滤状态（仅用于导航入口显示文字）
     val isAppFilterEnabled by viewModel.isAppFilterEnabled
-    val isLoadingApps by viewModel.isLoadingApps
-    val showOnlySelected by viewModel.showOnlySelectedApps
-    val searchQuery by viewModel.searchQuery
-    val filteredApps = viewModel.getFilteredApps()
     
     // 关键词和铃声设置
-    val keywords by viewModel.keywords
+    val keywordList = viewModel.keywordList
     val selectedRingtoneName by viewModel.selectedRingtoneName
-
     val ringtoneSelectionTitle = stringResource(R.string.ringtone_selection_title)
 
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
@@ -163,10 +122,6 @@ fun SettingsScreen(
         }
         viewModel.requestPostNotificationsPermissionCallback = {
             activity?.let { PermissionUtils.requestPostNotificationsPermission(it) }
-        }
-        // MIUI 权限请求回调
-        viewModel.requestMiuiBackgroundPopupPermissionCallback = {
-            activity?.let { PermissionUtils.requestMiuiBackgroundPopupPermission(it) }
         }
     }
 
@@ -226,41 +181,17 @@ fun SettingsScreen(
                 )
             }
             
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
-                thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            )
-            
-            // 后台弹窗权限 - 现在适用于所有设备
-            PermissionItem(
-                title = stringResource(R.string.permission_background_popup_title),
-                description = stringResource(R.string.permission_background_popup_description),
-                isChecked = canDrawOverlays, // 与悬浮窗权限保持一致
-                onClick = { 
-                    // 对于MIUI设备使用专用方法，其他设备则直接使用悬浮窗权限方法
-                    if (isMiuiDevice) {
-                        viewModel.requestMiuiBackgroundPopupPermissionCallback?.invoke()
-                        Toast.makeText(context, "正在跳转到后台弹窗权限设置", Toast.LENGTH_SHORT).show()
-                    } else {
-                        viewModel.requestOverlayPermissionCallback?.invoke()
-                        Toast.makeText(context, "正在跳转到悬浮窗权限设置", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                icon = Icons.Filled.PhoneAndroid
-            )
         }
-        
+
         // 关键词监控设置区域
         SettingsSection(title = stringResource(R.string.notification_configuration_title)) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // 使用提取出来的关键词输入组件
-                KeywordInput(
-                    keywords = keywords,
-                    onKeywordsChange = { viewModel.onKeywordsChange(it) },
-                    onSave = { viewModel.saveSettings() }
+                KeywordChipInput(
+                    keywords = keywordList,
+                    onAdd = { viewModel.addKeyword(it) },
+                    onRemove = { viewModel.removeKeyword(it) }
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // 提醒音设置部分
@@ -328,269 +259,43 @@ fun SettingsScreen(
                     text = "当检测到关键词时，将播放此提醒音",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
                 )
-                
-                // 保存按钮
-                Button(
-                    onClick = { viewModel.saveSettings() },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.save_settings_button))
-                    }
-                }
             }
         }
 
-        // 应用过滤设置区域
+        // 应用过滤设置区域 — 导航到独立全屏页，避免嵌套滚动
         SettingsSection(title = stringResource(R.string.app_filter_settings_title)) {
-            // 应用过滤开关
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .clickable { viewModel.onAppFilterEnabledChange(!isAppFilterEnabled) },
+                    .clickable { onNavigateToAppFilter() }
+                    .padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Surface(
-                        color = if (isAppFilterEnabled) 
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        else 
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.small,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = null,
-                                tint = if (isAppFilterEnabled) 
-                                    MaterialTheme.colorScheme.primary 
-                                else 
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.width(16.dp))
-                    
-                    Column {
-                        Text(
-                            text = stringResource(R.string.filter_apps_switch_label),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = if (isAppFilterEnabled) stringResource(R.string.filter_apps_switch_summary_on)
-                            else stringResource(R.string.filter_apps_switch_summary_off),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                
-                Switch(
-                    checked = isAppFilterEnabled,
-                    onCheckedChange = { viewModel.onAppFilterEnabledChange(it) },
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-            
-            // 应用过滤说明文本
-            Text(
-                text = stringResource(R.string.filter_apps_description),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
-            )
-            
-            // 替换刷新按钮部分
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // 添加应用计数显示
-                if (!isLoadingApps) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(
-                                R.string.app_count_format, 
-                                filteredApps.size, 
-                                filteredApps.count { it.isSelected }
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
-                        
-                        // 添加刷新提示
-                        Text(
-                            text = stringResource(R.string.app_list_refresh_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-                        )
-                    }
-                }
-                
-                Button(
-                    onClick = { viewModel.loadInstalledApps() },
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh, 
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.refresh_app_list))
-                    }
-                }
-            }
-            
-            // 搜索框
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.onSearchQueryChange(it) },
-                label = { Text(stringResource(R.string.search_apps_label)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_search))
-                        }
-                    }
-                }
-            )
-            
-            // "仅显示已选择的应用" 开关
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-                    .clickable { viewModel.toggleShowOnlySelected() },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = showOnlySelected,
-                    onCheckedChange = { viewModel.toggleShowOnlySelected() }
-                )
-                Text(
-                    text = stringResource(R.string.show_only_selected_apps),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            
-            // 应用列表
-            if (isLoadingApps) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (filteredApps.isEmpty()) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp)
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.no_apps_found),
-                        style = MaterialTheme.typography.bodyLarge,
+                        text = stringResource(R.string.filter_apps_switch_label),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = if (isAppFilterEnabled)
+                            stringResource(R.string.filter_apps_switch_summary_on)
+                        else
+                            stringResource(R.string.filter_apps_switch_summary_off),
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else {
-                // 移除应用列表周围的卡片，直接显示列表
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(400.dp),
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    tonalElevation = 0.dp
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(filteredApps) { app ->
-                            AppItem(
-                                app = app,
-                                onToggleSelection = { viewModel.toggleAppSelection(app.packageName) }
-                            )
-                            if (filteredApps.indexOf(app) < filteredApps.size - 1) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    thickness = 0.5.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                    }
-                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
-        val uriHandler = LocalUriHandler.current
-        val donateUrl = stringResource(R.string.donate_url)
-        
-        // 关于与支持区域
-        SettingsSection(title = stringResource(R.string.about_title)) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // 添加捐赠信息
-                Text(
-                    text = stringResource(R.string.donate_description),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                
-                // 捐赠按钮
-                Button(
-                    onClick = { try { uriHandler.openUri(donateUrl) } catch (e: Exception) { /* 处理错误 */ } },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Icon(
-                        Icons.Filled.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(stringResource(R.string.donate_button))
-                }
-            }
-        }
     }
 }
 
@@ -718,274 +423,108 @@ fun PermissionItem(
     }
 }
 
-@Composable
-fun AppItem(
-    app: AppInfo,
-    onToggleSelection: () -> Unit
-) {
-    val context = LocalContext.current
-    val appIcon = remember(app.packageName) {
-        try {
-            val packageManager = context.packageManager
-            packageManager.getApplicationIcon(app.packageName)
-        } catch (e: PackageManager.NameNotFoundException) {
-            null
-        }
-    }
-    
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggleSelection) // 整行可点击
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // 应用图标
-        appIcon?.let { icon ->
-            Image(
-                bitmap = icon.toBitmap().asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.size(40.dp)
-            )
-        } ?: Box(modifier = Modifier.size(40.dp))
-        
-        // 应用信息
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                
-                // 添加系统应用标记
-                if (app.isSystemApp) {
-                    Surface(
-                        modifier = Modifier.padding(start = 4.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = MaterialTheme.shapes.extraSmall
-                    ) {
-                        Text(
-                            text = stringResource(R.string.system_app_label),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-            
-            Text(
-                text = app.packageName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        
-        // 复选框 - 确保它也可以独立点击
-        Box(
-            modifier = Modifier
-                .clickable(
-                    onClick = onToggleSelection,
-                    indication = null, // 移除点击指示效果，防止与父级重叠
-                    interactionSource = remember { MutableInteractionSource() }
-                )
-                .padding(8.dp) // 增加可点击区域
-        ) {
-            Checkbox(
-                checked = app.isSelected,
-                onCheckedChange = { onToggleSelection() }
-            )
-        }
-    }
-}
 
+/**
+ * Chip 标签式关键词输入组件。
+ * 每个关键词显示为可删除的 chip，通过单行输入框逐条添加，自动保存，无需"保存"按钮。
+ */
 @Composable
-fun KeywordChips(keywords: String) {
-    val keywordList = keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-    if (keywordList.isNotEmpty()) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            var currentRowTags = mutableListOf<String>()
-            var currentRowWidth = 0f
-            val density = LocalDensity.current
-            val maxWidth = with(density) { 
-                LocalConfiguration.current.screenWidthDp.dp.toPx() - 32.dp.toPx() 
-            }
-            
-            // 测量每个标签的宽度并组织成多行
-            keywordList.forEachIndexed { index, keyword ->
-                val textMeasurer = rememberTextMeasurer()
-                val textLayoutResult = textMeasurer.measure(
-                    text = AnnotatedString(keyword),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                val tagWidth = with(density) { 
-                    textLayoutResult.size.width.toFloat() + 16.dp.toPx() + 16.dp.toPx() // 文本宽度+左右padding
-                }
-                
-                // 如果当前行放不下这个标签，开始一个新行
-                if (currentRowWidth + tagWidth > maxWidth) {
-                    // 显示当前行的所有标签
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        currentRowTags.forEach { tag ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                shape = MaterialTheme.shapes.small,
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
-                                Text(
-                                    text = tag,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                    // 重置当前行，将当前标签作为新行的第一个
-                    currentRowTags = mutableListOf(keyword)
-                    currentRowWidth = tagWidth
-                } else {
-                    // 当前行可以放下这个标签
-                    currentRowTags.add(keyword)
-                    currentRowWidth += tagWidth
-                }
-                
-                // 如果是最后一个标签，确保显示最后一行
-                if (index == keywordList.size - 1 && currentRowTags.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        currentRowTags.forEach { tag ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                shape = MaterialTheme.shapes.small,
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
-                                Text(
-                                    text = tag,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// 创建一个组件专门处理关键词输入、显示和编辑
-@Composable
-fun KeywordInput(
-    keywords: String,
-    onKeywordsChange: (String) -> Unit,
-    onSave: () -> Unit
+fun KeywordChipInput(
+    keywords: List<String>,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit
 ) {
-    var isEditing by remember { mutableStateOf(false) }
-    
-    // 标题和关键词编辑按钮
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    var inputText by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 标题
         Text(
-            text = stringResource(R.string.keywords_label),
-            style = MaterialTheme.typography.titleMedium
+            text = "监控关键词",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
         )
-        
-        // 编辑/确认按钮
-        if (!isEditing) {
-            IconButton(onClick = { isEditing = true }) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "编辑关键词",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+
+        // 已添加的关键词 chip 列表
+        if (keywords.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(keywords) { keyword ->
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = keyword,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = { onRemove(keyword) },
+                                modifier = Modifier.size(18.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "删除",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         } else {
-            Row {
-                // 取消按钮
-                IconButton(onClick = { isEditing = false }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "取消",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-                
-                // 保存按钮
-                IconButton(
-                    onClick = { 
-                        isEditing = false
-                        onSave()
+            Text(
+                text = "请添加需要监控的关键词",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
+        // 单条添加输入框
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("输入关键词") },
+                singleLine = true,
+                shape = MaterialTheme.shapes.small
+            )
+            IconButton(
+                onClick = {
+                    if (inputText.isNotBlank()) {
+                        onAdd(inputText)
+                        inputText = ""
                     }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "保存",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
+                },
+                enabled = inputText.isNotBlank()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "添加",
+                    tint = if (inputText.isNotBlank())
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
-    
-    Spacer(modifier = Modifier.height(8.dp))
-    
-    // 显示格式化的关键词
-    KeywordChips(keywords)
-    
-    // 可编辑文本框，仅在编辑状态下显示
-    AnimatedVisibility(
-        visible = isEditing,
-        enter = expandVertically(),
-        exit = shrinkVertically()
-    ) {
-        OutlinedTextField(
-            value = keywords,
-            onValueChange = onKeywordsChange,
-            placeholder = { Text(stringResource(R.string.keywords_hint)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            shape = MaterialTheme.shapes.small,
-            minLines = 2,
-            maxLines = 4
-        )
-    }
-    
-    // 添加提示文本
-    val keywordList = keywords.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-    Text(
-        text = if (keywordList.isEmpty()) 
-            "请添加需要监控的关键词" 
-        else 
-            "系统将自动监控包含上述关键词的通知",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
-    )
 }
 
 class SettingsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {

@@ -11,8 +11,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
@@ -26,12 +24,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import android.service.notification.NotificationListenerService
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -43,10 +42,13 @@ import com.example.vigil.ui.BottomNavDestinations
 import com.example.vigil.ui.dialogs.KeywordAlertDialog
 import com.example.vigil.ui.monitoring.MonitoringScreen
 import com.example.vigil.ui.monitoring.MonitoringViewModel
+import com.example.vigil.ui.settings.AppFilterScreen
 import com.example.vigil.ui.settings.SettingsScreen
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
 import com.example.vigil.ui.theme.VigilTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -74,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "MainActivity super.onCreate called.")
 
         sharedPreferencesHelper = SharedPreferencesHelper(this)
+        sharedPreferencesHelper.migrateKeywordsIfNeeded()  // 一次性迁移旧版关键词格式
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "Returned from system settings page.")
@@ -110,11 +113,6 @@ class MainActivity : AppCompatActivity() {
                         onConfirm = { this.monitoringViewModel.onKeywordAlertDialogConfirm() },
                         matchedKeyword = matchedKeyword
                     )
-                }
-
-                LaunchedEffect(intent) {
-                    Log.d(TAG, "LaunchedEffect in setContent. Current intent action: ${this@MainActivity.intent?.action}")
-                    handleIntentForAlert(this@MainActivity.intent)
                 }
             }
         }
@@ -248,17 +246,24 @@ class MainActivity : AppCompatActivity() {
 
     fun restartService() {
         Log.i(TAG, "MainActivity received restart service request.")
-        setNotificationListenerServiceComponentEnabled(false)
-        Handler(Looper.getMainLooper()).postDelayed({
-            Log.d(TAG, "Re-enabling service component...")
-            setNotificationListenerServiceComponentEnabled(true)
-            Handler(Looper.getMainLooper()).postDelayed({
-                Log.d(TAG, "Attempting to start service after re-enabling component...")
-                if (this.monitoringViewModel.serviceEnabled.value && PermissionUtils.isNotificationListenerEnabled(this)) {
+        // 优先使用官方 requestRebind API，避免定时竞态条件
+        try {
+            NotificationListenerService.requestRebind(
+                ComponentName(this, MyNotificationListenerService::class.java)
+            )
+            Log.i(TAG, "requestRebind called successfully.")
+        } catch (e: Exception) {
+            Log.w(TAG, "requestRebind failed, falling back to component toggle.", e)
+            // 降级方案：协程延迟组件切换，保证 OS 有足够时间完成解绑
+            lifecycleScope.launch {
+                setNotificationListenerServiceComponentEnabled(false)
+                delay(2000)
+                setNotificationListenerServiceComponentEnabled(true)
+                if (monitoringViewModel.serviceEnabled.value && PermissionUtils.isNotificationListenerEnabled(this@MainActivity)) {
                     startVigilService(true)
                 }
-            }, 700)
-        }, 300)
+            }
+        }
     }
 
     private fun notifyServiceToUpdateSettings() {
@@ -308,7 +313,16 @@ class MainActivity : AppCompatActivity() {
                     MonitoringScreen(viewModel = monitoringViewModel)
                 }
                 composable(AppDestinations.Settings.route) {
-                    SettingsScreen(viewModel = settingsViewModel)
+                    SettingsScreen(
+                        viewModel = settingsViewModel,
+                        onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter.route) }
+                    )
+                }
+                composable(AppDestinations.AppFilter.route) {
+                    AppFilterScreen(
+                        viewModel = settingsViewModel,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
@@ -329,7 +343,7 @@ class MainActivity : AppCompatActivity() {
                             restoreState = true
                         }
                     },
-                    icon = { Icon(destination.getIcon(), contentDescription = stringResource(id = destination.titleResId)) },
+                    icon = { Icon(destination.icon, contentDescription = stringResource(id = destination.titleResId)) },
                     label = { Text(stringResource(id = destination.titleResId)) }
                 )
             }

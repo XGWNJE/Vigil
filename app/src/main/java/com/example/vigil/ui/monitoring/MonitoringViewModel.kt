@@ -3,26 +3,24 @@ package com.example.vigil.ui.monitoring
 
 import android.app.Application
 import android.app.NotificationManager
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.vigil.MainActivity
-import com.example.vigil.MyNotificationListenerService // 确保导入 MyNotificationListenerService
+import com.example.vigil.MyNotificationListenerService
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.SharedPreferencesHelper
+import com.example.vigil.VigilEventBus
 import kotlinx.coroutines.launch
 
 class MonitoringViewModel(application: Application) : AndroidViewModel(application) {
@@ -92,85 +90,64 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // 应用内服务状态和关键词提醒的广播接收器
-    private val serviceAndAlertReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                MyNotificationListenerService.ACTION_HEARTBEAT -> {
-                    Log.d(TAG, "ViewModel received service heartbeat.")
-                    lastHeartbeatTime = System.currentTimeMillis()
-                    hasReceivedHeartbeat = true // 标记已收到心跳
-                    isInitializing = false // 收到心跳后初始化完成
-                    updateServiceStatusUI()
-                }
-                MainActivity.ACTION_SERVICE_STATUS_UPDATE -> {
-                    val isConnected = intent.getBooleanExtra(MainActivity.EXTRA_SERVICE_CONNECTED, false)
-                    Log.i(TAG, "ViewModel received service connection status update: $isConnected")
-                    lastConnectionState = isConnected // 记录连接状态
-                    if (isConnected) {
-                        isInitializing = false // 连接成功后初始化完成
-                    }
-                    updateServiceStatusUI()
-                }
-                ACTION_SHOW_KEYWORD_ALERT -> { // 来自 LocalBroadcastManager
-                    val matchedKeyword = intent.getStringExtra(EXTRA_KEYWORD_FOR_ALERT)
-                    Log.i(TAG, "ViewModel received ACTION_SHOW_KEYWORD_ALERT (LocalBroadcast) for keyword: $matchedKeyword")
-                    if (matchedKeyword != null) {
-                        // 确保在主线程更新 UI 状态
-                        viewModelScope.launch {
-                            _matchedKeywordForDialog.value = matchedKeyword
-                            _showKeywordAlertDialog.value = true
-                            Log.d(TAG, "Dialog state updated: show=true, keyword=$matchedKeyword")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     companion object {
         private const val TAG = "MonitoringViewModel"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
         private const val HEARTBEAT_TOLERANCE_MS = 10 * 1000L
         private const val HEARTBEAT_CHECK_INTERVAL_MS = 15 * 1000L
         private const val HEARTBEAT_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS + HEARTBEAT_TOLERANCE_MS
-        private const val INITIALIZATION_TIMEOUT_MS = 5 * 1000L // 初始化超时时间：5秒
-        private const val EXTENDED_INIT_TIMEOUT_MS = 8 * 1000L // 扩展初始化超时时间：8秒
-
-        // 与 MyNotificationListenerService 中的 ACTION_SHOW_KEYWORD_ALERT 保持一致
-        const val ACTION_SHOW_KEYWORD_ALERT = "com.example.vigil.ACTION_SHOW_KEYWORD_ALERT"
-        const val EXTRA_KEYWORD_FOR_ALERT = "com.example.vigil.EXTRA_KEYWORD_FOR_ALERT"
+        private const val INITIALIZATION_TIMEOUT_MS = 5 * 1000L
+        private const val EXTENDED_INIT_TIMEOUT_MS = 8 * 1000L
     }
 
     init {
         Log.d(TAG, "MonitoringViewModel created.")
         loadSettings()
 
-        LocalBroadcastManager.getInstance(context).registerReceiver(
-            serviceAndAlertReceiver, IntentFilter().apply {
-                addAction(MyNotificationListenerService.ACTION_HEARTBEAT)
-                addAction(MainActivity.ACTION_SERVICE_STATUS_UPDATE)
-                addAction(ACTION_SHOW_KEYWORD_ALERT) // 监听来自服务的本地广播
+        // 收集服务心跳（替代 LocalBroadcastManager ACTION_HEARTBEAT）
+        viewModelScope.launch {
+            VigilEventBus.heartbeat.collect {
+                Log.d(TAG, "ViewModel received service heartbeat.")
+                lastHeartbeatTime = SystemClock.elapsedRealtime()
+                hasReceivedHeartbeat = true
+                isInitializing = false
+                updateServiceStatusUI()
             }
-        )
-        Log.d(TAG, "serviceAndAlertReceiver registered for ACTION_SHOW_KEYWORD_ALERT.")
+        }
+        // 收集服务连接状态（替代 ACTION_SERVICE_STATUS_UPDATE）
+        viewModelScope.launch {
+            VigilEventBus.serviceStatus.collect { isConnected ->
+                Log.i(TAG, "ViewModel received service connection status update: $isConnected")
+                lastConnectionState = isConnected
+                if (isConnected) isInitializing = false
+                updateServiceStatusUI()
+            }
+        }
+        // 收集关键词报警事件（替代 ACTION_SHOW_KEYWORD_ALERT LocalBroadcast）
+        viewModelScope.launch {
+            VigilEventBus.keywordAlert.collect { event ->
+                Log.i(TAG, "ViewModel received AlertEvent for keyword: ${event.keyword}")
+                _matchedKeywordForDialog.value = event.keyword
+                _showKeywordAlertDialog.value = true
+                Log.d(TAG, "Dialog state updated: show=true, keyword=${event.keyword}")
+            }
+        }
 
         startHeartbeatCheck()
-        
+
         // 开始初始化计时
         isInitializing = true
         hasReceivedHeartbeat = false
         lastConnectionState = false
         initTimeoutHandler.postDelayed(initTimeoutRunnable, INITIALIZATION_TIMEOUT_MS)
-        
+
         updateServiceStatusUI()
     }
 
     override fun onCleared() {
         super.onCleared()
         Log.d(TAG, "MonitoringViewModel cleared.")
-        LocalBroadcastManager.getInstance(context).unregisterReceiver(serviceAndAlertReceiver)
-        Log.d(TAG, "ViewModel receivers unregistered.")
+        // viewModelScope 取消时 Flow 收集自动取消，无需手动反注册
         stopHeartbeatCheck()
         initTimeoutHandler.removeCallbacks(initTimeoutRunnable)
         initTimeoutHandler.removeCallbacks(extendedInitTimeoutRunnable)
@@ -281,7 +258,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
     internal fun checkServiceHeartbeatStatus() {
         Log.d(TAG, "Executing ViewModel heartbeat status check.")
-        val currentTime = System.currentTimeMillis()
+        val currentTime = SystemClock.elapsedRealtime()  // 单调时钟，不受 NTP/时区影响
         val serviceEnabledByUser = _serviceEnabled.value
         val notificationAccessActuallyGranted = PermissionUtils.isNotificationListenerEnabled(context)
         val isLicensed = sharedPreferencesHelper.isAuthenticated()
@@ -303,7 +280,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         var statusTextResult: String
         var showRestartBtnResult = false
 
-        val currentHeartbeatStatus = hasRecentHeartbeat ?: ((System.currentTimeMillis() - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS)
+        val currentHeartbeatStatus = hasRecentHeartbeat ?: ((SystemClock.elapsedRealtime() - lastHeartbeatTime) < HEARTBEAT_TIMEOUT_MS)
 
         // 如果处于初始化阶段且服务已启用，直接显示初始化状态
         if (isInitializing && serviceEnabledByUser) {
@@ -406,8 +383,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onKeywordAlertDialogConfirm() {
         Log.d(TAG, "Keyword alert dialog confirmed by user.")
-        val intent = Intent(MyNotificationListenerService.ACTION_ALERT_CONFIRMED_FROM_UI)
-        LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
+        viewModelScope.launch { VigilEventBus.alertConfirmed.emit(Unit) }
         onKeywordAlertDialogDismiss()
     }
 

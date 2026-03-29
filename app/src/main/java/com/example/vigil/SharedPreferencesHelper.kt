@@ -44,13 +44,31 @@ class SharedPreferencesHelper(context: Context) {
     }
 
     fun saveKeywords(keywords: List<String>) {
-        prefs.edit().putString(KEY_KEYWORDS, keywords.joinToString(",")).apply()
-        Log.i("SharedPreferencesHelper", "关键词已保存: $keywords")
+        prefs.edit().putStringSet(KEY_KEYWORDS, keywords.toSet()).apply()
+        Log.i("SharedPreferencesHelper", "关键词已保存: ${keywords.size}个")
     }
 
     fun getKeywords(): List<String> {
-        val keywordsString = prefs.getString(KEY_KEYWORDS, null)
-        return keywordsString?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        return prefs.getStringSet(KEY_KEYWORDS, emptySet())?.toList() ?: emptyList()
+    }
+
+    /**
+     * 迁移旧版逗号分隔字符串格式到 StringSet 格式。
+     * 首次升级后调用一次，不影响已是 StringSet 格式的数据。
+     */
+    fun migrateKeywordsIfNeeded() {
+        if (prefs.contains(KEY_KEYWORDS)) {
+            try {
+                // 如果是旧的 String 格式，读取并转换
+                val old = prefs.getString(KEY_KEYWORDS, "") ?: ""
+                val migrated = old.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+                prefs.edit().remove(KEY_KEYWORDS).putStringSet(KEY_KEYWORDS, migrated).apply()
+                Log.i("SharedPreferencesHelper", "关键词格式迁移完成: ${migrated.size}个")
+            } catch (e: ClassCastException) {
+                // 已经是 StringSet 格式，无需迁移
+                Log.d("SharedPreferencesHelper", "关键词已是 StringSet 格式，跳过迁移")
+            }
+        }
     }
 
     fun saveRingtoneUri(ringtoneUri: Uri?) {

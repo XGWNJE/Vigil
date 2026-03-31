@@ -2,24 +2,15 @@
 package com.example.vigil.ui.monitoring
 
 import android.app.Activity
-import android.app.Application // 确保导入 Application
-import android.content.Intent
-import android.media.RingtoneManager
-import android.net.Uri
-import android.os.Build
-import android.util.Log
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import android.app.Application
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,30 +19,76 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.vigil.MainActivity
-import com.example.vigil.PermissionUtils
-import com.example.vigil.R
 import com.example.vigil.ui.theme.VigilTheme
-import com.example.vigil.ui.theme.Initializing
-import kotlin.math.min
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
+
+// ---- 状态到 UI 属性的映射 ----
+
+private data class StateVisual(
+    val icon: ImageVector,
+    val primaryColor: Color,
+    val label: String,
+    val sublabel: String
+)
+
+@Composable
+private fun serviceStateVisual(state: ServiceState, debugInfo: String): StateVisual {
+    return when (state) {
+        ServiceState.DISABLED -> StateVisual(
+            icon = Icons.Filled.PowerSettingsNew,
+            primaryColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            label = "已停止",
+            sublabel = "通知监听服务未启动"
+        )
+        ServiceState.INITIALIZING -> StateVisual(
+            icon = Icons.Filled.Sync,
+            primaryColor = MaterialTheme.colorScheme.tertiary,
+            label = "初始化中",
+            sublabel = "等待服务连接... [$debugInfo]"
+        )
+        ServiceState.RUNNING -> StateVisual(
+            icon = Icons.Filled.Sensors,
+            primaryColor = MaterialTheme.colorScheme.primary,
+            label = "运行中",
+            sublabel = debugInfo
+        )
+        ServiceState.RUNNING_LIMITED -> StateVisual(
+            icon = Icons.Filled.SensorsOff,
+            primaryColor = Color(0xFFFF9800), // 橙色 warning
+            label = "运行中 (权限受限)",
+            sublabel = "悬浮窗或通知权限缺失，报警可能无法弹出 | $debugInfo"
+        )
+        ServiceState.HEARTBEAT_TIMEOUT -> StateVisual(
+            icon = Icons.Filled.HeartBroken,
+            primaryColor = MaterialTheme.colorScheme.error,
+            label = "服务心跳超时",
+            sublabel = "heartbeat timeout — Service 可能被系统杀死 | $debugInfo"
+        )
+        ServiceState.NO_PERMISSION -> StateVisual(
+            icon = Icons.Filled.NotificationsOff,
+            primaryColor = MaterialTheme.colorScheme.error,
+            label = "权限未授予",
+            sublabel = "通知使用权未开启，服务无法监听通知 | $debugInfo"
+        )
+        ServiceState.ERROR -> StateVisual(
+            icon = Icons.Filled.ErrorOutline,
+            primaryColor = MaterialTheme.colorScheme.error,
+            label = "未知错误",
+            sublabel = debugInfo
+        )
+    }
+}
+
+// ---- 主界面 ----
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,432 +98,251 @@ fun MonitoringScreen(
     val context = LocalContext.current
     val activity = context as? Activity
 
+    val serviceState by viewModel.serviceState
     val serviceEnabled by viewModel.serviceEnabled
-    val serviceStatusText by viewModel.serviceStatusText
-    val showRestartButton by viewModel.showRestartButton
-    
-    // 创建开关动画效果
+    val debugInfo by viewModel.debugInfo
+    val showKeywordAlertDialog by viewModel.showKeywordAlertDialog
+    val matchedKeyword by viewModel.matchedKeywordForDialog
+
+    val visual = serviceStateVisual(serviceState, debugInfo)
+
+    // 开关弹簧动画
     val switchScale = remember { Animatable(1f) }
     LaunchedEffect(serviceEnabled) {
-        // 当状态改变时执行动画
-        switchScale.animateTo(
-            targetValue = 1.2f,
-            animationSpec = tween(100)
-        )
-        switchScale.animateTo(
-            targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
-        )
+        switchScale.animateTo(1.15f, animationSpec = tween(80))
+        switchScale.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
     }
-    
-    // 创建服务状态的持续性动画
-    val infiniteTransition = rememberInfiniteTransition()
-    
-    // 呼吸效果 - 透明度动画
-    val alphaAnimation = infiniteTransition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-    
-    // 脉冲效果 - 大小动画
-    val pulseAnimation = infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-    
-    // 雷达扫描动画
-    val radarSweepAngle = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    
-    // 波纹动画 - 多个波纹
-    val wave1 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, delayMillis = 0, easing = FastOutLinearInEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    
-    val wave2 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, delayMillis = 650, easing = FastOutLinearInEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    
-    val wave3 = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, delayMillis = 1300, easing = FastOutLinearInEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    
-    // 图标旋转动画
-    val iconRotation = infiniteTransition.animateFloat(
-        initialValue = -5f,
-        targetValue = 5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-    
-    // 初始化状态加载动画
-    val initLoadingRotation = infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    
-    // 获取字符串资源，避免在Canvas中调用
-    val runningStatusText = stringResource(R.string.service_running)
-    val stoppedStatusText = stringResource(R.string.service_stopped)
-    val recoveringStatusText = stringResource(R.string.service_status_recovering)
-    val initializingStatusText = stringResource(R.string.service_initializing)
 
-    Box(
+    // 运行时脉冲动画
+    val infiniteTransition = rememberInfiniteTransition(label = "status")
+    val pulseAlpha = infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    // 初始化旋转动画
+    val initRotation = infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Restart),
+        label = "initRotation"
+    )
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.surfaceVariant
-                    )
-                )
-            ),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(32.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(48.dp)
+
+        // ---- 区域1：状态卡片 ----
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = visual.primaryColor.copy(alpha = 0.08f)
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.5.dp,
+                color = visual.primaryColor.copy(alpha = 0.3f)
+            )
         ) {
-            // 服务状态指示器 - 确保纯圆形设计
-            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                // 创建纯圆形背景 - 使用多层圆形实现柔和效果
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 状态图标 + 动画
                 Box(
                     modifier = Modifier
-                        .size(240.dp)
-                        // 最外层圆形背景 - 非常淡的阴影效果
+                        .size(80.dp)
                         .background(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.05f),
+                            color = visual.primaryColor.copy(
+                                alpha = if (serviceState == ServiceState.RUNNING) pulseAlpha.value * 0.15f else 0.12f
+                            ),
                             shape = CircleShape
-                        )
-                        .padding(1.dp),
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    // 中间层
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(4.dp)
-                            .background(
-                                Brush.radialGradient(
-                                    colors = when (serviceStatusText) {
-                                        runningStatusText -> listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.02f)
-                                        )
-                                        stoppedStatusText -> listOf(
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f),
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.08f),
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.02f)
-                                        )
-                                        initializingStatusText -> listOf(
-                                            Initializing.copy(alpha = 0.12f),
-                                            Initializing.copy(alpha = 0.08f),
-                                            Initializing.copy(alpha = 0.02f)
-                                        )
-                                        else -> listOf(
-                                            MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
-                                            MaterialTheme.colorScheme.error.copy(alpha = 0.08f),
-                                            MaterialTheme.colorScheme.error.copy(alpha = 0.02f)
-                                        )
-                                    }
-                                ),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // 内层圆形，动画效果区域
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .scale(pulseAnimation.value)
-                                .padding(16.dp)
-                                .clip(CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            // 自定义动画效果
-                            if (serviceEnabled) {
-                                // 针对不同状态显示不同动画
-                                if (serviceStatusText == initializingStatusText) {
-                                    // 初始化状态显示加载动画
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                        val canvasWidth = size.width
-                                        val canvasHeight = size.height
-                                        val center = Offset(canvasWidth / 2, canvasHeight / 2)
-                                        val radius = min(canvasWidth, canvasHeight) / 2 * 0.8f
-                                        
-                                        // 绘制旋转的加载指示器
-                                        val angle = initLoadingRotation.value * PI.toFloat() / 180f
-                                        for (i in 0 until 12) {
-                                            val rotateAngle = angle + (i * (2 * PI.toFloat() / 12))
-                                            val startRadius = radius * 0.7f
-                                            val endRadius = radius * 0.85f
-                                            val alpha = 0.1f + (i % 12) * 0.075f
-                                            
-                                            val startPoint = Offset(
-                                                x = center.x + startRadius * cos(rotateAngle),
-                                                y = center.y + startRadius * sin(rotateAngle)
-                                            )
-                                            
-                                            val endPoint = Offset(
-                                                x = center.x + endRadius * cos(rotateAngle),
-                                                y = center.y + endRadius * sin(rotateAngle)
-                                            )
-                                            
-                                            drawLine(
-                                                color = Initializing.copy(alpha = alpha),
-                                                start = startPoint,
-                                                end = endPoint,
-                                                strokeWidth = 3f,
-                                                cap = StrokeCap.Round
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    // 波纹和扫描动画（运行中或异常状态）
-                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                        val canvasWidth = size.width
-                                        val canvasHeight = size.height
-                                        val center = Offset(canvasWidth / 2, canvasHeight / 2)
-                                        val radius = min(canvasWidth, canvasHeight) / 2
-                                        
-                                        // 绘制雷达扫描线
-                                        val sweepAngleRadians = radarSweepAngle.value * PI.toFloat() / 180f
-                                        val scanLineEnd = Offset(
-                                            x = center.x + radius * 0.85f * cos(sweepAngleRadians),
-                                            y = center.y + radius * 0.85f * sin(sweepAngleRadians)
-                                        )
-                                        
-                                        drawLine(
-                                            color = if (serviceStatusText == runningStatusText) 
-                                                    Color(0xFF3F51B5).copy(alpha = 0.5f)
-                                                else Color.Gray.copy(alpha = 0.3f),
-                                            start = center,
-                                            end = scanLineEnd,
-                                            strokeWidth = 1.2f,
-                                            cap = StrokeCap.Round
-                                        )
-                                        
-                                        // 波纹效果
-                                        val waveValues = listOf(wave1.value, wave2.value, wave3.value)
-                                        waveValues.forEach { waveValue ->
-                                            if (waveValue < 1) {
-                                                val alpha = (1 - waveValue) * (1 - waveValue) * 0.2f
-                                                val waveRadius = waveValue * radius * 0.9f
-                                                
-                                                drawCircle(
-                                                    color = if (serviceStatusText == runningStatusText)
-                                                            Color(0xFF3F51B5).copy(alpha = alpha)
-                                                        else Color.Gray.copy(alpha = alpha * 0.7f),
-                                                    radius = waveRadius,
-                                                    center = center,
-                                                    style = Stroke(
-                                                        width = 0.8f,
-                                                        pathEffect = PathEffect.cornerPathEffect(radius)
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 中心内容
-                            Column(
-                                modifier = Modifier
-                                    .padding(8.dp)
-                                    .fillMaxWidth(0.8f),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                // 服务图标
-                                Icon(
-                                    painter = painterResource(id = R.drawable.ic_notification_icon),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .rotate(iconRotation.value),
-                                    tint = when (serviceStatusText) {
-                                        runningStatusText -> MaterialTheme.colorScheme.primary
-                                        stoppedStatusText -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        initializingStatusText -> MaterialTheme.colorScheme.tertiary
-                                        else -> MaterialTheme.colorScheme.error
-                                    }
-                                )
-                                
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // 服务状态文字
-                                Text(
-                                    text = serviceStatusText,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1, // 限制为单行
-                                    overflow = TextOverflow.Ellipsis, // 超出部分显示省略号
-                                    color = when (serviceStatusText) {
-                                        runningStatusText -> MaterialTheme.colorScheme.primary
-                                        stoppedStatusText -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        recoveringStatusText -> MaterialTheme.colorScheme.tertiary
-                                        initializingStatusText -> Initializing
-                                        else -> MaterialTheme.colorScheme.error
-                                    }
-                                )
-                            }
-                        }
+                    val iconModifier = if (serviceState == ServiceState.INITIALIZING) {
+                        Modifier
+                            .size(40.dp)
+                            .rotate(initRotation.value)
+                    } else {
+                        Modifier.size(40.dp)
                     }
-                }
-            }
-            
-            // 通知开关标题
-            Text(
-                text = stringResource(R.string.enable_service_switch),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = when (serviceEnabled) {
-                    true -> MaterialTheme.colorScheme.primary
-                    false -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            )
-            
-            // 自定义大型开关 - 直接放在布局中，没有背景框
-            Box(
-                modifier = Modifier
-                    .scale(switchScale.value) // 添加动画缩放效果
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = RoundedCornerShape(40.dp)
+                    Icon(
+                        imageVector = visual.icon,
+                        contentDescription = visual.label,
+                        tint = visual.primaryColor,
+                        modifier = iconModifier
                     )
-                    .clip(RoundedCornerShape(40.dp))
-                    .background(
-                        if (serviceEnabled) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
-                    )
-                    .size(width = 120.dp, height = 60.dp)
-                    .clickable(enabled = true, onClick = {
-                        val isLicensed = true // TODO: 从 ViewModel 获取实际授权状态
-                        viewModel.onServiceEnabledChange(
-                            !serviceEnabled,
-                            isLicensed,
-                            startServiceCallback = { hasPermission ->
-                                if (activity is MainActivity) {
-                                    activity.startVigilService(hasPermission)
-                                }
-                            },
-                            stopServiceCallback = {
-                                if (activity is MainActivity) {
-                                    activity.stopVigilService()
-                                }
-                            }
-                        )
-                    }),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    // 开关圆形滑块
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .offset(x = if (serviceEnabled) 30.dp else (-30).dp)
-                            .shadow(elevation = 4.dp, shape = CircleShape)
-                            .clip(CircleShape)
-                            .background(
-                                if (serviceEnabled) 
-                                    MaterialTheme.colorScheme.onPrimary 
-                                else 
-                                    Color.White
-                            )
-                            .padding(4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // 开关内部的指示符
-                        Text(
-                            text = if (serviceEnabled) "ON" else "OFF",
-                            color = if (serviceEnabled) 
-                                MaterialTheme.colorScheme.primary 
-                            else 
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                 }
-            }
-            
-            // 重启按钮 (仅在需要时显示)
-            if (showRestartButton) {
-                Button(
-                    onClick = {
-                        viewModel.onRestartServiceClick {
-                            if (activity is MainActivity) {
-                                activity.restartService()
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth(0.7f)
-                        .padding(top = 16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
-                ) {
+
+                // 主状态文字
+                Text(
+                    text = visual.label,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = visual.primaryColor
+                )
+
+                // 副状态文字（技术信息）
+                if (visual.sublabel.isNotEmpty()) {
                     Text(
-                        text = stringResource(R.string.restart_service_button),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer
+                        text = visual.sublabel,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 16.sp
                     )
+                }
+
+                // 条件：权限缺失时显示跳转按钮
+                if (serviceState == ServiceState.NO_PERMISSION) {
+                    TextButton(
+                        onClick = {
+                            if (activity is MainActivity) {
+                                com.example.vigil.PermissionUtils.requestNotificationListenerPermission(activity)
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("前往系统设置授权")
+                    }
+                }
+
+                // 条件：权限受限时显示提示
+                if (serviceState == ServiceState.RUNNING_LIMITED) {
+                    TextButton(
+                        onClick = {
+                            if (activity is MainActivity) {
+                                com.example.vigil.PermissionUtils.requestOverlayPermission(activity)
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("授予悬浮窗权限")
+                    }
+                }
+
+                // 条件：心跳超时时显示重启按钮
+                if (serviceState == ServiceState.HEARTBEAT_TIMEOUT) {
+                    Button(
+                        onClick = {
+                            viewModel.onRestartServiceClick {
+                                if (activity is MainActivity) {
+                                    activity.restartService()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Filled.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("重启服务")
+                    }
                 }
             }
         }
+
+        // ---- 区域2：服务开关 ----
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "通知监听服务",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
+            )
+
+            // 大型开关
+            Box(
+                modifier = Modifier
+                    .scale(switchScale.value)
+                    .shadow(elevation = 6.dp, shape = RoundedCornerShape(36.dp))
+                    .clip(RoundedCornerShape(36.dp))
+                    .background(
+                        if (serviceEnabled)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant
+                    )
+                    .size(width = 112.dp, height = 56.dp)
+                    .clickable {
+                        viewModel.onServiceEnabledChange(
+                            enabled = !serviceEnabled,
+                            isLicensed = true,
+                            startServiceCallback = { hasPermission ->
+                                if (activity is MainActivity) activity.startVigilService(hasPermission)
+                            },
+                            stopServiceCallback = {
+                                if (activity is MainActivity) activity.stopVigilService()
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (serviceEnabled) Arrangement.End else Arrangement.Start
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(4.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(if (serviceEnabled) MaterialTheme.colorScheme.onPrimary else Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (serviceEnabled) "ON" else "OFF",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (serviceEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // 开关说明文字：明确告诉用户这个开关控制什么
+            Text(
+                text = when (serviceState) {
+                    ServiceState.DISABLED -> "点击开关启动监听"
+                    ServiceState.INITIALIZING -> "正在连接后台服务..."
+                    ServiceState.RUNNING, ServiceState.RUNNING_LIMITED -> "服务运行中，点击可停止"
+                    ServiceState.HEARTBEAT_TIMEOUT -> "服务响应异常，建议重启"
+                    ServiceState.NO_PERMISSION -> "需要先授予通知使用权"
+                    ServiceState.ERROR -> "服务状态异常"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    // 报警对话框
+    if (showKeywordAlertDialog) {
+        com.example.vigil.ui.dialogs.KeywordAlertDialog(
+            onDismissRequest = { viewModel.onKeywordAlertDialogDismiss() },
+            onConfirm = { viewModel.onKeywordAlertDialogConfirm() },
+            matchedKeyword = matchedKeyword
+        )
     }
 }
 

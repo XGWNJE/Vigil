@@ -296,6 +296,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun onRingtoneUriSelected(uri: Uri?) {
         _selectedRingtoneUri.value = uri
         updateSelectedRingtoneName()
+        // 立即持久化，避免依赖手动 saveSettings()
+        sharedPreferencesHelper.saveRingtoneUri(uri)
+        // 通知服务重新加载设置（让 Service.loadSettings() 读取新 URI）
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Ringtone URI selected and saved immediately: $uri")
     }
 
     private fun updateSelectedRingtoneName() {

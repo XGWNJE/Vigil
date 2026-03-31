@@ -58,13 +58,9 @@ fun MonitoringScreen(
 
     // Real-time permission states
     val hasNotifAccess = remember { mutableStateOf(PermissionUtils.isNotificationListenerEnabled(context)) }
-    val canOverlay = remember { mutableStateOf(PermissionUtils.canDrawOverlays(context)) }
-    val canPostNotif = remember { mutableStateOf(PermissionUtils.canPostNotifications(context)) }
     // Refresh permission states on composition
     LaunchedEffect(Unit) {
         hasNotifAccess.value = PermissionUtils.isNotificationListenerEnabled(context)
-        canOverlay.value = PermissionUtils.canDrawOverlays(context)
-        canPostNotif.value = PermissionUtils.canPostNotifications(context)
     }
 
     // Animation states
@@ -140,11 +136,7 @@ fun MonitoringScreen(
             )
 
             // Permission Card
-            PermCard(
-                hasNotifAccess = hasNotifAccess.value,
-                canOverlay = canOverlay.value,
-                canPostNotif = canPostNotif.value
-            )
+            PermCard(hasNotifAccess = hasNotifAccess.value)
 
             // Keyword Section
             KeywordSection(keywords = keywords)
@@ -574,26 +566,19 @@ private fun SwitchRowCard(
 }
 
 @Composable
-private fun PermCard(
-    hasNotifAccess: Boolean,
-    canOverlay: Boolean,
-    canPostNotif: Boolean
-) {
-    val allGranted = hasNotifAccess && canOverlay && canPostNotif
-
-    val (icon, text, color, containerColor, borderColor) = if (allGranted) {
+private fun PermCard(hasNotifAccess: Boolean) {
+    val (icon, text, color, containerColor, borderColor) = if (hasNotifAccess) {
         Quintet(
             Icons.Filled.Shield,
-            "全部 4 项权限已就绪",
+            "核心权限已就绪",
             VigilSuccess,
             VigilSuccessContainer,
             VigilSuccessBorder
         )
     } else {
-        val missingCount = listOf(!hasNotifAccess, !canOverlay, !canPostNotif).count { it }
         Quintet(
             Icons.Filled.Shield,
-            "$missingCount 项权限缺失",
+            "通知使用权未授予",
             VigilWarning,
             VigilWarningContainer,
             VigilWarning.copy(alpha = 0.3f)

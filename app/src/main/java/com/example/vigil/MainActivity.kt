@@ -1,14 +1,12 @@
 // src/main/java/com/example/vigil/MainActivity.kt
 package com.example.vigil
 
-import android.app.AlertDialog
 import android.app.Application
 import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -18,6 +16,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -85,9 +84,11 @@ class MainActivity : AppCompatActivity() {
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             Log.d(TAG, "Returned from system settings page.")
-            // 刷新所有相关权限状态，包括MIUI的（如果适用）
             settingsViewModel.updatePermissionStates()
         }
+
+        // 首次启动时自动申请 POST_NOTIFICATIONS 权限
+        requestPostNotificationsIfNeeded()
 
         // 设置 ViewModel 回调
         monitoringViewModel.startServiceCallback = { hasPermission -> startVigilService(hasPermission) }
@@ -95,10 +96,6 @@ class MainActivity : AppCompatActivity() {
         monitoringViewModel.restartServiceCallback = { restartService() }
         monitoringViewModel.notifyServiceToUpdateSettingsCallback = { notifyServiceToUpdateSettings() }
 
-        // 新增：为 SettingsViewModel 设置 MIUI 权限请求回调
-        settingsViewModel.requestMiuiBackgroundPopupPermissionCallback = {
-            PermissionUtils.requestMiuiBackgroundPopupPermission(this)
-        }
         // 设置通知服务更新设置的回调
         settingsViewModel.notifyServiceToUpdateSettingsCallback = { notifyServiceToUpdateSettings() }
 
@@ -174,7 +171,21 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "MainActivity onResume。")
-        settingsViewModel.updatePermissionStates() // 会同时更新MIUI权限（如果适用）
+        settingsViewModel.updatePermissionStates()
+        // 用户从系统设置返回后，若通知权限被取消则再次申请
+        requestPostNotificationsIfNeeded()
+    }
+
+    private fun requestPostNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!PermissionUtils.canPostNotifications(this)) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    PermissionUtils.REQUEST_CODE_POST_NOTIFICATIONS
+                )
+            }
+        }
     }
 
     fun startVigilService(hasPermission: Boolean) {
@@ -187,38 +198,10 @@ class MainActivity : AppCompatActivity() {
         try {
             ContextCompat.startForegroundService(this, serviceIntent)
             Log.i(TAG, "Vigil Notification Service has been attempted to start.")
-            
-            // 检查是否是首次启动服务且尚未显示过捐赠提示
-            if (!sharedPreferencesHelper.hasShownDonateDialog()) {
-                showDonateDialog()
-                sharedPreferencesHelper.markDonateDialogShown()
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error starting Vigil service: ", e)
             Toast.makeText(this, getString(R.string.error_starting_service, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
         }
-    }
-
-    private fun showDonateDialog() {
-        Log.i(TAG, "显示捐赠对话框")
-        AlertDialog.Builder(this)
-            .setTitle(R.string.donate_dialog_title)
-            .setMessage(R.string.donate_dialog_message)
-            .setPositiveButton(R.string.donate_button) { _, _ ->
-                // 打开捐赠链接
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.donate_url)))
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Log.e(TAG, "打开捐赠链接失败", e)
-                    Toast.makeText(this, R.string.error_opening_url, Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton(R.string.donate_later) { dialog, _ ->
-                dialog.dismiss()
-            }
-            .setCancelable(true)
-            .show()
     }
 
     fun stopVigilService() {

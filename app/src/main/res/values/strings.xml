@@ -48,7 +48,7 @@
     <string name="service_status_recovering">恢复中</string>
     <string name="restart_service_button">重启服务</string>
 
-    <string name="permissions_settings_title">权限设置</string>
+    <string name="permissions_settings_title">设置</string>
     <string name="notification_configuration_title">提醒设置</string>
     <string name="app_filter_settings_title">应用过滤</string>
     <string name="filter_apps_switch_label">仅监听指定应用</string>

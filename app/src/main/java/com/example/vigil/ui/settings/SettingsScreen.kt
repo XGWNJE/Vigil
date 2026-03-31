@@ -53,8 +53,6 @@ fun SettingsScreen(
     // 权限状态
     val hasNotificationAccess by viewModel.hasNotificationAccess
     val hasDndAccess by viewModel.hasDndAccess
-    val canDrawOverlays by viewModel.canDrawOverlays
-    val canPostNotifications by viewModel.canPostNotifications
 
     // 应用过滤状态
     val isAppFilterEnabled by viewModel.isAppFilterEnabled
@@ -86,12 +84,6 @@ fun SettingsScreen(
         }
         viewModel.requestDndAccessPermissionCallback = {
             activity?.let { PermissionUtils.requestDndAccessPermission(it) }
-        }
-        viewModel.requestOverlayPermissionCallback = {
-            activity?.let { PermissionUtils.requestOverlayPermission(it) }
-        }
-        viewModel.requestPostNotificationsPermissionCallback = {
-            activity?.let { PermissionUtils.requestPostNotificationsPermission(it) }
         }
     }
 
@@ -127,6 +119,8 @@ fun SettingsScreen(
 
             // Permission Group
             SettingsGroup(title = "权限状态") {
+                var notifHintExpanded by remember { mutableStateOf(false) }
+
                 PermRow(
                     icon = Icons.Filled.Notifications,
                     label = "通知使用权",
@@ -137,28 +131,46 @@ fun SettingsScreen(
                         Toast.makeText(context, "正在跳转到通知使用权设置", Toast.LENGTH_SHORT).show()
                     }
                 )
-                HorizontalDivider(color = VigilBorder, thickness = 0.5.dp)
-                PermRow(
-                    icon = Icons.Filled.Layers,
-                    label = "悬浮窗权限",
-                    iconTint = if (canDrawOverlays) VigilSuccess else VigilWarning,
-                    isGranted = canDrawOverlays,
-                    onClick = {
-                        viewModel.requestOverlayPermissionCallback?.invoke()
-                        Toast.makeText(context, "正在跳转到悬浮窗权限设置", Toast.LENGTH_SHORT).show()
-                    }
-                )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    HorizontalDivider(color = VigilBorder, thickness = 0.5.dp)
-                    PermRow(
-                        icon = Icons.Filled.Send,
-                        label = "发送通知权限",
-                        iconTint = if (canPostNotifications) VigilSuccess else VigilWarning,
-                        isGranted = canPostNotifications,
-                        onClick = {
-                            viewModel.requestPostNotificationsPermissionCallback?.invoke()
-                            Toast.makeText(context, "正在请求发送通知权限", Toast.LENGTH_SHORT).show()
-                        }
+
+                // 折叠说明
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { notifHintExpanded = !notifHintExpanded }
+                        .padding(top = 6.dp, bottom = if (notifHintExpanded) 2.dp else 0.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = VigilTextDisabled,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = "关于此权限",
+                        fontSize = 11.sp,
+                        color = VigilTextDisabled
+                    )
+                    Icon(
+                        imageVector = if (notifHintExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = VigilTextDisabled,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+
+                if (notifHintExpanded) {
+                    Text(
+                        text = "通知使用权是一个敏感权限，国产定制系统通常需要在系统的应用权限页中二次手动确认。" +
+                            "不同厂商的设定差异较大，开发者仅在小米澎湃 OS 3 上完整测试过。" +
+                            "其他系统如遇问题可能需要自行摸索，或前往 GitHub 联系开发者寻求帮助。",
+                        fontSize = 11.sp,
+                        color = VigilTextDisabled,
+                        lineHeight = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 2.dp)
                     )
                 }
             }

@@ -22,7 +22,7 @@ enum class ServiceState {
     DISABLED,           // 用户关闭了服务开关
     INITIALIZING,       // 开关已开，等待服务连接信号（<5s）
     RUNNING,            // 运行正常，心跳最近有收到
-    RUNNING_LIMITED,    // 运行中，但悬浮窗/通知权限缺失，报警可能受影响
+    RUNNING_LIMITED,    // 运行中，但通知发送权限缺失，前台通知可能受影响
     HEARTBEAT_TIMEOUT,  // 心跳超时，Service 可能被系统杀死
     NO_PERMISSION,      // 通知监听权限未授予（系统设置里没有开）
     ERROR               // 未知错误状态
@@ -152,13 +152,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             !enabled -> ServiceState.DISABLED
             !hasNotifPermission -> ServiceState.NO_PERMISSION
             isInitializingWindow -> ServiceState.INITIALIZING
-            heartbeatOk -> {
-                // 检查辅助权限（悬浮窗、通知发送）
-                val missingOverlay = !PermissionUtils.canDrawOverlays(context)
-                val missingPostNotif = !PermissionUtils.canPostNotifications(context)
-                if (missingOverlay || missingPostNotif) ServiceState.RUNNING_LIMITED
-                else ServiceState.RUNNING
-            }
+            heartbeatOk -> ServiceState.RUNNING
             !hasReceivedAnySignal -> ServiceState.INITIALIZING   // 从未收到信号，还在等
             else -> ServiceState.HEARTBEAT_TIMEOUT
         }

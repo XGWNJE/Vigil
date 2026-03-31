@@ -2,7 +2,6 @@
 package com.example.vigil.ui.settings
 
 import android.app.Application
-import android.app.AppOpsManager // 新增
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -59,20 +58,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _hasDndAccess = mutableStateOf(false)
     val hasDndAccess: State<Boolean> = _hasDndAccess
 
-    private val _canDrawOverlays = mutableStateOf(false)
-    val canDrawOverlays: State<Boolean> = _canDrawOverlays
-
-    private val _canPostNotifications = mutableStateOf(false)
-    val canPostNotifications: State<Boolean> = _canPostNotifications
-
-    // --- 新增：MIUI 相关状态 ---
-    private val _isMiuiDevice = mutableStateOf(false)
-    val isMiuiDevice: State<Boolean> = _isMiuiDevice
-
-    // 这个状态更多是用于UI提示，实际权限状态可能无法准确获取
-    private val _miuiBackgroundPopupPermissionStatus = mutableStateOf(AppOpsManager.MODE_ALLOWED)
-    val miuiBackgroundPopupPermissionStatus: State<Int> = _miuiBackgroundPopupPermissionStatus
-
 
     // --- 应用过滤 ---
     private val _isAppFilterEnabled = mutableStateOf(sharedPreferencesHelper.getFilterAppsEnabledState())
@@ -93,7 +78,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         Log.d(TAG, "SettingsViewModel created.")
-        _isMiuiDevice.value = PermissionUtils.isMiui() // 初始化时检测是否为 MIUI
         updatePermissionStates()
         loadInstalledApps() // 只在初始化时加载应用列表
         loadSettings() // 加载关键词和铃声设置
@@ -102,23 +86,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updatePermissionStates() {
         _hasNotificationAccess.value = PermissionUtils.isNotificationListenerEnabled(context)
         _hasDndAccess.value = PermissionUtils.isDndAccessGranted(context)
-        _canDrawOverlays.value = PermissionUtils.canDrawOverlays(context)
-        _canPostNotifications.value = PermissionUtils.canPostNotifications(context)
 
-        if (_isMiuiDevice.value) {
-            _miuiBackgroundPopupPermissionStatus.value = PermissionUtils.checkMiuiBackgroundPopupPermissionStatus(context)
-            Log.d(TAG, "MIUI Background Popup Permission (heuristic check) status: ${_miuiBackgroundPopupPermissionStatus.value}")
-        }
-
-        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}, Overlay=${_canDrawOverlays.value}, PostNotify=${_canPostNotifications.value}, IsMIUI=${_isMiuiDevice.value}")
+        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}")
     }
 
     // --- 权限请求回调 (由 Activity 调用) ---
     var requestNotificationListenerPermissionCallback: (() -> Unit)? = null
     var requestDndAccessPermissionCallback: (() -> Unit)? = null
-    var requestOverlayPermissionCallback: (() -> Unit)? = null
-    var requestPostNotificationsPermissionCallback: (() -> Unit)? = null
-    var requestMiuiBackgroundPopupPermissionCallback: (() -> Unit)? = null // 新增 MIUI 回调
 
 
     // --- 应用过滤 ---

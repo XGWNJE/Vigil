@@ -67,3 +67,4 @@ out/
 *.a
 CMakeFiles/
 CMakeCache.txt
+.idea/deploymentTargetSelector.xml

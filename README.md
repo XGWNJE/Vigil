@@ -11,10 +11,10 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/version-1.3.1-A855F7)](https://github.com/XGWNJE/Vigil/releases)
+[![Version](https://img.shields.io/badge/version-1.3.2-A855F7)](https://github.com/XGWNJE/Vigil/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [技术架构](#-技术架构) · [贡献指南](#-贡献指南)
+[功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [技术架构](#-技术架构) 
 
 </div>
 
@@ -148,6 +148,17 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ## 📋 更新日志
 
 <details open>
+<summary><b>v1.3.2 — Bug 修复</b></summary>
+
+**修复**
+- 修复通知含关键词时报警不触发、手动下拉通知栏后才触发的竞态条件 Bug
+  - `START_STICKY` 重启后 `onStartCommand(intent=null)` 分支现在会重新加载关键词及过滤配置，避免服务以空关键词列表运行
+  - 添加通知 ID 去重（`alertedNotificationKeys`），防止系统在用户展开通知栏时重复投递通知导致重复报警
+- 为 `keywords.isEmpty()` 的静默返回路径添加日志，便于后续诊断
+
+</details>
+
+<details>
 <summary><b>v1.3.1 — 权限与交互精简</b></summary>
 
 **权限调整**

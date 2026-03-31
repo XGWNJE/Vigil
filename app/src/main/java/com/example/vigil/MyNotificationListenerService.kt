@@ -42,6 +42,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val alertedNotificationKeys = mutableSetOf<String>()
 
     private enum class PlayerState { IDLE, PREPARING, PLAYING, STOPPED }
     @Volatile private var playerState = PlayerState.IDLE
@@ -119,10 +120,9 @@ class MyNotificationListenerService : NotificationListenerService() {
             Log.i(TAG, "收到 ACTION_UPDATE_SETTINGS，重新加载设置。")
             loadSettings() // loadSettings内部会调用updateForegroundNotification
         } else if (intent?.action == null) {
-            Log.i(TAG, "服务由系统或 START_STICKY 重启，开始发送心跳。")
+            Log.i(TAG, "服务由系统或 START_STICKY 重启，重新加载设置并发送心跳。")
+            loadSettings()
             startHeartbeat()
-            // 确保通知也会更新
-            updateForegroundNotification()
         } else {
             // 其他任何命令也确保通知更新
             updateForegroundNotification()
@@ -180,6 +180,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         val currentKeywords = keywords
         if (currentKeywords.isEmpty()) {
+            Log.d(TAG, "关键词列表为空，忽略通知 (Pkg: ${sbn.packageName})。")
             return
         }
 
@@ -193,6 +194,13 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
 
         if (matchedKeyword != null) {
+            val notifKey = sbn.key
+            if (notifKey in alertedNotificationKeys) {
+                Log.d(TAG, "通知 $notifKey 已报警过，跳过重复触发。")
+                return
+            }
+            alertedNotificationKeys.add(notifKey)
+
             val finalMatchedKeyword = matchedKeyword
             // 获取来源应用名称（用于 Dialog 展示）
             val sourceAppName = try {
@@ -227,6 +235,10 @@ class MyNotificationListenerService : NotificationListenerService() {
                 }
             }
         }
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        sbn?.key?.let { alertedNotificationKeys.remove(it) }
     }
 
     private fun stopRingtoneAndLock() {

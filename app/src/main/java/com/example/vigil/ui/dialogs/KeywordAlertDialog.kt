@@ -1,138 +1,149 @@
 // src/main/java/com/example/vigil/ui/dialogs/KeywordAlertDialog.kt
 package com.example.vigil.ui.dialogs
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-// import androidx.compose.foundation.layout.Row // 如果未使用可以移除
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-// import androidx.compose.foundation.layout.height // 如果未使用可以移除
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Warning
-// import androidx.compose.material3.AlertDialogDefaults // 如果未使用可以移除
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults // *** 添加此 import ***
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-// import androidx.compose.material3.TextButton // 如果未使用可以移除
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.vigil.R
-import com.example.vigil.ui.theme.VigilTheme
+import com.example.vigil.ui.theme.*
 
 @Composable
 fun KeywordAlertDialog(
     onDismissRequest: () -> Unit,
     onConfirm: () -> Unit,
     matchedKeyword: String?,
-    dialogTitle: String = stringResource(R.string.alert_dialog_title),
-    icon: ImageVector = Icons.Filled.Warning
+    sourceApp: String? = null
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false)
     ) {
-        Card(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.large,
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(VigilBackground.copy(alpha = 0.8f))
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(all = 24.dp)
-                    .fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, VigilErrorBorder),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = dialogTitle,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-
-                Text(
-                    text = dialogTitle,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center
-                )
-
-                val message = if (matchedKeyword != null) {
-                    stringResource(R.string.alert_dialog_message_keyword_format, matchedKeyword)
-                } else {
-                    stringResource(R.string.alert_dialog_message_default)
-                }
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-
-                Button(
-                    onClick = {
-                        onConfirm()
-                        onDismissRequest()
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp, 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(ButtonDefaults.IconSize) // 现在 ButtonDefaults 应该能被解析
+                    // Alert icon ring
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(VigilErrorSubtle, CircleShape)
+                            .border(1.dp, VigilErrorBorder, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = VigilError,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+
+                    // Title
+                    Text(
+                        text = "检测到关键词",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = VigilTextPrimary,
+                        textAlign = TextAlign.Center
                     )
-                    Spacer(Modifier.size(ButtonDefaults.IconSpacing)) // 现在 ButtonDefaults 应该能被解析
-                    Text(stringResource(R.string.alert_dialog_confirm_button_long))
+
+                    // Keyword chip
+                    Row(
+                        modifier = Modifier
+                            .background(VigilErrorSubtle, RoundedCornerShape(12.dp))
+                            .border(1.dp, VigilErrorBorder, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Tag,
+                            contentDescription = null,
+                            tint = VigilError,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = matchedKeyword ?: "未知",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = VigilError,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    // Source app
+                    if (sourceApp != null) {
+                        Text(
+                            text = "来源：$sourceApp",
+                            fontSize = 13.sp,
+                            color = VigilTextTertiary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    // Confirm button
+                    Button(
+                        onClick = {
+                            onConfirm()
+                            onDismissRequest()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = VigilError
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = VigilTextPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "已知晓，停止报警",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = VigilTextPrimary
+                        )
+                    }
                 }
             }
-        }
-    }
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFFF0F0F0)
-@Composable
-fun KeywordAlertDialogPreview() {
-    VigilTheme {
-        Surface(modifier = Modifier.fillMaxWidth()) {
-            KeywordAlertDialog(
-                onDismissRequest = {},
-                onConfirm = {},
-                matchedKeyword = "测试"
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true, uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
-@Composable
-fun KeywordAlertDialogDarkPreview() {
-    VigilTheme(darkTheme = true) {
-        Surface(modifier = Modifier.fillMaxWidth()) {
-            KeywordAlertDialog(
-                onDismissRequest = {},
-                onConfirm = {},
-                matchedKeyword = "紧急"
-            )
         }
     }
 }

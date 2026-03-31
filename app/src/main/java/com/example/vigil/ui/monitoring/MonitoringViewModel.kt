@@ -203,14 +203,28 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             _serviceEnabled.value = false
             return
         }
-        _serviceEnabled.value = enabled
-        sharedPreferencesHelper.saveServiceEnabledState(enabled)
 
         if (enabled) {
+            // Pre-check: verify notification listener permission before changing state
+            val hasNotifPermission = PermissionUtils.isNotificationListenerEnabled(context)
+            if (!hasNotifPermission) {
+                Log.w(TAG, "Notification listener permission not granted, cannot enable service.")
+                _serviceEnabled.value = false
+                sharedPreferencesHelper.saveServiceEnabledState(false)
+                // Permission toast will be shown by caller via startServiceCallback(false)
+                startServiceCallback(false)
+                recomputeState()
+                return
+            }
+            // Permission OK — enter enabling flow
+            _serviceEnabled.value = true
+            sharedPreferencesHelper.saveServiceEnabledState(true)
             enterInitWindow()
-            startServiceCallback(PermissionUtils.isNotificationListenerEnabled(context))
+            startServiceCallback(true)
             notifyServiceToUpdateSettingsCallback?.invoke()
         } else {
+            _serviceEnabled.value = false
+            sharedPreferencesHelper.saveServiceEnabledState(false)
             isInitializingWindow = false
             mainHandler.removeCallbacks(initTimeoutRunnable)
             notifyServiceToUpdateSettingsCallback?.invoke()

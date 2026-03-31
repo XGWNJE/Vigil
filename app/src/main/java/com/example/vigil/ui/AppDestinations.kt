@@ -3,7 +3,8 @@ package com.example.vigil.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
@@ -21,8 +22,8 @@ sealed class AppDestinations(
     // 通知屏幕
     object Monitoring : AppDestinations(
         "monitoring",
-        Icons.Filled.Notifications,
-        R.string.notification_configuration_title
+        Icons.Filled.Sensors,
+        R.string.bottom_nav_monitoring
     )
     // 设置屏幕
     object Settings : AppDestinations(

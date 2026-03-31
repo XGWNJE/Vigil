@@ -47,6 +47,11 @@ import com.example.vigil.ui.settings.SettingsScreen
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
 import com.example.vigil.ui.theme.VigilTheme
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilTextDisabled
+import com.example.vigil.ui.theme.VigilSurface
+import com.example.vigil.ui.theme.VigilBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -298,6 +303,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         val navController = rememberNavController()
         Scaffold(
+            containerColor = VigilBackground,
             bottomBar = {
                 BottomNavigationBar(navController = navController)
             }
@@ -332,10 +338,14 @@ class MainActivity : AppCompatActivity() {
     fun BottomNavigationBar(navController: NavHostController) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
-        NavigationBar {
+        NavigationBar(
+            containerColor = VigilSurface,
+            contentColor = VigilTextPrimary
+        ) {
             BottomNavDestinations.forEach { destination ->
+                val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
                 NavigationBarItem(
-                    selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true,
+                    selected = selected,
                     onClick = {
                         navController.navigate(destination.route) {
                             popUpTo(navController.graph.startDestinationId) { saveState = true }
@@ -343,8 +353,22 @@ class MainActivity : AppCompatActivity() {
                             restoreState = true
                         }
                     },
-                    icon = { Icon(destination.icon, contentDescription = stringResource(id = destination.titleResId)) },
-                    label = { Text(stringResource(id = destination.titleResId)) }
+                    icon = {
+                        Icon(
+                            destination.icon,
+                            contentDescription = stringResource(id = destination.titleResId),
+                            tint = if (selected) VigilPrimary else VigilTextDisabled
+                        )
+                    },
+                    label = {
+                        Text(
+                            text = stringResource(id = destination.titleResId),
+                            color = if (selected) VigilPrimary else VigilTextDisabled
+                        )
+                    },
+                    colors = NavigationBarItemDefaults.colors(
+                        indicatorColor = VigilPrimary.copy(alpha = 0.12f)
+                    )
                 )
             }
         }

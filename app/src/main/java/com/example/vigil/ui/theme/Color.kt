@@ -3,39 +3,43 @@ package com.example.vigil.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// 定义您应用的颜色
-// 您可以根据您的设计偏好进行修改和扩展
-val Purple200 = Color(0xFFBB86FC)
-val Purple500 = Color(0xFF6200EE)
-val Purple700 = Color(0xFF3700B3)
-val Teal200 = Color(0xFF03DAC5)
-val Teal700 = Color(0xFF018786)
-val Black = Color(0xFF000000)
-val White = Color(0xFFFFFFFF)
+// Design palette from vigil-ui-design
+val VigilBackground = Color(0xFF0A0A0A)
+val VigilSurface = Color(0xFF141414)
+val VigilSurfaceVariant = Color(0xFF0F0F14)
+val VigilBorder = Color(0xFF27272A)
 
-// 示例灰色调
-val Gray200 = Color(0xFFEEEEEE)
-val Gray500 = Color(0xFFC9C9C9)
-val Gray800 = Color(0xFF424242)
-val Gray900 = Color(0xFF212121)
-// 在 Color.kt 中添加或修改
-val RedError = Color(0xFFB00020)
-val RedErrorContainer = Color(0xFFFCD8DF) // 示例浅红色容器
-val RedErrorDark = Color(0xFFCF6679) // 示例深色主题错误颜色
-val RedErrorContainerDark = Color(0xFFB00020) // 示例深色主题错误容器 (可以与 RedError 相同或更暗)
+// Primary accent - Purple
+val VigilPrimary = Color(0xFFA855F7)
+val VigilPrimaryContainer = Color(0xFF1A1A2E)
+val VigilOnPrimary = Color(0xFFFFFFFF)
 
-// 初始化状态颜色
-val Initializing = Color(0xFF5C6BC0) // 蓝色系，表示中性进行中状态
-val InitializingContainer = Color(0xFFE8EAF6) // 浅蓝色背景
+// Status colors
+val VigilSuccess = Color(0xFF22C55E)
+val VigilSuccessContainer = Color(0xFF14532D1A)
+val VigilSuccessBorder = Color(0xFF22C55E33)
 
-/*
-// 如果您想使用 Material 3 的动态颜色，可以参考以下代码
-// 但为了实现非 Material Design 风格，我们暂时不使用动态颜色
-val md_theme_light_primary = Color(0xFF6750A4)
-val md_theme_light_onPrimary = Color(0xFFFFFFFF)
-// ... 其他 Material 3 颜色
+val VigilWarning = Color(0xFFEAB308)
+val VigilWarningContainer = Color(0xFF78350F33)
 
-val md_theme_dark_primary = Color(0xFFD0BCFF)
-val md_theme_dark_onPrimary = Color(0xFF381E72)
-// ... 其他 Material 3 颜色
-*/
+val VigilError = Color(0xFFEF4444)
+val VigilErrorContainer = Color(0xFF130A0A)
+val VigilErrorBorder = Color(0xFFEF444433)
+val VigilErrorSubtle = Color(0xFFEF44441A)
+
+val VigilInfo = Color(0xFF6366F1)
+val VigilInfoContainer = Color(0xFF1E1B4B33)
+
+// Text colors
+val VigilTextPrimary = Color(0xFFFFFFFF)
+val VigilTextSecondary = Color(0xFFA1A1AA)
+val VigilTextTertiary = Color(0xFF71717A)
+val VigilTextDisabled = Color(0xFF52525B)
+
+// Keyword chip
+val VigilChipBackground = Color(0xFF27272A)
+val VigilChipText = Color(0xFFFFFFFF)
+
+// Switch colors
+val VigilSwitchThumb = Color(0xFFFFFFFF)
+val VigilSwitchTrack = Color(0xFFA855F7)

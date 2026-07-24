@@ -87,6 +87,14 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         Log.d(TAG, "MonitoringViewModel created.")
         _serviceEnabled.value = sharedPreferencesHelper.getServiceEnabledState()
 
+        // 若存在未确认报警（报警期间进程被杀、或报警在后台触发导致弹窗未能显示），
+        // 用户打开应用时直接弹出确认对话框，避免铃声一直循环却无法停止
+        sharedPreferencesHelper.getPendingAlert()?.let { (keyword, _) ->
+            Log.w(TAG, "检测到未确认报警，启动时直接弹出确认对话框: $keyword")
+            _matchedKeywordForDialog.value = keyword
+            _showKeywordAlertDialog.value = true
+        }
+
         // 收集心跳
         viewModelScope.launch {
             VigilEventBus.heartbeat.collect {

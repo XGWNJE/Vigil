@@ -97,4 +97,8 @@
     <string name="miui_permission_note">MIUI系统需要额外在"安全中心"授权</string>
     <string name="bottom_nav_monitoring">监控</string>
 
+    <string name="battery_optimization_dialog_title">电池优化白名单</string>
+    <string name="battery_optimization_dialog_message">部分系统（如摩托罗拉 Device Guard、小米省电策略）会在报警响铃时强制结束后台进程，导致铃声和提醒中断。请将应用加入电池优化白名单（允许后台活动）。</string>
+    <string name="battery_optimization_label">电池优化白名单</string>
+
 </resources>

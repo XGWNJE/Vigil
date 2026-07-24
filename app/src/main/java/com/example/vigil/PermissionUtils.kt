@@ -71,6 +71,40 @@ object PermissionUtils {
         }
     }
 
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    fun requestIgnoreBatteryOptimizations(activity: Activity) {
+        Log.d(TAG, "正在引导用户将应用加入电池优化白名单")
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.battery_optimization_dialog_title)
+            .setMessage(R.string.battery_optimization_dialog_message)
+            .setPositiveButton(R.string.dialog_go_to_settings) { _, _ ->
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:${activity.packageName}")
+                    )
+                    if (activity is MainActivity) {
+                        activity.appSettingsLauncher.launch(intent)
+                    } else {
+                        activity.startActivity(intent)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "无法直接请求忽略电池优化，回退到电池优化设置列表页", e)
+                    try {
+                        activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "无法打开电池优化设置页面", e2)
+                    }
+                }
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
     fun canPostNotifications(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

@@ -106,6 +106,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | 前台服务（FOREGROUND_SERVICE_SPECIAL_USE） | 维持后台监听服务持续运行 | 自动（Manifest 声明） |
 | 唤醒锁（WAKE_LOCK） | 报警触发时点亮屏幕 | 自动（Manifest 声明） |
 | 查询已安装应用（QUERY_ALL_PACKAGES） | 应用过滤列表枚举设备应用 | 自动（Manifest 声明） |
+| 忽略电池优化（REQUEST_IGNORE_BATTERY_OPTIMIZATIONS） | 防止厂商省电策略（如 Motorola Device Guard）在报警响铃时强杀进程 | 设置页"电池优化白名单"一键引导 |
 
 > **注意**：通知使用权需在系统设置中手动授予，应用内提供直达跳转入口。
 
@@ -163,6 +164,10 @@ adb install app/build/outputs/apk/debug/app-debug.apk
   - `START_STICKY` 重启后 `onStartCommand(intent=null)` 分支现在会重新加载关键词及过滤配置，避免服务以空关键词列表运行
   - 添加通知 ID 去重（`alertedNotificationKeys`），防止系统在用户展开通知栏时重复投递通知导致重复报警
 - 为 `keywords.isEmpty()` 的静默返回路径添加日志，便于后续诊断
+
+**新增**
+- 电池优化白名单引导：设置页"权限状态"新增入口，一键跳转系统授权。修复摩托罗拉 Device Guard 等厂商省电策略在报警响铃约 30 秒后强杀进程、导致铃声中断与报警静默丢失的问题
+- 报警状态持久化与进程重启恢复：触发报警时持久化未确认状态，进程被杀重建后自动恢复响铃与弹窗（30 分钟有效期）；应用打开时若存在未确认报警，直接弹出确认对话框，避免铃声循环却无法停止
 
 </details>
 

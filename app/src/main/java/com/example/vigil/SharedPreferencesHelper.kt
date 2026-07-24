@@ -34,6 +34,10 @@ class SharedPreferencesHelper(context: Context) {
         private const val KEY_IS_FIRST_LAUNCH = "is_first_launch"
         private const val KEY_HAS_SHOWN_DONATE_DIALOG = "has_shown_donate_dialog"
 
+        // 未确认报警（进程被杀后用于恢复响铃与弹窗）
+        private const val KEY_PENDING_ALERT_KEYWORD = "pending_alert_keyword"
+        private const val KEY_PENDING_ALERT_TIMESTAMP = "pending_alert_timestamp"
+
         // 将 KEY_IS_LICENSED 的访问修饰符改为 internal
         internal const val KEY_IS_LICENSED = "is_licensed" // 标记是否已成功验证过有效授权码
 
@@ -166,6 +170,39 @@ class SharedPreferencesHelper(context: Context) {
     fun markDonateDialogShown() {
         prefs.edit().putBoolean(KEY_HAS_SHOWN_DONATE_DIALOG, true).apply()
         Log.i("SharedPreferencesHelper", "已标记捐赠提示对话框已显示")
+    }
+
+    // --- 未确认报警持久化（进程被系统省电策略杀死后恢复报警用） ---
+
+    /**
+     * 保存一条未确认的报警。触发报警时调用。
+     */
+    fun savePendingAlert(keyword: String) {
+        prefs.edit()
+            .putString(KEY_PENDING_ALERT_KEYWORD, keyword)
+            .putLong(KEY_PENDING_ALERT_TIMESTAMP, System.currentTimeMillis())
+            .apply()
+        Log.i("SharedPreferencesHelper", "未确认报警已持久化: $keyword")
+    }
+
+    /**
+     * 读取未确认报警，返回 关键词 to 触发时间戳；无则返回 null。
+     */
+    fun getPendingAlert(): Pair<String, Long>? {
+        val keyword = prefs.getString(KEY_PENDING_ALERT_KEYWORD, null) ?: return null
+        val timestamp = prefs.getLong(KEY_PENDING_ALERT_TIMESTAMP, 0L)
+        return keyword to timestamp
+    }
+
+    /**
+     * 清除未确认报警。用户在弹窗中确认后调用。
+     */
+    fun clearPendingAlert() {
+        prefs.edit()
+            .remove(KEY_PENDING_ALERT_KEYWORD)
+            .remove(KEY_PENDING_ALERT_TIMESTAMP)
+            .apply()
+        Log.i("SharedPreferencesHelper", "未确认报警已清除。")
     }
 
     // --- 新增: 授权状态相关方法 ---

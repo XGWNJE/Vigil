@@ -61,6 +61,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val FOREGROUND_NOTIFICATION_ID = 717
         private const val FOREGROUND_CHANNEL_ID = "vigil_foreground_channel"
         private const val WAKELOCK_TIMEOUT_MS = 5 * 60 * 1000L  // 5 分钟，应对激进电池优化设备
+        private const val PENDING_ALERT_TTL_MS = 30 * 60 * 1000L  // 未确认报警恢复窗口：30 分钟
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
@@ -80,15 +81,19 @@ class MyNotificationListenerService : NotificationListenerService() {
         serviceScope.launch {
             VigilEventBus.alertConfirmed.collect {
                 Log.i(TAG, "收到来自 UI 的确认事件，停止铃声和释放锁。")
+                sharedPreferencesHelper.clearPendingAlert()
                 stopRingtoneAndLock()
             }
         }
         createNotificationChannel()
-        
+
         // 使用简单方式启动前台服务
         val notification = createForegroundServiceNotification()
         startForeground(FOREGROUND_NOTIFICATION_ID, notification)
         Log.i(TAG, "服务已创建并启动为前台服务。")
+
+        // 进程被杀重建后，恢复此前未被用户确认的报警
+        recoverPendingAlertIfNeeded()
     }
 
     override fun onListenerConnected() {
@@ -201,6 +206,9 @@ class MyNotificationListenerService : NotificationListenerService() {
             }
             alertedNotificationKeys.add(notifKey)
 
+            // 持久化未确认报警：进程被省电策略杀死后，服务重建时可恢复响铃
+            sharedPreferencesHelper.savePendingAlert(matchedKeyword)
+
             val finalMatchedKeyword = matchedKeyword
             // 获取来源应用名称（用于 Dialog 展示）
             val sourceAppName = try {
@@ -244,6 +252,42 @@ class MyNotificationListenerService : NotificationListenerService() {
     private fun stopRingtoneAndLock() {
         stopRingtone()
         releaseWakeLock()
+    }
+
+    /**
+     * 进程被系统省电策略（如 Motorola Device Guard）杀死后，服务随系统重新绑定而重建。
+     * 若存在未被用户确认的报警（未超过有效期），恢复响铃并重新弹出提醒，
+     * 避免报警被静默吞掉。
+     */
+    private fun recoverPendingAlertIfNeeded() {
+        val pending = sharedPreferencesHelper.getPendingAlert() ?: return
+        val (keyword, timestamp) = pending
+        if (System.currentTimeMillis() - timestamp > PENDING_ALERT_TTL_MS) {
+            Log.w(TAG, "未确认报警 (关键词: $keyword) 已超过 ${PENDING_ALERT_TTL_MS / 60000} 分钟，按过期处理，清除。")
+            sharedPreferencesHelper.clearPendingAlert()
+            return
+        }
+        Log.w(TAG, "检测到未确认报警 (关键词: $keyword)，进程重建后恢复响铃与提醒。")
+        handler.post {
+            acquireWakeLock()
+            playRingtoneLooping()
+
+            serviceScope.launch {
+                VigilEventBus.keywordAlert.emit(AlertEvent(keyword, null, null))
+            }
+
+            val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                action = ACTION_SHOW_ALERT_FROM_SERVICE
+                putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, keyword)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            }
+            try {
+                startActivity(activityIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "恢复报警时启动 MainActivity 出错: ", e)
+                sendFallbackNotification(keyword, "请打开应用查看详情")
+            }
+        }
     }
 
     private fun sendFallbackNotification(keyword: String, additionalInfo: String? = null) {

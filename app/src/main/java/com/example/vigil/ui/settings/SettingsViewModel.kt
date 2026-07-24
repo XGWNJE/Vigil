@@ -58,6 +58,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _hasDndAccess = mutableStateOf(false)
     val hasDndAccess: State<Boolean> = _hasDndAccess
 
+    private val _isIgnoringBatteryOptimizations = mutableStateOf(false)
+    val isIgnoringBatteryOptimizations: State<Boolean> = _isIgnoringBatteryOptimizations
+
 
     // --- 应用过滤 ---
     private val _isAppFilterEnabled = mutableStateOf(sharedPreferencesHelper.getFilterAppsEnabledState())
@@ -86,13 +89,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updatePermissionStates() {
         _hasNotificationAccess.value = PermissionUtils.isNotificationListenerEnabled(context)
         _hasDndAccess.value = PermissionUtils.isDndAccessGranted(context)
+        _isIgnoringBatteryOptimizations.value = PermissionUtils.isIgnoringBatteryOptimizations(context)
 
-        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}")
+        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}")
     }
 
     // --- 权限请求回调 (由 Activity 调用) ---
     var requestNotificationListenerPermissionCallback: (() -> Unit)? = null
     var requestDndAccessPermissionCallback: (() -> Unit)? = null
+    var requestIgnoreBatteryOptimizationsCallback: (() -> Unit)? = null
 
 
     // --- 应用过滤 ---

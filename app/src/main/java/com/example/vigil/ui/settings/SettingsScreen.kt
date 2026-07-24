@@ -53,6 +53,7 @@ fun SettingsScreen(
     // 权限状态
     val hasNotificationAccess by viewModel.hasNotificationAccess
     val hasDndAccess by viewModel.hasDndAccess
+    val isIgnoringBatteryOptimizations by viewModel.isIgnoringBatteryOptimizations
 
     // 应用过滤状态
     val isAppFilterEnabled by viewModel.isAppFilterEnabled
@@ -84,6 +85,9 @@ fun SettingsScreen(
         }
         viewModel.requestDndAccessPermissionCallback = {
             activity?.let { PermissionUtils.requestDndAccessPermission(it) }
+        }
+        viewModel.requestIgnoreBatteryOptimizationsCallback = {
+            activity?.let { PermissionUtils.requestIgnoreBatteryOptimizations(it) }
         }
     }
 
@@ -129,6 +133,18 @@ fun SettingsScreen(
                     onClick = {
                         viewModel.requestNotificationListenerPermissionCallback?.invoke()
                         Toast.makeText(context, "正在跳转到通知使用权设置", Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                PermRow(
+                    icon = Icons.Filled.Favorite,
+                    label = stringResource(R.string.battery_optimization_label),
+                    iconTint = if (isIgnoringBatteryOptimizations) VigilSuccess else VigilWarning,
+                    isGranted = isIgnoringBatteryOptimizations,
+                    onClick = {
+                        if (!isIgnoringBatteryOptimizations) {
+                            viewModel.requestIgnoreBatteryOptimizationsCallback?.invoke()
+                        }
                     }
                 )
 

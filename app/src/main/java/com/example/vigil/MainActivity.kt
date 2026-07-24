@@ -20,37 +20,29 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import android.service.notification.NotificationListenerService
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.vigil.ui.AppDestinations
-import com.example.vigil.ui.BottomNavDestinations
 import com.example.vigil.ui.dialogs.KeywordAlertDialog
-import com.example.vigil.ui.monitoring.MonitoringScreen
+import com.example.vigil.ui.main.MainScreen
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.settings.AppFilterScreen
-import com.example.vigil.ui.settings.SettingsScreen
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
 import com.example.vigil.ui.theme.VigilTheme
-import com.example.vigil.ui.theme.VigilPrimary
-import com.example.vigil.ui.theme.VigilTextPrimary
-import com.example.vigil.ui.theme.VigilTextDisabled
-import com.example.vigil.ui.theme.VigilSurface
-import com.example.vigil.ui.theme.VigilBackground
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -109,11 +101,24 @@ class MainActivity : AppCompatActivity() {
                 val showDialog by this.monitoringViewModel.showKeywordAlertDialog
                 val matchedKeyword by this.monitoringViewModel.matchedKeywordForDialog
 
+                // 记录最近一次报警事件的元信息（来源应用/摘要/时间），供弹窗展示
+                var alertEvent by remember { mutableStateOf<AlertEvent?>(null) }
+                var alertEventTime by remember { mutableLongStateOf(0L) }
+                LaunchedEffect(Unit) {
+                    VigilEventBus.keywordAlert.collect { event ->
+                        alertEvent = event
+                        alertEventTime = System.currentTimeMillis()
+                    }
+                }
+
                 if (showDialog) {
                     KeywordAlertDialog(
                         onDismissRequest = { this.monitoringViewModel.onKeywordAlertDialogDismiss() },
                         onConfirm = { this.monitoringViewModel.onKeywordAlertDialogConfirm() },
-                        matchedKeyword = matchedKeyword
+                        matchedKeyword = matchedKeyword,
+                        sourceApp = alertEvent?.sourceApp,
+                        snippet = alertEvent?.snippet,
+                        eventTimeMillis = alertEventTime.takeIf { it > 0L }
                     )
                 }
             }
@@ -278,80 +283,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun VigilApp(
         monitoringViewModel: MonitoringViewModel,
         settingsViewModel: SettingsViewModel
     ) {
         val navController = rememberNavController()
-        Scaffold(
-            containerColor = VigilBackground,
-            bottomBar = {
-                BottomNavigationBar(navController = navController)
-            }
-        ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = AppDestinations.Monitoring.route,
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize()
-            ) {
-                composable(AppDestinations.Monitoring.route) {
-                    MonitoringScreen(viewModel = monitoringViewModel)
-                }
-                composable(AppDestinations.Settings.route) {
-                    SettingsScreen(
-                        viewModel = settingsViewModel,
-                        onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter.route) }
-                    )
-                }
-                composable(AppDestinations.AppFilter.route) {
-                    AppFilterScreen(
-                        viewModel = settingsViewModel,
-                        onNavigateBack = { navController.popBackStack() }
-                    )
-                }
-            }
-        }
-    }
-
-    @Composable
-    fun BottomNavigationBar(navController: NavHostController) {
-        val navBackStackEntry by navController.currentBackStackEntryAsState()
-        val currentDestination = navBackStackEntry?.destination
-        NavigationBar(
-            containerColor = VigilSurface,
-            contentColor = VigilTextPrimary
+        NavHost(
+            navController = navController,
+            startDestination = AppDestinations.Main,
+            modifier = Modifier.fillMaxSize()
         ) {
-            BottomNavDestinations.forEach { destination ->
-                val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = {
-                        navController.navigate(destination.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            destination.icon,
-                            contentDescription = stringResource(id = destination.titleResId),
-                            tint = if (selected) VigilPrimary else VigilTextDisabled
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = stringResource(id = destination.titleResId),
-                            color = if (selected) VigilPrimary else VigilTextDisabled
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        indicatorColor = VigilPrimary.copy(alpha = 0.12f)
-                    )
+            composable(AppDestinations.Main) {
+                MainScreen(
+                    monitoringViewModel = monitoringViewModel,
+                    settingsViewModel = settingsViewModel,
+                    onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter) }
+                )
+            }
+            composable(AppDestinations.AppFilter) {
+                AppFilterScreen(
+                    viewModel = settingsViewModel,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
         }

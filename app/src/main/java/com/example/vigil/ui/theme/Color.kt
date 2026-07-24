@@ -43,3 +43,12 @@ val VigilChipText = Color(0xFFFFFFFF)
 // Switch colors
 val VigilSwitchThumb = Color(0xFFFFFFFF)
 val VigilSwitchTrack = Color(0xFFA855F7)
+
+// ===== Dir A · 一线 设计稿配色（design/v2-proposals #dir-a）=====
+val VigilDirABg = Color(0xFF0A0A0B)     // --bg
+val VigilDirAInk = Color(0xFFEAEAE7)    // --ink 主文字
+val VigilDirADim = Color(0xFF71717A)    // --dim 次要文字
+val VigilDirAFaint = Color(0xFF3F3F46)  // --faint 描边/弱化元素
+val VigilDirAAcid = Color(0xFFE4FF54)   // --acid 酸橙绿（唯一强调色）
+val VigilDirALine = Color(0xFF1F1F23)   // --line 发丝线
+val VigilDirAAmber = Color(0xFFFFB020)  // 未授权警示琥珀

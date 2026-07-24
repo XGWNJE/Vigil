@@ -13,8 +13,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val AppDarkColorScheme = darkColorScheme(
-    primary = VigilPrimary,
-    onPrimary = VigilOnPrimary,
+    primary = VigilDirAAcid,
+    onPrimary = VigilDirABg,
     primaryContainer = VigilPrimaryContainer,
     onPrimaryContainer = VigilTextPrimary,
 
@@ -33,22 +33,22 @@ private val AppDarkColorScheme = darkColorScheme(
     errorContainer = VigilErrorContainer,
     onErrorContainer = VigilError,
 
-    background = VigilBackground,
-    onBackground = VigilTextPrimary,
+    background = VigilDirABg,
+    onBackground = VigilDirAInk,
 
-    surface = VigilSurface,
-    onSurface = VigilTextPrimary,
+    surface = VigilDirABg,
+    onSurface = VigilDirAInk,
     surfaceVariant = VigilSurfaceVariant,
-    onSurfaceVariant = VigilTextSecondary,
+    onSurfaceVariant = VigilDirADim,
 
-    outline = VigilBorder,
-    outlineVariant = VigilBorder,
-    scrim = VigilBackground.copy(alpha = 0.8f)
+    outline = VigilDirAFaint,
+    outlineVariant = VigilDirALine,
+    scrim = VigilDirABg.copy(alpha = 0.8f)
 )
 
 private val AppLightColorScheme = lightColorScheme(
-    primary = VigilPrimary,
-    onPrimary = VigilOnPrimary,
+    primary = VigilDirAAcid,
+    onPrimary = VigilDirABg,
     primaryContainer = VigilPrimaryContainer,
     onPrimaryContainer = VigilTextPrimary,
 
@@ -67,17 +67,17 @@ private val AppLightColorScheme = lightColorScheme(
     errorContainer = VigilErrorContainer,
     onErrorContainer = VigilError,
 
-    background = VigilBackground,
-    onBackground = VigilTextPrimary,
+    background = VigilDirABg,
+    onBackground = VigilDirAInk,
 
-    surface = VigilSurface,
-    onSurface = VigilTextPrimary,
+    surface = VigilDirABg,
+    onSurface = VigilDirAInk,
     surfaceVariant = VigilSurfaceVariant,
-    onSurfaceVariant = VigilTextSecondary,
+    onSurfaceVariant = VigilDirADim,
 
-    outline = VigilBorder,
-    outlineVariant = VigilBorder,
-    scrim = VigilBackground.copy(alpha = 0.8f)
+    outline = VigilDirAFaint,
+    outlineVariant = VigilDirALine,
+    scrim = VigilDirABg.copy(alpha = 0.8f)
 )
 
 @Composable
@@ -91,8 +91,8 @@ fun VigilTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = VigilBackground.toArgb()
-            window.navigationBarColor = VigilSurface.toArgb()
+            window.statusBarColor = VigilDirABg.toArgb()
+            window.navigationBarColor = VigilDirABg.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = false
         }

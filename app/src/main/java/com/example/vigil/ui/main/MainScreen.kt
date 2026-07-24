@@ -1,0 +1,528 @@
+// src/main/java/com/example/vigil/ui/main/MainScreen.kt
+package com.example.vigil.ui.main
+
+import android.app.Activity
+import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.vigil.MainActivity
+import com.example.vigil.PermissionUtils
+import com.example.vigil.VigilEventBus
+import com.example.vigil.ui.monitoring.MonitoringViewModel
+import com.example.vigil.ui.monitoring.ServiceState
+import com.example.vigil.ui.settings.SettingsViewModel
+import com.example.vigil.ui.theme.VigilDirAAcid
+import com.example.vigil.ui.theme.VigilDirAAmber
+import com.example.vigil.ui.theme.VigilDirABg
+import com.example.vigil.ui.theme.VigilDirADim
+import com.example.vigil.ui.theme.VigilDirAFaint
+import com.example.vigil.ui.theme.VigilDirAInk
+import com.example.vigil.ui.theme.VigilDirALine
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/**
+ * 「A · 一线」单页主屏：合并原监控/设置双 Tab。
+ * 两个 ViewModel 由 MainActivity 传入（与原来双屏共用同一实例），本屏只做 UI 接线。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun MainScreen(
+    monitoringViewModel: MonitoringViewModel,
+    settingsViewModel: SettingsViewModel,
+    onNavigateToAppFilter: () -> Unit
+) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+
+    val serviceState by monitoringViewModel.serviceState
+    val serviceEnabled by monitoringViewModel.serviceEnabled
+
+    val keywordList = settingsViewModel.keywordList
+    val selectedRingtoneName by settingsViewModel.selectedRingtoneName
+    val isAppFilterEnabled by settingsViewModel.isAppFilterEnabled
+    val hasNotificationAccess by settingsViewModel.hasNotificationAccess
+    val isIgnoringBatteryOptimizations by settingsViewModel.isIgnoringBatteryOptimizations
+
+    // 心跳：UI 侧直接收集事件总线，本地计时（ViewModel 逻辑不动）
+    var lastHeartbeatAt by remember { mutableLongStateOf(0L) }
+    var nowTick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) {
+        launch {
+            VigilEventBus.heartbeat.collect {
+                lastHeartbeatAt = SystemClock.elapsedRealtime()
+            }
+        }
+        while (true) {
+            nowTick = SystemClock.elapsedRealtime()
+            delay(1000)
+        }
+    }
+    val heartbeatText = if (lastHeartbeatAt == 0L) {
+        "HEARTBEAT --"
+    } else {
+        val seconds = (nowTick - lastHeartbeatAt) / 1000
+        when {
+            seconds < 60 -> "HEARTBEAT ${seconds}s AGO"
+            seconds < 3600 -> "HEARTBEAT ${seconds / 60}m AGO"
+            else -> "HEARTBEAT ${seconds / 3600}h AGO"
+        }
+    }
+
+    // 铃声选择器（逻辑搬自原 SettingsScreen）
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
+            settingsViewModel.onRingtoneUriSelected(uri)
+        }
+    }
+
+    var showAddKeywordDialog by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(VigilDirABg)
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 24.dp)
+    ) {
+        // ---- 顶部：字标 + 状态行 ----
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "VIGIL",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.7.sp, // ≈ .18em
+                    color = VigilDirAInk
+                )
+                Text(
+                    text = "_",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.7.sp,
+                    color = VigilDirAAcid
+                )
+            }
+            Text(
+                text = heartbeatText,
+                style = MonoTextStyle,
+                fontSize = 10.sp,
+                color = VigilDirADim,
+                letterSpacing = 0.8.sp
+            )
+        }
+
+        // ---- Hero：状态词 + 大开关 ----
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 44.dp, bottom = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = when (serviceState) {
+                        ServiceState.RUNNING, ServiceState.RUNNING_LIMITED -> "监听中"
+                        ServiceState.DISABLED -> "已停止"
+                        ServiceState.NO_PERMISSION -> "未授权"
+                        ServiceState.INITIALIZING -> "初始化中"
+                        ServiceState.HEARTBEAT_TIMEOUT -> "心跳超时"
+                        ServiceState.ERROR -> "异常"
+                    },
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp,
+                    color = VigilDirAInk
+                )
+                Text(
+                    text = "${keywordList.size} KEYWORDS",
+                    style = MonoTextStyle,
+                    fontSize = 10.sp,
+                    color = VigilDirADim,
+                    letterSpacing = 1.2.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            // 大开关：酸橙绿描边胶囊，开时右侧实心圆点
+            Box(
+                modifier = Modifier
+                    .size(96.dp, 44.dp)
+                    .border(
+                        width = 1.dp,
+                        color = if (serviceEnabled) VigilDirAAcid else VigilDirAFaint,
+                        shape = CircleShape
+                    )
+                    .clickable {
+                        val targetEnabled = !serviceEnabled
+                        if (targetEnabled && !hasNotificationAccess) {
+                            Toast.makeText(context, "请先授予通知使用权", Toast.LENGTH_SHORT).show()
+                            return@clickable
+                        }
+                        monitoringViewModel.onServiceEnabledChange(
+                            enabled = targetEnabled,
+                            isLicensed = true,
+                            startServiceCallback = { hasPermission ->
+                                (activity as? MainActivity)?.startVigilService(hasPermission)
+                            },
+                            stopServiceCallback = {
+                                (activity as? MainActivity)?.stopVigilService()
+                            }
+                        )
+                    }
+                    .padding(5.dp),
+                contentAlignment = if (serviceEnabled) Alignment.CenterEnd else Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            if (serviceEnabled) VigilDirAAcid else VigilDirAFaint,
+                            CircleShape
+                        )
+                )
+            }
+
+            Text(
+                text = if (serviceEnabled) "SERVICE ON" else "SERVICE OFF",
+                style = MonoTextStyle,
+                fontSize = 10.sp,
+                letterSpacing = 2.sp,
+                color = if (serviceEnabled) VigilDirAAcid else VigilDirADim
+            )
+        }
+
+        // ---- 发丝线单行列表 ----
+        Column(modifier = Modifier.padding(top = 36.dp)) {
+            // 列表顶部发丝线
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(VigilDirALine)
+            )
+            // 1. 关键词
+            LineRow {
+                RowLabel("关键词")
+                FlowRow(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    keywordList.forEach { keyword ->
+                        KeywordChip(
+                            text = keyword,
+                            onRemove = { settingsViewModel.removeKeyword(keyword) }
+                        )
+                    }
+                    AddChip(onClick = { showAddKeywordDialog = true })
+                }
+            }
+
+            // 2. 铃声
+            LineRow(onClick = {
+                val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                    putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+                    putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "选择报警铃声")
+                    settingsViewModel.selectedRingtoneUri.value?.let { uri ->
+                        putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, uri)
+                    }
+                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                    putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                }
+                try {
+                    ringtonePickerLauncher.launch(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }) {
+                RowLabel("铃声")
+                RowValue(selectedRingtoneName, withArrow = true)
+            }
+
+            // 3. 应用过滤
+            LineRow(onClick = onNavigateToAppFilter) {
+                RowLabel("应用过滤")
+                RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
+            }
+
+            // 4. 通知使用权
+            LineRow(onClick = {
+                if (!hasNotificationAccess) {
+                    activity?.let { PermissionUtils.requestNotificationListenerPermission(it) }
+                    Toast.makeText(context, "正在跳转到通知使用权设置", Toast.LENGTH_SHORT).show()
+                }
+            }) {
+                RowLabel("通知使用权")
+                if (hasNotificationAccess) {
+                    GrantedValue()
+                } else {
+                    WarnCapsule()
+                }
+            }
+
+            // 5. 电池白名单
+            LineRow(onClick = {
+                if (!isIgnoringBatteryOptimizations) {
+                    activity?.let { PermissionUtils.requestIgnoreBatteryOptimizations(it) }
+                }
+            }) {
+                RowLabel("电池白名单")
+                if (isIgnoringBatteryOptimizations) {
+                    GrantedValue()
+                } else {
+                    WarnCapsule()
+                }
+            }
+        }
+    }
+
+    if (showAddKeywordDialog) {
+        AddKeywordDialog(
+            onAdd = {
+                settingsViewModel.addKeyword(it)
+                showAddKeywordDialog = false
+            },
+            onDismiss = { showAddKeywordDialog = false }
+        )
+    }
+}
+
+private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+
+/** 单行：左侧灰标签 + 右侧值，底部 1dp 发丝线 */
+@Composable
+private fun LineRow(
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit
+) {
+    val modifier = Modifier
+        .fillMaxWidth()
+        .drawBehind {
+            val stroke = 1.dp.toPx()
+            drawLine(VigilDirALine, start = androidx.compose.ui.geometry.Offset(0f, size.height - stroke / 2),
+                end = androidx.compose.ui.geometry.Offset(size.width, size.height - stroke / 2), strokeWidth = stroke)
+        }
+        .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+        .padding(horizontal = 2.dp, vertical = 15.dp)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun RowLabel(text: String) {
+    Text(
+        text = text,
+        fontSize = 12.sp,
+        letterSpacing = 0.6.sp,
+        color = VigilDirADim
+    )
+}
+
+@Composable
+private fun RowValue(text: String, withArrow: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(text = text, fontSize = 13.sp, color = VigilDirAInk)
+        if (withArrow) {
+            Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+        }
+    }
+}
+
+@Composable
+private fun GrantedValue() {
+    Text(
+        text = "GRANTED",
+        style = MonoTextStyle,
+        fontSize = 11.sp,
+        letterSpacing = 0.8.sp,
+        color = VigilDirAAcid
+    )
+}
+
+@Composable
+private fun WarnCapsule() {
+    Text(
+        text = "去设置",
+        style = MonoTextStyle,
+        fontSize = 11.sp,
+        color = VigilDirAAmber,
+        modifier = Modifier
+            .border(1.dp, VigilDirAAmber, RoundedCornerShape(4.dp))
+            .padding(horizontal = 7.dp, vertical = 2.dp)
+    )
+}
+
+/** 关键词 chip：描边胶囊 + 可删除 x */
+@Composable
+private fun KeywordChip(text: String, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .border(1.dp, VigilDirAFaint, CircleShape)
+            .padding(start = 10.dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(text = text, fontSize = 11.sp, color = VigilDirAInk)
+        Text(
+            text = "×",
+            fontSize = 12.sp,
+            color = VigilDirADim,
+            modifier = Modifier
+                .clickable(onClick = onRemove)
+                .padding(horizontal = 2.dp)
+        )
+    }
+}
+
+/** 虚线 "+" chip */
+@Composable
+private fun AddChip(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .drawBehind {
+                val strokeWidth = 1.dp.toPx()
+                drawRoundRect(
+                    color = VigilDirADim,
+                    style = Stroke(
+                        width = strokeWidth,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                    ),
+                    cornerRadius = CornerRadius(size.height / 2, size.height / 2)
+                )
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = "+", fontSize = 11.sp, color = VigilDirADim)
+    }
+}
+
+/** 极简添加关键词对话框 */
+@Composable
+private fun AddKeywordDialog(
+    onAdd: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var input by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "添加关键词",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                singleLine = true,
+                placeholder = { Text("输入关键词", fontSize = 14.sp, color = VigilDirADim) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = VigilDirAAcid,
+                    unfocusedBorderColor = VigilDirAFaint,
+                    focusedTextColor = VigilDirAInk,
+                    unfocusedTextColor = VigilDirAInk,
+                    cursorColor = VigilDirAAcid
+                ),
+                shape = RoundedCornerShape(4.dp)
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onAdd(input) },
+                enabled = input.isNotBlank()
+            ) {
+                Text(
+                    text = "添加",
+                    color = if (input.isNotBlank()) VigilDirAAcid else VigilDirADim
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消", color = VigilDirADim)
+            }
+        }
+    )
+}

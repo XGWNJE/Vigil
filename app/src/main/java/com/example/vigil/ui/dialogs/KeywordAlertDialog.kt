@@ -3,147 +3,153 @@ package com.example.vigil.ui.dialogs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.vigil.ui.theme.*
+import com.example.vigil.ui.theme.VigilDirAAcid
+import com.example.vigil.ui.theme.VigilDirABg
+import com.example.vigil.ui.theme.VigilDirADim
+import com.example.vigil.ui.theme.VigilDirAInk
+import com.example.vigil.ui.theme.VigilDirALine
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
+/**
+ * 「A · 一线」报警弹窗：酸橙绿 1dp 边框大框 + 等宽元信息 + 实心大按钮。
+ * 确认/关闭逻辑与原实现一致。
+ */
 @Composable
 fun KeywordAlertDialog(
     onDismissRequest: () -> Unit,
     onConfirm: () -> Unit,
     matchedKeyword: String?,
-    sourceApp: String? = null
+    sourceApp: String? = null,
+    snippet: String? = null,
+    eventTimeMillis: Long? = null
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false)
+        properties = DialogProperties(
+            dismissOnClickOutside = false,
+            dismissOnBackPress = false,
+            usePlatformDefaultWidth = false
+        )
     ) {
+        // 外层：暗底 + 发丝线边框
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(VigilBackground.copy(alpha = 0.8f))
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxSize()
+                .background(VigilDirABg)
+                .padding(24.dp)
+                .border(1.dp, VigilDirALine)
+                .padding(16.dp)
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, VigilErrorBorder),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            // 内层：酸橙绿 1dp 大框
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(1.dp, VigilDirAAcid)
+                    .padding(horizontal = 22.dp, vertical = 28.dp)
             ) {
-                Column(
+                Text(
+                    text = "KEYWORD ALERT // 关键词报警",
+                    style = MonoTextStyle,
+                    fontSize = 10.sp,
+                    letterSpacing = 3.sp,
+                    color = VigilDirAAcid
+                )
+
+                Spacer(modifier = Modifier.height(30.dp))
+
+                Text(
+                    text = matchedKeyword ?: "未知",
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.6.sp,
+                    lineHeight = 46.sp,
+                    color = VigilDirAInk
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                AlertMetaRow("FROM", sourceApp?.takeIf { it.isNotBlank() } ?: "--")
+                AlertMetaRow("TEXT", snippet?.takeIf { it.isNotBlank() } ?: "--")
+                AlertMetaRow("TIME", formatAlertTime(eventTimeMillis))
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 底部：酸橙绿实心大按钮
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(28.dp, 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(20.dp)
-                ) {
-                    // Alert icon ring
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .background(VigilErrorSubtle, CircleShape)
-                            .border(1.dp, VigilErrorBorder, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Warning,
-                            contentDescription = null,
-                            tint = VigilError,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-
-                    // Title
-                    Text(
-                        text = "检测到关键词",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = VigilTextPrimary,
-                        textAlign = TextAlign.Center
-                    )
-
-                    // Keyword chip
-                    Row(
-                        modifier = Modifier
-                            .background(VigilErrorSubtle, RoundedCornerShape(12.dp))
-                            .border(1.dp, VigilErrorBorder, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Tag,
-                            contentDescription = null,
-                            tint = VigilError,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Text(
-                            text = matchedKeyword ?: "未知",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = VigilError,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-
-                    // Source app
-                    if (sourceApp != null) {
-                        Text(
-                            text = "来源：$sourceApp",
-                            fontSize = 13.sp,
-                            color = VigilTextTertiary,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    // Confirm button
-                    Button(
-                        onClick = {
+                        .background(VigilDirAAcid, RoundedCornerShape(2.dp))
+                        .clickable {
                             onConfirm()
                             onDismissRequest()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = VigilError
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.CheckCircle,
-                            contentDescription = null,
-                            tint = VigilTextPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "已知晓，停止报警",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = VigilTextPrimary
-                        )
-                    }
+                        }
+                        .padding(17.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "已知晓，停止报警",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.5.sp,
+                        color = VigilDirABg
+                    )
                 }
             }
         }
     }
+}
+
+private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+
+@Composable
+private fun AlertMetaRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            style = MonoTextStyle,
+            fontSize = 11.sp,
+            color = VigilDirADim
+        )
+        Text(
+            text = value,
+            style = MonoTextStyle,
+            fontSize = 11.sp,
+            color = VigilDirAInk
+        )
+    }
+}
+
+private fun formatAlertTime(eventTimeMillis: Long?): String {
+    val millis = eventTimeMillis ?: System.currentTimeMillis()
+    return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(millis))
 }

@@ -11,7 +11,7 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/version-1.3.2-A855F7)](https://github.com/XGWNJE/Vigil/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [技术架构](#-技术架构) 
@@ -36,7 +36,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | **强制报警** | 绕过系统静音和勿扰模式在后台播放铃声；在应用内弹出全屏报警对话框（不依赖悬浮窗，不在应用外弹出） |
 | **应用过滤** | 可选择只监听指定应用的通知，或监听全部应用 |
 | **前台服务保活** | 以前台服务形式常驻，降低系统回收概率 |
-| **权限引导** | 设置页集中展示所有必要权限状态，缺失时一键跳转授权 |
+| **权限引导** | 主界面集中展示必要权限状态（通知使用权、电池优化白名单），缺失时一键跳转授权 |
 | **心跳检测** | 单调时钟心跳，实时感知服务存活状态，避免误报 |
 
 ---
@@ -45,7 +45,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 <div align="center">
 
-| 监控页面 | 报警界面 | 应用过滤 |
+| 主界面 | 报警界面 | 应用过滤 |
 |:--------:|:--------:|:--------:|
 | <img src="./image1.png" alt="监控页面" width="240" /> | <img src="./image2.png" alt="报警界面" width="240" /> | <img src="./image3.png" alt="应用过滤" width="240" /> |
 
@@ -136,20 +136,20 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 | 页面 | 描述 |
 |------|------|
-| **MonitoringScreen** | 服务开关、运行状态、心跳指示器 |
-| **SettingsScreen** | 权限状态、关键词 Chip 输入、铃声选择、应用过滤入口 |
+| **MainScreen** | 「一线」单页主界面：状态词 + 服务大开关，发丝线列表承载关键词、铃声、应用过滤、权限入口 |
 | **AppFilterScreen** | 独立全屏页，支持搜索、系统 / 用户应用标记、多选 |
 | **KeywordAlertDialog** | 命中关键词时全屏弹出，确认后停止铃声 |
 
 ### 设计主题
 
-深色主题为主，色彩规范如下：
+「一线」极简深色主题，发丝线分区、无卡片，单一强调色：
 
 ```
-背景色:   #0A0A0A
-卡片色:   #141414
-边框色:   #27272A
-主色调:   #A855F7（紫色）
+背景色:   #0A0A0B
+文字色:   #EAEAE7
+分割线:   #1F1F23
+主色调:   #E4FF54（酸橙绿）
+警示色:   #FFB020（琥珀）
 ```
 
 ---
@@ -157,7 +157,18 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ## 📋 更新日志
 
 <details open>
-<summary><b>v1.3.2 — Bug 修复</b></summary>
+<summary><b>v1.4.0 — 「一线」UI 重设计</b></summary>
+
+**UI 全面重设计**
+- 监控 / 设置双 Tab 合并为单页：状态词 + 服务大开关为核心，发丝线分区、去卡片化，关键词与权限不再重复出现
+- 报警弹窗重设计：酸橙绿细框 + 超大关键词 + 等宽元信息（来源 / 内容 / 时间）
+- 新增「一线」配色规范：背景 #0A0A0B，主色调酸橙绿 #E4FF54
+- 设计稿存档于 `design/v2-proposals/`（含 4 个候选方向，当前落地为 A 方向）
+
+</details>
+
+<details>
+<summary><b>v1.3.2 — Bug 修复与报警可靠性增强</b></summary>
 
 **修复**
 - 修复通知含关键词时报警不触发、手动下拉通知栏后才触发的竞态条件 Bug

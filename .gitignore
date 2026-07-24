@@ -68,3 +68,8 @@ out/
 CMakeFiles/
 CMakeCache.txt
 .idea/deploymentTargetSelector.xml
+
+# Kotlin 构建缓存
+.kotlin/
+# Playwright 测试产物
+.playwright-mcp/

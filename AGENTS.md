@@ -39,7 +39,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 ### 触发与验证
 
-- 测试通知：`adb shell cmd notification post -t "标题" tag "正文"` —— 标题/正文不得含逗号（含中文逗号），会被 shell 命令解析截断，导致关键词匹配不上、测试假阴性。
+- 测试通知：`adb shell cmd notification post -t "标题" tag "正文"` —— 标题/正文不得含**空格**（多层 shell 转发会按空格拆参截断，导致关键词匹配不上、测试假阴性）；逗号（含中文逗号）实测无碍。
 - 音量最小：`adb shell cmd media_session volume --stream 4 --set 1`（STREAM_ALARM=4；音量键不可靠，前台时调的是 MUSIC 流）。
 - 播放中：`adb shell dumpsys media.player` 应见 `packageName: com.example.vigil`、`NuPlayer state(5)`（STARTED）、`looping(1)`、`stream type(4)`；停止后该条目消失。
 - UI 按钮：`adb shell uiautomator dump` 取 `bounds` → `adb shell input tap x y`；截图 `screencap`；投屏 scrcpy 必须 `--no-audio`，用 `ADB=` 环境变量复用现有 adb server。

@@ -101,10 +101,10 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | 权限 | 用途 | 授权方式 |
 |------|------|----------|
 | 通知使用权（NotificationListenerService） | 读取所有应用通知内容，核心功能依赖 | 系统设置手动授予 |
-| 勿扰模式控制（ACCESS_NOTIFICATION_POLICY） | 报警时临时突破勿扰模式播放铃声 | 系统弹窗 |
-| 发送通知（POST_NOTIFICATIONS，Android 13+） | 显示前台服务常驻通知 | 首次启动自动弹窗 |
+| 勿扰模式控制（ACCESS_NOTIFICATION_POLICY） | 仅在 Manifest 声明并做状态检查，当前未实际使用（报警铃声走闹钟流，勿扰模式下默认豁免） | — |
+| 发送通知（POST_NOTIFICATIONS，Android 13+） | 前台服务常驻通知与备选报警通知 | 首次启动自动弹窗 |
 | 前台服务（FOREGROUND_SERVICE_SPECIAL_USE） | 维持后台监听服务持续运行 | 自动（Manifest 声明） |
-| 唤醒锁（WAKE_LOCK） | 报警触发时点亮屏幕 | 自动（Manifest 声明） |
+| 唤醒锁（WAKE_LOCK） | 报警触发时保持 CPU 唤醒（PARTIAL_WAKE_LOCK，5 分钟超时），确保铃声持续播放 | 自动（Manifest 声明） |
 | 查询已安装应用（QUERY_ALL_PACKAGES） | 应用过滤列表枚举设备应用 | 自动（Manifest 声明） |
 | 忽略电池优化（REQUEST_IGNORE_BATTERY_OPTIMIZATIONS） | 防止厂商省电策略（如 Motorola Device Guard）在报警响铃时强杀进程 | 设置页"电池优化白名单"一键引导 |
 
@@ -129,7 +129,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | `MonitoringViewModel` | 服务状态、心跳检测、报警 Dialog 状态管理 |
 | `SettingsViewModel` | 关键词列表、铃声、应用过滤列表的状态与持久化 |
 | `SharedPreferencesHelper` | 所有配置的读写封装（关键词以 `StringSet` 存储） |
-| `PermissionUtils` | 各权限的检测与跳转逻辑，含 MIUI 兼容分支 |
+| `PermissionUtils` | 各权限的检测与跳转逻辑 |
 | `MainActivity` | Compose 根宿主，生命周期管理，服务启停 |
 
 ### UI 页面

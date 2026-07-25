@@ -44,13 +44,44 @@ class MyNotificationListenerService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val alertedNotificationKeys = mutableSetOf<String>()
 
+    // 系统绑定状态：只有它才代表 NotificationManagerService 正在向本服务投递通知。
+    // 进程被杀后系统以 START_STICKY 重建服务时，onListenerConnected 可能永不被调用，
+    // 此时进程活着、心跳照发，但通知永远不来 —— 看门狗靠此标志识别并自愈。
+    @Volatile private var listenerActuallyConnected: Boolean = false
+    private var rebindFailCount: Int = 0
+
     private enum class PlayerState { IDLE, PREPARING, PLAYING, STOPPED }
     @Volatile private var playerState = PlayerState.IDLE
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             sendHeartbeat()
+            watchdogListenerBinding()
             handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+        }
+    }
+
+    /**
+     * 绑定看门狗：进程活着但系统未绑定监听服务时自动自愈。
+     * 先低频 requestRebind；连续失败 WATCHDOG_MAX_REBIND_ATTEMPTS 次后升级为
+     * 组件 toggle 强刷绑定（等效于用户在系统设置里撤销再授予通知使用权）。
+     */
+    private fun watchdogListenerBinding() {
+        if (listenerActuallyConnected) {
+            rebindFailCount = 0
+            return
+        }
+        if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) return
+        if (!PermissionUtils.isNotificationListenerEnabled(applicationContext)) return
+
+        rebindFailCount++
+        if (rebindFailCount > WATCHDOG_MAX_REBIND_ATTEMPTS) {
+            Log.w(TAG, "requestRebind 连续 ${rebindFailCount - 1} 次未恢复绑定，升级为组件 toggle 强刷。")
+            rebindFailCount = 0
+            serviceScope.launch { ListenerRecovery.toggleComponentRebind(applicationContext) }
+        } else {
+            Log.w(TAG, "检测到监听服务未绑定（第 $rebindFailCount 次），自动 requestRebind。")
+            ListenerRecovery.requestRebind(applicationContext)
         }
     }
 
@@ -65,6 +96,8 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
+        // 看门狗：连续 N 次 requestRebind 未恢复绑定后，升级为组件 toggle 强刷
+        private const val WATCHDOG_MAX_REBIND_ATTEMPTS = 5
         const val ACTION_ALERT_CONFIRMED_FROM_UI = "com.example.vigil.ACTION_ALERT_CONFIRMED_FROM_UI"
 
         // 新增：用于从服务启动 MainActivity 并请求显示对话框的 Action 和 Extra
@@ -76,6 +109,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         super.onCreate()
         Log.i(TAG, "服务创建中...")
         sharedPreferencesHelper = SharedPreferencesHelper(applicationContext)
+        // 进程若是被系统强杀后重建，onDestroy 不会执行，持久化的绑定状态会残留 true；
+        // 重建后绑定状态未知，先重置为 false，等 onListenerConnected 真正回调再置 true
+        listenerActuallyConnected = false
+        sharedPreferencesHelper.saveListenerConnectedState(false)
         loadSettings()
         // 监听 UI 确认报警事件（替代 LocalBroadcastManager alertConfirmedReceiver）
         serviceScope.launch {
@@ -99,6 +136,9 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "通知监听器已连接。")
+        listenerActuallyConnected = true
+        rebindFailCount = 0
+        sharedPreferencesHelper.saveListenerConnectedState(true)
         loadSettings()
         startHeartbeat()
         sendServiceStatusUpdate(true)
@@ -111,6 +151,8 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.w(TAG, "通知监听器已断开连接！")
+        listenerActuallyConnected = false
+        sharedPreferencesHelper.saveListenerConnectedState(false)
         stopHeartbeat()
         sendServiceStatusUpdate(false)
 
@@ -139,6 +181,8 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.w(TAG, "服务销毁中...")
+        listenerActuallyConnected = false
+        sharedPreferencesHelper.saveListenerConnectedState(false)
         serviceScope.cancel()
         stopHeartbeat()
         stopRingtoneAndLock()
@@ -505,13 +549,8 @@ class MyNotificationListenerService : NotificationListenerService() {
         val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags)
 
-        // 检查通知监听服务是否已连接（无论用户是否启用了服务）
-        val isListenerConnected = try {
-            activeNotifications != null
-            true
-        } catch (e: Exception) {
-            false
-        }
+        // 使用真实的系统绑定状态（activeNotifications 伪检测无法区分"无通知"与"未绑定"）
+        val isListenerConnected = listenerActuallyConnected
 
         // 获取服务状态
         val serviceEnabled = SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)

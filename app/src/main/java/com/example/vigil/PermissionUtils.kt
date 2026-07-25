@@ -132,5 +132,69 @@ object PermissionUtils {
         }
     }
 
+    /**
+     * 打开"自启动管理"设置页（国产 ROM 通用）。
+     * 国产 ROM（小米/华为/OPPO/vivo/荣耀等）默认禁止应用自启动，进程被系统清理后
+     * 服务无法及时重建。各厂商设置页 intent 不统一，按序尝试已知的厂商页面，
+     * 全部失败则回退到本应用详情页，由用户手动查找"自启动"选项。
+     */
+    fun openAutoStartSettings(activity: Activity) {
+        val attempts = listOf(
+            // 小米 MIUI / HyperOS
+            Intent().setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            Intent("miui.intent.action.OP_AUTO_START").addCategory(Intent.CATEGORY_DEFAULT),
+            // 华为 EMUI / 鸿蒙
+            Intent().setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            Intent().setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+            // OPPO ColorOS
+            Intent().setClassName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
+            Intent().setClassName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            Intent().setClassName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"),
+            // vivo OriginOS / Funtouch
+            Intent().setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+            Intent().setClassName("com.iqoo.secure", "com.iqoo.secure.safeguard.PurviewTabActivity"),
+            // 荣耀
+            Intent().setClassName("com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+        )
+        for (intent in attempts) {
+            try {
+                activity.startActivity(intent)
+                Log.i(TAG, "已打开自启动管理页面: $intent")
+                return
+            } catch (e: Exception) {
+                Log.d(TAG, "自启动页面不可用，尝试下一个: $intent")
+            }
+        }
+        Log.w(TAG, "未找到可用的自启动管理页面，回退到应用详情页")
+        openAppDetailsSettings(activity)
+    }
+
+    /**
+     * 打开"后台运行/省电策略"引导。各厂商无稳定直达 intent，统一跳应用详情页，
+     * 由对话框文案引导用户将省电策略/后台耗电管理设为"无限制/允许后台运行"。
+     */
+    fun openBackgroundRunSettings(activity: Activity) {
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.background_run_dialog_title)
+            .setMessage(R.string.background_run_dialog_message)
+            .setPositiveButton(R.string.dialog_go_to_settings) { _, _ ->
+                openAppDetailsSettings(activity)
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
+    private fun openAppDetailsSettings(activity: Activity) {
+        try {
+            val intent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${activity.packageName}")
+            )
+            activity.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "无法打开应用详情页", e)
+        }
+    }
+
 }
 

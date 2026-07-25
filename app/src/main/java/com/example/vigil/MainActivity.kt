@@ -3,10 +3,8 @@ package com.example.vigil
 
 import android.app.Application
 import android.app.KeyguardManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -30,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
-import android.service.notification.NotificationListenerService
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -43,7 +40,6 @@ import com.example.vigil.ui.settings.AppFilterScreen
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
 import com.example.vigil.ui.theme.VigilTheme
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -179,6 +175,15 @@ class MainActivity : AppCompatActivity() {
         settingsViewModel.updatePermissionStates()
         // 用户从系统设置返回后，若通知权限被取消则再次申请
         requestPostNotificationsIfNeeded()
+        // 打开 App 即自愈：服务开关开着、权限在、但系统监听绑定断开时，自动请求重绑。
+        // 绝大多数断连场景下用户无需手动"重启服务"或重新授权。
+        if (sharedPreferencesHelper.getServiceEnabledState()
+            && PermissionUtils.isNotificationListenerEnabled(this)
+            && !sharedPreferencesHelper.getListenerConnectedState()
+        ) {
+            Log.w(TAG, "检测到监听绑定断开（打开 App 时），自动 requestRebind。")
+            ListenerRecovery.requestRebind(this)
+        }
     }
 
     private fun requestPostNotificationsIfNeeded() {
@@ -222,36 +227,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun setNotificationListenerServiceComponentEnabled(enabled: Boolean) {
-        val componentName = ComponentName(this, MyNotificationListenerService::class.java)
-        val newState = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-        else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-        try {
-            if (packageManager.getComponentEnabledSetting(componentName) != newState) {
-                packageManager.setComponentEnabledSetting(componentName, newState, PackageManager.DONT_KILL_APP)
-                Log.i(TAG, "MyNotificationListenerService component state set to: ${if (enabled) "enabled" else "disabled"}")
-            } else {
-                Log.d(TAG, "MyNotificationListenerService component is already in the target state: ${if (enabled) "enabled" else "disabled"}")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting service component state: ", e)
-        }
+        ListenerRecovery.setComponentEnabled(this, enabled)
     }
 
     fun restartService() {
         Log.i(TAG, "MainActivity received restart service request.")
         // 优先使用官方 requestRebind API，避免定时竞态条件
-        try {
-            NotificationListenerService.requestRebind(
-                ComponentName(this, MyNotificationListenerService::class.java)
-            )
+        if (ListenerRecovery.requestRebind(this)) {
             Log.i(TAG, "requestRebind called successfully.")
-        } catch (e: Exception) {
-            Log.w(TAG, "requestRebind failed, falling back to component toggle.", e)
+        } else {
+            Log.w(TAG, "requestRebind failed, falling back to component toggle.")
             // 降级方案：协程延迟组件切换，保证 OS 有足够时间完成解绑
             lifecycleScope.launch {
-                setNotificationListenerServiceComponentEnabled(false)
-                delay(2000)
-                setNotificationListenerServiceComponentEnabled(true)
+                ListenerRecovery.toggleComponentRebind(this@MainActivity)
                 if (monitoringViewModel.serviceEnabled.value && PermissionUtils.isNotificationListenerEnabled(this@MainActivity)) {
                     startVigilService(true)
                 }

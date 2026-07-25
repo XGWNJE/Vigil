@@ -190,6 +190,7 @@ fun MainScreen(
                         ServiceState.DISABLED -> "已停止"
                         ServiceState.NO_PERMISSION -> "未授权"
                         ServiceState.INITIALIZING -> "初始化中"
+                        ServiceState.LISTENER_DISCONNECTED -> "重连中"
                         ServiceState.HEARTBEAT_TIMEOUT -> "心跳超时"
                         ServiceState.ERROR -> "异常"
                     },
@@ -339,6 +340,22 @@ fun MainScreen(
                 } else {
                     WarnCapsule()
                 }
+            }
+
+            // 6. 自启动管理（国产 ROM 通用引导，跳转系统对应设置页）
+            LineRow(onClick = {
+                activity?.let { PermissionUtils.openAutoStartSettings(it) }
+            }) {
+                RowLabel("自启动管理")
+                RowValue("允许自启动", withArrow = true)
+            }
+
+            // 7. 后台运行（省电策略/耗电管理设为无限制）
+            LineRow(onClick = {
+                activity?.let { PermissionUtils.openBackgroundRunSettings(it) }
+            }) {
+                RowLabel("后台运行")
+                RowValue("设为无限制", withArrow = true)
             }
         }
     }

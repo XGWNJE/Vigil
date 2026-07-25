@@ -38,6 +38,9 @@ class SharedPreferencesHelper(context: Context) {
         private const val KEY_PENDING_ALERT_KEYWORD = "pending_alert_keyword"
         private const val KEY_PENDING_ALERT_TIMESTAMP = "pending_alert_timestamp"
 
+        // 通知监听服务与系统的真实绑定状态（心跳只证明进程活着，此标志才代表系统正在投递通知）
+        private const val KEY_LISTENER_CONNECTED = "listener_connected"
+
         // 将 KEY_IS_LICENSED 的访问修饰符改为 internal
         internal const val KEY_IS_LICENSED = "is_licensed" // 标记是否已成功验证过有效授权码
 
@@ -97,6 +100,22 @@ class SharedPreferencesHelper(context: Context) {
 
     fun getServiceEnabledState(): Boolean {
         return prefs.getBoolean(KEY_SERVICE_ENABLED, false)
+    }
+
+    /**
+     * 持久化通知监听服务与系统的绑定状态。
+     * 心跳只能证明进程活着，此标志才代表系统正在向服务投递通知；
+     * 供 UI 冷启动时作为状态兜底（EventBus 无 replay）。
+     */
+    fun saveListenerConnectedState(connected: Boolean) {
+        if (getListenerConnectedState() != connected) {
+            prefs.edit().putBoolean(KEY_LISTENER_CONNECTED, connected).apply()
+            Log.i("SharedPreferencesHelper", "监听绑定状态已保存: $connected")
+        }
+    }
+
+    fun getListenerConnectedState(): Boolean {
+        return prefs.getBoolean(KEY_LISTENER_CONNECTED, false)
     }
 
     // --- 应用过滤相关方法 ---

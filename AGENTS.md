@@ -16,8 +16,9 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 构建：`./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`
 - 版本号：`app/build.gradle.kts` 的 `versionCode`/`versionName`
 - 核心代码：
-  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复
-  - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、铃声、未确认报警）
+  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连并自动 requestRebind → 组件 toggle 强刷）
+  - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（requestRebind / 组件 toggle），Service 与 MainActivity 共用
+  - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、铃声、未确认报警、listener_connected 绑定状态）
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
   - `app/src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt` — 服务状态/心跳/报警弹窗状态
 
@@ -62,6 +63,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 ## 已知平台坑
 
+- 系统（国产 ROM 尤甚）可能在进程被杀重建后不再重新绑定 NotificationListenerService，但 `enabled_notification_listeners` 设置仍在——权限检查与"进程活着"都不能证明监听在工作，唯一可信信号是 `onListenerConnected` 回调（持久化为 `listener_connected`）。自愈手段：`NotificationListenerService.requestRebind()`，失败时组件 toggle 强刷（等效用户撤销再授予权限）。
 - Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。
 - Android 10+ 后台 `startActivity` 静默失败（不抛异常，`try/catch` 兜底不触发）：报警弹窗靠持久化 + App 打开时补弹（`MonitoringViewModel.init`）。
 - `cmd notification`、`cmd media_session` 等 cmd 子命令各厂商可用性不同，用前先 `cmd <name> --help` 探明。

@@ -101,4 +101,9 @@
     <string name="battery_optimization_dialog_message">部分系统（如摩托罗拉 Device Guard、小米省电策略）会在报警响铃时强制结束后台进程，导致铃声和提醒中断。请将应用加入电池优化白名单（允许后台活动）。</string>
     <string name="battery_optimization_label">电池优化白名单</string>
 
+    <string name="auto_start_label">自启动管理</string>
+    <string name="background_run_label">后台运行</string>
+    <string name="background_run_dialog_title">允许后台运行</string>
+    <string name="background_run_dialog_message">部分系统会限制应用的后台活动，导致监听服务被清理。请在应用设置中找到「省电策略 / 耗电管理 / 后台运行」选项，设为「无限制」或「允许后台运行」。</string>
+
 </resources>

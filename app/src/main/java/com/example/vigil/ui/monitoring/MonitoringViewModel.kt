@@ -19,13 +19,14 @@ import kotlinx.coroutines.launch
  * 服务状态的单一枚举，所有 UI 元素从这一个来源派生状态，避免多个独立状态变量不同步。
  */
 enum class ServiceState {
-    DISABLED,           // 用户关闭了服务开关
-    INITIALIZING,       // 开关已开，等待服务连接信号（<5s）
-    RUNNING,            // 运行正常，心跳最近有收到
-    RUNNING_LIMITED,    // 运行中，但通知发送权限缺失，前台通知可能受影响
-    HEARTBEAT_TIMEOUT,  // 心跳超时，Service 可能被系统杀死
-    NO_PERMISSION,      // 通知监听权限未授予（系统设置里没有开）
-    ERROR               // 未知错误状态
+    DISABLED,               // 用户关闭了服务开关
+    INITIALIZING,           // 开关已开，等待服务连接信号（<5s）
+    RUNNING,                // 运行正常，心跳最近有收到且系统绑定存活
+    RUNNING_LIMITED,        // 运行中，但通知发送权限缺失，前台通知可能受影响
+    LISTENER_DISCONNECTED,  // 进程活着（心跳正常）但系统监听绑定断开，自动重连中
+    HEARTBEAT_TIMEOUT,      // 心跳超时，Service 可能被系统杀死
+    NO_PERMISSION,          // 通知监听权限未授予（系统设置里没有开）
+    ERROR                   // 未知错误状态
 }
 
 class MonitoringViewModel(application: Application) : AndroidViewModel(application) {
@@ -56,6 +57,8 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     private var lastHeartbeatTime: Long = 0L        // SystemClock.elapsedRealtime() 单位
     private var hasReceivedAnySignal = false         // 是否曾收到过心跳或 connected 信号
     private var isInitializingWindow = false         // 是否处于启动初始化窗口期
+    // 系统监听绑定状态：初始值取持久化兜底（EventBus 无 replay，冷启动收不到历史事件）
+    private var listenerConnected = sharedPreferencesHelper.getListenerConnectedState()
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -111,6 +114,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             VigilEventBus.serviceStatus.collect { isConnected ->
                 Log.i(TAG, "serviceStatus received: isConnected=$isConnected")
+                listenerConnected = isConnected
                 if (isConnected) {
                     hasReceivedAnySignal = true
                     isInitializingWindow = false
@@ -160,6 +164,8 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             !enabled -> ServiceState.DISABLED
             !hasNotifPermission -> ServiceState.NO_PERMISSION
             isInitializingWindow -> ServiceState.INITIALIZING
+            // 心跳正常但系统监听绑定断开：进程活着却收不到通知，看门狗自动重连中
+            heartbeatOk && !listenerConnected -> ServiceState.LISTENER_DISCONNECTED
             heartbeatOk -> ServiceState.RUNNING
             !hasReceivedAnySignal -> ServiceState.INITIALIZING   // 从未收到信号，还在等
             else -> ServiceState.HEARTBEAT_TIMEOUT
@@ -171,6 +177,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         debugParts.add("notifPerm=${hasNotifPermission}")
         if (enabled) {
             debugParts.add("initWindow=$isInitializingWindow")
+            debugParts.add("listenerBound=$listenerConnected")
             if (hasReceivedAnySignal) {
                 debugParts.add("lastBeat=${timeSinceHeartbeat / 1000}s ago")
             } else {

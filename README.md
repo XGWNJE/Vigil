@@ -110,6 +110,8 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 > **注意**：通知使用权需在系统设置中手动授予，应用内提供直达跳转入口。
 
+> **国产 ROM（小米 / 华为 / OPPO / vivo / 荣耀等）使用须知**：这些系统有激进的省电与自启动管控，可能在进程被清理后不再重新绑定监听服务。请在设置页完成两项额外引导：**自启动管理**（允许应用自启动）与**后台运行**（省电策略 / 耗电管理设为「无限制」）。应用内置断连自愈机制（心跳看门狗自动 requestRebind / 组件重绑），断连时监控页会显示「重连中」而非误报「监听中」。
+
 ---
 
 ## 🏗 技术架构
@@ -129,7 +131,8 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | `MonitoringViewModel` | 服务状态、心跳检测、报警 Dialog 状态管理 |
 | `SettingsViewModel` | 关键词列表、铃声、应用过滤列表的状态与持久化 |
 | `SharedPreferencesHelper` | 所有配置的读写封装（关键词以 `StringSet` 存储） |
-| `PermissionUtils` | 各权限的检测与跳转逻辑 |
+| `ListenerRecovery` | 监听绑定自愈：requestRebind / 组件 toggle 重绑（服务看门狗与 UI 共用） |
+| `PermissionUtils` | 各权限的检测与跳转逻辑，含国产 ROM 自启动 / 后台运行引导 |
 | `MainActivity` | Compose 根宿主，生命周期管理，服务启停 |
 
 ### UI 页面
@@ -157,6 +160,19 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ## 📋 更新日志
 
 <details open>
+<summary><b>v1.5.0 — 监听断连自愈与国产 ROM 保活</b></summary>
+
+**修复**
+- 修复"UI 显示监听中但实际收不到通知"的问题（小米 HyperOS 等国产 ROM 高发）：系统清理进程后可能不再重新绑定监听服务，但权限设置仍在，旧版仅靠心跳判断状态导致误报
+- UI 状态改为以真实系统绑定状态为准（`onListenerConnected` 回调 + 持久化兜底），绑定断开时显示「重连中」而非误报「监听中」
+
+**新增**
+- 监听断连自动自愈：服务心跳看门狗检测到断连自动 `requestRebind`，连续失败升级为组件重绑（等效手动撤销再授予通知使用权）；打开应用时也会自动检测并重连
+- 设置页新增「自启动管理」「后台运行」引导入口（小米 / 华为 / OPPO / vivo / 荣耀等国产 ROM 通用），降低系统清理进程导致的断连概率
+
+</details>
+
+<details>
 <summary><b>v1.4.0 — 「一线」UI 重设计</b></summary>
 
 **UI 全面重设计**

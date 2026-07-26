@@ -1,13 +1,15 @@
 package com.example.vigil.ui.settings
 
 import android.app.Application
-import android.content.pm.PackageManager
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,43 +19,40 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vigil.R
+import com.example.vigil.ui.theme.VigilDirAAcid
+import com.example.vigil.ui.theme.VigilDirABg
+import com.example.vigil.ui.theme.VigilDirADim
+import com.example.vigil.ui.theme.VigilDirAFaint
+import com.example.vigil.ui.theme.VigilDirAInk
+import com.example.vigil.ui.theme.VigilDirALine
 
 /**
- * 应用过滤独立全屏页面。
- * 使用全屏 LazyColumn，彻底避免 Settings 页中嵌套滚动的 UX 反模式。
+ * 「A · 一线」应用过滤页：与主屏同一语言——暗底、发丝线分区、等宽元信息、酸橙绿强调。
+ * ViewModel 接口不变，仅重写 UI。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppFilterScreen(
     onNavigateBack: () -> Unit,
@@ -66,111 +65,150 @@ fun AppFilterScreen(
     val searchQuery by viewModel.searchQuery
     val filteredApps = viewModel.getFilteredApps()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.app_filter_settings_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.loadInstalledApps() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh_app_list))
-                    }
-                }
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(VigilDirABg)
+            .padding(start = 24.dp, end = 24.dp, top = 44.dp, bottom = 24.dp)
+    ) {
+        // ---- 顶部：返回 + 标题 + 刷新 ----
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // 过滤开关 + 统计
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // 返回：48dp 触控区，字形左对齐页面内容
+                Box(
+                    modifier = Modifier
+                        .size(width = 36.dp, height = 48.dp)
+                        .clickable(onClick = onNavigateBack),
+                    contentAlignment = Alignment.CenterStart
+                ) {
                     Text(
-                        text = stringResource(R.string.filter_apps_switch_label),
-                        style = MaterialTheme.typography.bodyLarge
+                        text = "←",
+                        fontSize = 18.sp,
+                        color = VigilDirADim
                     )
-                    if (!isLoadingApps) {
-                        Text(
-                            text = stringResource(
-                                R.string.app_count_format,
-                                filteredApps.size,
-                                filteredApps.count { it.isSelected }
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
-                Switch(
-                    checked = isAppFilterEnabled,
-                    onCheckedChange = { viewModel.onAppFilterEnabledChange(it) }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "APP FILTER // 应用过滤",
+                    style = MonoTextStyle,
+                    fontSize = 11.sp,
+                    letterSpacing = 2.sp,
+                    color = VigilDirAInk
                 )
             }
+            Text(
+                text = "REFRESH",
+                style = MonoTextStyle,
+                fontSize = 10.sp,
+                letterSpacing = 1.2.sp,
+                color = VigilDirADim,
+                modifier = Modifier.clickable { viewModel.loadInstalledApps() }
+            )
+        }
 
-            HorizontalDivider(thickness = 0.5.dp)
-
-            // 搜索框
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.onSearchQueryChange(it) },
-                label = { Text(stringResource(R.string.search_apps_label)) },
+        // ---- 开关行 + 统计 ----
+        Column(modifier = Modifier.padding(top = 28.dp)) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.clear_search))
-                        }
-                    }
-                }
+                    .height(1.dp)
+                    .background(VigilDirALine)
             )
+            LineRow {
+                RowLabel("仅监听指定应用")
+                MiniSwitch(
+                    checked = isAppFilterEnabled,
+                    onToggle = { viewModel.onAppFilterEnabledChange(it) }
+                )
+            }
+            Text(
+                text = "${filteredApps.size} APPS · ${filteredApps.count { it.isSelected }} SELECTED",
+                style = MonoTextStyle,
+                fontSize = 10.sp,
+                letterSpacing = 1.sp,
+                color = VigilDirADim,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
 
-            // 应用列表（全屏 LazyColumn，无嵌套滚动）
-            if (isLoadingApps) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (filteredApps.isEmpty()) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
+        // ---- 搜索框 ----
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { viewModel.onSearchQueryChange(it) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 13.sp, color = VigilDirAInk),
+            placeholder = {
+                Text(text = "搜索应用名或包名", fontSize = 13.sp, color = VigilDirADim)
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
                     Text(
-                        text = stringResource(R.string.no_apps_found),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "×",
+                        fontSize = 15.sp,
+                        color = VigilDirADim,
+                        modifier = Modifier
+                            .clickable { viewModel.onSearchQueryChange("") }
+                            .padding(horizontal = 12.dp)
                     )
                 }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(filteredApps) { app ->
-                        AppFilterItem(
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = VigilDirAAcid,
+                unfocusedBorderColor = VigilDirAFaint,
+                focusedTextColor = VigilDirAInk,
+                unfocusedTextColor = VigilDirAInk,
+                cursorColor = VigilDirAAcid
+            ),
+            shape = RoundedCornerShape(4.dp)
+        )
+
+        // ---- 应用列表 ----
+        when {
+            isLoadingApps -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "LOADING…",
+                        style = MonoTextStyle,
+                        fontSize = 11.sp,
+                        letterSpacing = 2.sp,
+                        color = VigilDirADim
+                    )
+                }
+            }
+            filteredApps.isEmpty() -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "NO APPS FOUND",
+                        style = MonoTextStyle,
+                        fontSize = 11.sp,
+                        letterSpacing = 2.sp,
+                        color = VigilDirADim
+                    )
+                }
+            }
+            else -> {
+                LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
+                    items(filteredApps, key = { it.packageName }) { app ->
+                        AppFilterRow(
                             app = app,
-                            onToggleSelection = { viewModel.toggleAppSelection(app.packageName) }
-                        )
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            onToggle = { viewModel.toggleAppSelection(app.packageName) }
                         )
                     }
                 }
@@ -179,16 +217,108 @@ fun AppFilterScreen(
     }
 }
 
+private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+
+/** 单行：左侧灰标签 + 右侧内容，底部 1dp 发丝线（与主屏 LineRow 同语言） */
 @Composable
-private fun AppFilterItem(
+private fun LineRow(
+    content: @Composable RowScope.() -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    VigilDirALine,
+                    start = Offset(0f, size.height - stroke / 2),
+                    end = Offset(size.width, size.height - stroke / 2),
+                    strokeWidth = stroke
+                )
+            }
+            .padding(horizontal = 2.dp, vertical = 15.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun RowLabel(text: String) {
+    Text(
+        text = text,
+        fontSize = 12.sp,
+        letterSpacing = 0.6.sp,
+        color = VigilDirADim
+    )
+}
+
+/** 主屏大开关的缩小版：描边胶囊 + 实心圆点 */
+@Composable
+private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp, 24.dp)
+            .border(
+                width = 1.dp,
+                color = if (checked) VigilDirAAcid else VigilDirAFaint,
+                shape = CircleShape
+            )
+            .clickable { onToggle(!checked) }
+            .padding(3.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .background(
+                    if (checked) VigilDirAAcid else VigilDirAFaint,
+                    CircleShape
+                )
+        )
+    }
+}
+
+/** 自定义勾选框：描边小方块，选中酸橙实心 + 对勾 */
+@Composable
+private fun AppCheck(checked: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .background(
+                if (checked) VigilDirAAcid else Color.Transparent,
+                RoundedCornerShape(2.dp)
+            )
+            .border(
+                1.dp,
+                if (checked) VigilDirAAcid else VigilDirAFaint,
+                RoundedCornerShape(2.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            Text(
+                text = "✓",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirABg
+            )
+        }
+    }
+}
+
+/** 应用行：图标 + 名称（含 SYS 标签）+ 包名，右侧勾选框，底部发丝线 */
+@Composable
+private fun AppFilterRow(
     app: AppInfo,
-    onToggleSelection: () -> Unit
+    onToggle: () -> Unit
 ) {
     val context = LocalContext.current
     val appIcon = remember(app.packageName) {
         try {
-            context.packageManager.getApplicationIcon(app.packageName)
-        } catch (e: PackageManager.NameNotFoundException) {
+            context.packageManager.getApplicationIcon(app.packageName).toBitmap().asImageBitmap()
+        } catch (e: Exception) {
             null
         }
     }
@@ -196,50 +326,68 @@ private fun AppFilterItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggleSelection)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    VigilDirALine,
+                    start = Offset(0f, size.height - stroke / 2),
+                    end = Offset(size.width, size.height - stroke / 2),
+                    strokeWidth = stroke
+                )
+            }
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 2.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        appIcon?.let { icon ->
+        if (appIcon != null) {
             Image(
-                bitmap = icon.toBitmap().asImageBitmap(),
+                bitmap = appIcon,
                 contentDescription = null,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(36.dp)
             )
-        } ?: Box(modifier = Modifier.size(40.dp))
+        } else {
+            Box(modifier = Modifier.size(36.dp))
+        }
 
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = app.appName,
-                    style = MaterialTheme.typography.bodyLarge,
+                    fontSize = 13.sp,
+                    color = VigilDirAInk,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (app.isSystemApp) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = MaterialTheme.shapes.extraSmall
-                    ) {
-                        Text(
-                            text = stringResource(R.string.system_app_label),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "SYS",
+                        style = MonoTextStyle,
+                        fontSize = 9.sp,
+                        letterSpacing = 0.8.sp,
+                        color = VigilDirADim,
+                        modifier = Modifier
+                            .border(1.dp, VigilDirAFaint, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
                 }
             }
+            Text(
+                text = app.packageName,
+                style = MonoTextStyle,
+                fontSize = 9.sp,
+                color = VigilDirADim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
+            )
         }
 
-        Checkbox(
-            checked = app.isSelected,
-            onCheckedChange = { onToggleSelection() }
-        )
+        AppCheck(checked = app.isSelected)
     }
 }

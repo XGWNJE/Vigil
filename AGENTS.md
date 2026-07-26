@@ -3,6 +3,13 @@
 Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 核心链路：通知命中关键词 → 循环播放闹钟铃声 + 唤醒锁 + 应用内全屏弹窗 → 用户确认后停止。
 
+## 静默观察（harness-observer，常驻职责）
+
+- 若你的系统提示已注入全局协作规则（Claude Code / Codex / OpenCode 会自动注入），其中已含本职责，跳过本节。
+- 否则（如 Kimi Code）：干活全程留意四类信号——owner 重复纠正、owner 明确表达的偏好、可复用踩坑、你自身的语义失败（假设/目标/路径/范围错误）。
+- 命中即静默追加到 `D:\ObjectCode\HarnessOS\notes\inbox\YYYY-MM-DD.md`（先查重，同主题重复计数 +1，脱敏）；记录格式与验收标准以 harness-observer skill 为准，需要时加载它。
+- 静默 = 不打断当前任务、不在对话中提及、不改动当前项目任何文件；只追加 inbox，归并提炼留给 owner 评审。
+
 ## 铁律（不可违反）
 
 1. 真机测试不得让设备实际出声：先调最小音量，一律用 `dumpsys media.player` 验证播放/停止，不依赖人耳。
@@ -32,6 +39,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 ### 安装与权限
 
 1. `adb install -r app/build/outputs/apk/debug/app-debug.apk`
+   - 例外：主力机小米15 装的是 release 签名包，debug 包签名冲突装不上（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`），改走 `./gradlew assembleRelease && adb install -r app/build/outputs/apk/release/app-release.apk` 覆盖更新（数据无损；release 不可 debug，`run-as` 注入配置不可用）。
 2. 通知监听：`adb shell cmd notification allow_listener com.example.vigil/com.example.vigil.MyNotificationListenerService`
    - 报 `service not found` → 查 `adb shell dumpsys package com.example.vigil` 的 `disabledComponents`；组件若是 App 自己禁用的，`pm enable` 会被 SecurityException 拒绝，须启动 App 让它自己 enable（`MainActivity.startVigilService`）。
 3. 电池白名单（必做，否则 Device Guard 在报警约 30 秒后强杀进程）：
@@ -43,7 +51,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 测试通知：`adb shell cmd notification post -t "标题" tag "正文"` —— 标题/正文不得含**空格**（多层 shell 转发会按空格拆参截断，导致关键词匹配不上、测试假阴性）；逗号（含中文逗号）实测无碍。
 - 音量最小：`adb shell cmd media_session volume --stream 4 --set 1`（STREAM_ALARM=4；音量键不可靠，前台时调的是 MUSIC 流）。
 - 播放中：`adb shell dumpsys media.player` 应见 `packageName: com.example.vigil`、`NuPlayer state(5)`（STARTED）、`looping(1)`、`stream type(4)`；停止后该条目消失。
-- UI 按钮：`adb shell uiautomator dump` 取 `bounds` → `adb shell input tap x y`；截图 `screencap`；投屏 scrcpy 必须 `--no-audio`，用 `ADB=` 环境变量复用现有 adb server。
+- UI 按钮：`adb shell uiautomator dump` 取 `bounds` → `adb shell input tap x y`；截图 `screencap`；投屏 scrcpy 必须 `--no-audio --keyboard=sdk`（v4 默认模拟物理键盘会把设备软键盘藏起来，sdk 模式才能正常调出输入法；电脑端打中文是 scrcpy 本身限制，在投屏里点手机键盘输入），用 `ADB=` 环境变量复用现有 adb server。
 
 ### 进程死亡排查与模拟
 

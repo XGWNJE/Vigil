@@ -96,12 +96,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, DND=${_hasDndAccess.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}")
     }
 
-    // --- 权限请求回调 (由 Activity 调用) ---
-    var requestNotificationListenerPermissionCallback: (() -> Unit)? = null
-    var requestDndAccessPermissionCallback: (() -> Unit)? = null
-    var requestIgnoreBatteryOptimizationsCallback: (() -> Unit)? = null
-
-
     // --- 应用过滤 ---
     fun onAppFilterEnabledChange(enabled: Boolean) {
         _isAppFilterEnabled.value = enabled

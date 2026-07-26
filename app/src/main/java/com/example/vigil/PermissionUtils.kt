@@ -1,7 +1,6 @@
 package com.example.vigil
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -9,7 +8,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
@@ -17,7 +15,6 @@ object PermissionUtils {
 
     private const val TAG = "PermissionUtils"
     const val REQUEST_CODE_NOTIFICATION_LISTENER = 1001
-    const val REQUEST_CODE_DND_ACCESS = 1002
     const val REQUEST_CODE_POST_NOTIFICATIONS = 1004
 
 
@@ -26,21 +23,18 @@ object PermissionUtils {
         return enabledListeners.contains(context.packageName)
     }
 
-    fun requestNotificationListenerPermission(activity: Activity) {
+    /**
+     * 打开通知使用权设置页。
+     * 引导说明由 Compose 弹窗（PermissionGuideDialog）承载，确认后调用本函数直接跳转。
+     */
+    fun openNotificationListenerSettings(activity: Activity) {
         Log.d(TAG, "正在引导用户前往设置页面授予通知读取权限")
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.notification_permission_dialog_title)
-            .setMessage(R.string.notification_permission_dialog_message)
-            .setPositiveButton(R.string.dialog_go_to_settings) { _, _ ->
-                val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                if (activity is MainActivity) {
-                    activity.appSettingsLauncher.launch(intent)
-                } else {
-                    activity.startActivityForResult(intent, REQUEST_CODE_NOTIFICATION_LISTENER)
-                }
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+        val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+        if (activity is MainActivity) {
+            activity.appSettingsLauncher.launch(intent)
+        } else {
+            activity.startActivityForResult(intent, REQUEST_CODE_NOTIFICATION_LISTENER)
+        }
     }
 
     fun isDndAccessGranted(context: Context): Boolean {
@@ -52,57 +46,36 @@ object PermissionUtils {
         return true
     }
 
-    fun requestDndAccessPermission(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Log.d(TAG, "正在引导用户前往设置页面授予勿扰模式读取权限")
-            AlertDialog.Builder(activity)
-                .setTitle(R.string.notification_permission_dialog_title)
-                .setMessage(R.string.dnd_permission_dialog_message)
-                .setPositiveButton(R.string.dialog_go_to_settings) { _, _ ->
-                    val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                    if (activity is MainActivity) {
-                        activity.appSettingsLauncher.launch(intent)
-                    } else {
-                        activity.startActivityForResult(intent, REQUEST_CODE_DND_ACCESS)
-                    }
-                }
-                .setNegativeButton(R.string.dialog_cancel, null)
-                .show()
-        }
-    }
-
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         return powerManager.isIgnoringBatteryOptimizations(context.packageName)
     }
 
+    /**
+     * 请求将应用加入电池优化白名单。
+     * 引导说明由 Compose 弹窗（PermissionGuideDialog）承载，确认后调用本函数；
+     * 无法直接请求时回退到电池优化设置列表页。
+     */
     fun requestIgnoreBatteryOptimizations(activity: Activity) {
         Log.d(TAG, "正在引导用户将应用加入电池优化白名单")
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.battery_optimization_dialog_title)
-            .setMessage(R.string.battery_optimization_dialog_message)
-            .setPositiveButton(R.string.dialog_go_to_settings) { _, _ ->
-                try {
-                    val intent = Intent(
-                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                        android.net.Uri.parse("package:${activity.packageName}")
-                    )
-                    if (activity is MainActivity) {
-                        activity.appSettingsLauncher.launch(intent)
-                    } else {
-                        activity.startActivity(intent)
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "无法直接请求忽略电池优化，回退到电池优化设置列表页", e)
-                    try {
-                        activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                    } catch (e2: Exception) {
-                        Log.e(TAG, "无法打开电池优化设置页面", e2)
-                    }
-                }
+        try {
+            val intent = Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                android.net.Uri.parse("package:${activity.packageName}")
+            )
+            if (activity is MainActivity) {
+                activity.appSettingsLauncher.launch(intent)
+            } else {
+                activity.startActivity(intent)
             }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+        } catch (e: Exception) {
+            Log.w(TAG, "无法直接请求忽略电池优化，回退到电池优化设置列表页", e)
+            try {
+                activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (e2: Exception) {
+                Log.e(TAG, "无法打开电池优化设置页面", e2)
+            }
+        }
     }
 
     fun canPostNotifications(context: Context): Boolean {
@@ -110,25 +83,6 @@ object PermissionUtils {
             ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         } else {
             true
-        }
-    }
-
-    fun requestPostNotificationsPermission(activity: Activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(activity, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                AlertDialog.Builder(activity)
-                    .setTitle(R.string.post_notifications_permission_dialog_title)
-                    .setMessage(R.string.post_notifications_permission_dialog_message)
-                    .setPositiveButton(android.R.string.ok) { _, _ ->
-                        ActivityCompat.requestPermissions(
-                            activity,
-                            arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                            REQUEST_CODE_POST_NOTIFICATIONS
-                        )
-                    }
-                    .setNegativeButton(R.string.dialog_cancel, null)
-                    .show()
-            }
         }
     }
 
@@ -170,21 +124,10 @@ object PermissionUtils {
     }
 
     /**
-     * 打开"后台运行/省电策略"引导。各厂商无稳定直达 intent，统一跳应用详情页，
-     * 由对话框文案引导用户将省电策略/后台耗电管理设为"无限制/允许后台运行"。
+     * 打开本应用系统详情页。"后台运行"引导（Compose 弹窗）确认后进入，
+     * 由用户按弹窗文案将省电策略/后台耗电管理设为"无限制/允许后台运行"。
      */
-    fun openBackgroundRunSettings(activity: Activity) {
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.background_run_dialog_title)
-            .setMessage(R.string.background_run_dialog_message)
-            .setPositiveButton(R.string.dialog_go_to_settings) { _, _ ->
-                openAppDetailsSettings(activity)
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
-    }
-
-    private fun openAppDetailsSettings(activity: Activity) {
+    fun openAppDetailsSettings(activity: Activity) {
         try {
             val intent = Intent(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -197,4 +140,3 @@ object PermissionUtils {
     }
 
 }
-

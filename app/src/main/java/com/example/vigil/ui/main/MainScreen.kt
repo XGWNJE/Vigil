@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
+import com.example.vigil.R
 import com.example.vigil.VigilEventBus
+import com.example.vigil.ui.dialogs.PermissionGuideDialog
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.monitoring.ServiceState
 import com.example.vigil.ui.settings.SettingsViewModel
@@ -136,13 +139,14 @@ fun MainScreen(
     }
 
     var showAddKeywordDialog by remember { mutableStateOf(false) }
+    var showGuideDialog by remember { mutableStateOf<PermissionGuide?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(VigilDirABg)
             .verticalScroll(rememberScrollState())
-            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 24.dp)
+            .padding(start = 24.dp, end = 24.dp, top = 44.dp, bottom = 24.dp)
     ) {
         // ---- 顶部：字标 + 状态行 ----
         Row(
@@ -316,8 +320,7 @@ fun MainScreen(
             // 4. 通知使用权
             LineRow(onClick = {
                 if (!hasNotificationAccess) {
-                    activity?.let { PermissionUtils.requestNotificationListenerPermission(it) }
-                    Toast.makeText(context, "正在跳转到通知使用权设置", Toast.LENGTH_SHORT).show()
+                    showGuideDialog = PermissionGuide.NotificationAccess
                 }
             }) {
                 RowLabel("通知使用权")
@@ -331,7 +334,7 @@ fun MainScreen(
             // 5. 电池白名单
             LineRow(onClick = {
                 if (!isIgnoringBatteryOptimizations) {
-                    activity?.let { PermissionUtils.requestIgnoreBatteryOptimizations(it) }
+                    showGuideDialog = PermissionGuide.Battery
                 }
             }) {
                 RowLabel("电池白名单")
@@ -352,7 +355,7 @@ fun MainScreen(
 
             // 7. 后台运行（省电策略/耗电管理设为无限制）
             LineRow(onClick = {
-                activity?.let { PermissionUtils.openBackgroundRunSettings(it) }
+                showGuideDialog = PermissionGuide.BackgroundRun
             }) {
                 RowLabel("后台运行")
                 RowValue("设为无限制", withArrow = true)
@@ -369,6 +372,36 @@ fun MainScreen(
             onDismiss = { showAddKeywordDialog = false }
         )
     }
+
+    // 权限引导弹窗（DirA 风格，替代原系统 AlertDialog）
+    when (showGuideDialog) {
+        PermissionGuide.NotificationAccess -> PermissionGuideDialog(
+            title = stringResource(R.string.notification_permission_dialog_title),
+            message = stringResource(R.string.notification_permission_dialog_message),
+            onConfirm = { activity?.let { PermissionUtils.openNotificationListenerSettings(it) } },
+            onDismiss = { showGuideDialog = null }
+        )
+        PermissionGuide.Battery -> PermissionGuideDialog(
+            title = stringResource(R.string.battery_optimization_dialog_title),
+            message = stringResource(R.string.battery_optimization_dialog_message),
+            onConfirm = { activity?.let { PermissionUtils.requestIgnoreBatteryOptimizations(it) } },
+            onDismiss = { showGuideDialog = null }
+        )
+        PermissionGuide.BackgroundRun -> PermissionGuideDialog(
+            title = stringResource(R.string.background_run_dialog_title),
+            message = stringResource(R.string.background_run_dialog_message),
+            onConfirm = { activity?.let { PermissionUtils.openAppDetailsSettings(it) } },
+            onDismiss = { showGuideDialog = null }
+        )
+        null -> Unit
+    }
+}
+
+/** 主屏三个权限引导弹窗的种类 */
+private enum class PermissionGuide {
+    NotificationAccess,
+    Battery,
+    BackgroundRun
 }
 
 private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
@@ -500,6 +533,8 @@ private fun AddKeywordDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
         modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
         title = {
             Text(

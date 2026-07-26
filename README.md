@@ -140,8 +140,9 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | 页面 | 描述 |
 |------|------|
 | **MainScreen** | 「一线」单页主界面：状态词 + 服务大开关，发丝线列表承载关键词、铃声、应用过滤、权限入口 |
-| **AppFilterScreen** | 独立全屏页，支持搜索、系统 / 用户应用标记、多选 |
+| **AppFilterScreen** | 「一线」独立全屏页，支持搜索、系统 / 用户应用标记、多选 |
 | **KeywordAlertDialog** | 命中关键词时全屏弹出，确认后停止铃声 |
+| **PermissionGuideDialog** | 「一线」权限引导确认弹窗（通知使用权 / 电池白名单 / 后台运行），确认后跳转对应系统设置 |
 
 ### 设计主题
 
@@ -160,6 +161,20 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ## 📋 更新日志
 
 <details open>
+<summary><b>v1.6.0 — 「一线」UI 全量统一</b></summary>
+
+**UI**
+- 应用过滤页整页重写为「一线」风格：暗底发丝线、主屏同款迷你胶囊开关、等宽统计信息、自定义勾选框（酸橙 ✓）、系统应用 SYS 标签与包名等宽副行；返回箭头触控区扩大至 48dp
+- 权限引导弹窗（通知使用权 / 电池白名单 / 后台运行）由系统默认样式统一为「一线」风格 Compose 弹窗，引导文案不变
+- 修复 Material3 AlertDialog 默认 tonalElevation 将强调色叠加到容器底色（橄榄色偏色）、默认 28dp 圆角与边框错位成双框的问题；添加关键词弹窗一并修复
+- 主屏与子页面顶部留白增加，状态栏与内容之间不再局促
+
+**内部**
+- 权限引导拆分为「Compose 弹窗说明 + PermissionUtils 纯跳转」，清理无用回调与死代码
+
+</details>
+
+<details>
 <summary><b>v1.5.0 — 监听断连自愈与国产 ROM 保活</b></summary>
 
 **修复**

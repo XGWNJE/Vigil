@@ -29,7 +29,6 @@ import com.example.vigil.ui.theme.VigilDirAAcid
 import com.example.vigil.ui.theme.VigilDirABg
 import com.example.vigil.ui.theme.VigilDirADim
 import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,24 +51,26 @@ fun KeywordAlertDialog(
         properties = DialogProperties(
             dismissOnClickOutside = false,
             dismissOnBackPress = false,
-            usePlatformDefaultWidth = false
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
         )
     ) {
-        // 外层：暗底 + 发丝线边框
+        // 外层：暗底，内容整体居中，避开系统手势栏/导航栏
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(VigilDirABg)
-                .padding(24.dp)
-                .border(1.dp, VigilDirALine)
-                .padding(16.dp)
+                .padding(horizontal = 24.dp, vertical = 48.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // 内层：酸橙绿 1dp 大框
+            // 内层：酸橙绿 1dp 大框，wrap 内容并垂直居中
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
                     .border(1.dp, VigilDirAAcid)
-                    .padding(horizontal = 22.dp, vertical = 28.dp)
+                    .padding(horizontal = 22.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
                     text = "KEYWORD ALERT // 关键词报警",
@@ -79,24 +80,22 @@ fun KeywordAlertDialog(
                     color = VigilDirAAcid
                 )
 
-                Spacer(modifier = Modifier.height(30.dp))
-
                 Text(
                     text = matchedKeyword ?: "未知",
-                    fontSize = 40.sp,
+                    fontSize = 38.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.6.sp,
-                    lineHeight = 46.sp,
+                    lineHeight = 44.sp,
                     color = VigilDirAInk
                 )
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    AlertMetaRow("FROM", sourceApp?.takeIf { it.isNotBlank() } ?: "--")
+                    AlertMetaRow("TEXT", snippet?.takeIf { it.isNotBlank() } ?: "--")
+                    AlertMetaRow("TIME", formatAlertTime(eventTimeMillis))
+                }
 
-                AlertMetaRow("FROM", sourceApp?.takeIf { it.isNotBlank() } ?: "--")
-                AlertMetaRow("TEXT", snippet?.takeIf { it.isNotBlank() } ?: "--")
-                AlertMetaRow("TIME", formatAlertTime(eventTimeMillis))
-
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // 底部：酸橙绿实心大按钮
                 Box(

@@ -192,11 +192,6 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (!sharedPreferencesHelper.isAuthenticated()) {
-            Log.w(TAG, "未授权，忽略通知处理。")
-            return
-        }
-
         if (sbn == null) { Log.w(TAG, "StatusBarNotification 为空，忽略。"); return }
 
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {

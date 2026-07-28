@@ -203,16 +203,9 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
     fun onServiceEnabledChange(
         enabled: Boolean,
-        isLicensed: Boolean,
         startServiceCallback: (Boolean) -> Unit,
         stopServiceCallback: () -> Unit
     ) {
-        if (enabled && !isLicensed) {
-            Log.w(TAG, "Not licensed, cannot enable service.")
-            _serviceEnabled.value = false
-            return
-        }
-
         if (enabled) {
             // Pre-check: verify notification listener permission before changing state
             val hasNotifPermission = PermissionUtils.isNotificationListenerEnabled(context)

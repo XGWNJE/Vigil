@@ -1,7 +1,6 @@
 package com.example.vigil
 
 import android.app.Activity
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -35,15 +34,6 @@ object PermissionUtils {
         } else {
             activity.startActivityForResult(intent, REQUEST_CODE_NOTIFICATION_LISTENER)
         }
-    }
-
-    fun isDndAccessGranted(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val notificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            return notificationManager.isNotificationPolicyAccessGranted
-        }
-        return true
     }
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {

@@ -11,10 +11,8 @@
     <string name="service_stopped">已停止</string>
     <string name="service_initializing">初始化中</string>
     <string name="grant_notification_access_button">通知监听权限</string>
-    <string name="grant_dnd_access_button">勿扰模式权限</string>
     <string name="notification_listener_service_label">Vigil 通知监听服务</string>
     <string name="permission_notification_access_missing">需要通知读取权限以运行服务。</string>
-    <string name="permission_dnd_access_missing_for_check">需要勿扰模式读取权限以检查状态。</string>
     <string name="keywords_label">监控关键词</string>
     <string name="ringtone_selection_title">选择提醒音</string>
     <string name="save_settings_button">保存设置</string>
@@ -23,7 +21,6 @@
     <string name="default_ringtone_name">默认提醒音</string>
     <string name="notification_permission_dialog_title">权限请求</string>
     <string name="notification_permission_dialog_message">为了使应用正常工作，请在系统设置中授予"通知使用权"。</string>
-    <string name="dnd_permission_dialog_message">为了检查勿扰模式状态，请在系统设置中授予"勿扰权限"。</string>
     <string name="dialog_go_to_settings">前往设置</string>
     <string name="dialog_cancel">取消</string>
 

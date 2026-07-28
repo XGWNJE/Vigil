@@ -230,7 +230,6 @@ fun MainScreen(
                         }
                         monitoringViewModel.onServiceEnabledChange(
                             enabled = targetEnabled,
-                            isLicensed = true,
                             startServiceCallback = { hasPermission ->
                                 (activity as? MainActivity)?.startVigilService(hasPermission)
                             },

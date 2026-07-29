@@ -34,6 +34,12 @@ data class AppInfo(
     val isSelected: Boolean = false  // 改为不可变属性，不要直接修改
 )
 
+// 应用过滤列表排序：已勾选置顶 → 用户应用优先 → 名称
+private val appListComparator =
+    compareByDescending<AppInfo> { it.isSelected }
+        .thenBy { it.isSystemApp }
+        .thenBy { it.appName.lowercase() }
+
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val context = application.applicationContext
@@ -163,8 +169,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                         }
                     }
                     
-                    // 先按类型（用户应用优先），再按名称排序
-                    appInfoList.sortedWith(compareBy<AppInfo> { it.isSystemApp }.thenBy { it.appName.lowercase() })
+                    // 排序：已勾选置顶 → 用户应用优先 → 名称
+                    appInfoList.sortedWith(appListComparator)
                 }
                 
                 _installedApps.clear()
@@ -187,7 +193,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             // 使用 copy 创建新对象，反转选中状态
             val app = updatedList[index]
             updatedList[index] = app.copy(isSelected = !app.isSelected)
-            
+
+            // 重排：勾选置顶、取消落回（与初始加载同一排序规则）
+            updatedList.sortWith(appListComparator)
+
             // 更新整个列表以确保触发重组
             _installedApps.clear()
             _installedApps.addAll(updatedList)

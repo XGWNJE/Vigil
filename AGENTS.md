@@ -17,6 +17,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 3. 报警状态必须持久化（SharedPreferences），不得只存内存：厂商省电策略（Motorola Device Guard 等）随时可能强杀进程，内存状态 = 报警丢失。
 4. 不得删除或丢失 `keystore/vigil.keystore`（2026-07 轮换后的新密钥）：release 签名依赖它，丢失则无法发布更新包。旧密钥曾意外入库+密码明文，公网视为泄露，已轮换并改名 `keystore/OLD-COMPROMISED-DO-NOT-USE.keystore` 存档（gitignored，仅存档不得使用）。签名密码只放 `keystore.properties`（gitignored）或 CI 环境变量（`VIGIL_STORE_PASSWORD`/`VIGIL_KEY_ALIAS`/`VIGIL_KEY_PASSWORD`），**任何密钥文件与密码都不得提交进仓库**。
 5. `VigilEventBus` 除 `heartbeat` 外均为无 replay 的 SharedFlow，进程重建后事件即丢；任何"服务 → UI"的关键事件都必须有持久化兜底。`heartbeat` 例外：`replay=1` 且 payload 携带发射时刻时间戳（`elapsedRealtime`），收集方按时间戳算年龄，陈旧 replay 不会掩盖服务已死。
+6. 每次提交 / push / 收口任务前必须对齐文档：事实变了就同步更新对应文档。README 始终保持简洁，不重要的内容不写进去；不是特别重要但有必要记住的东西，写进本文件（AGENTS.md）或其他专门文档，不堆在 README。
 
 ## 关键路径与命令
 

@@ -1,15 +1,14 @@
 // src/main/java/com/example/vigil/ui/main/RippleBackground.kt
 package com.example.vigil.ui.main
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -19,6 +18,27 @@ import com.example.vigil.ui.theme.VigilDirAAmber
 import com.example.vigil.ui.theme.VigilDirADim
 import com.example.vigil.ui.theme.VigilDirAFaint
 import kotlin.math.hypot
+
+/**
+ * 帧驱动的 0→1 循环进度，替代 rememberInfiniteTransition。
+ * Compose 的 InfiniteTransition 在「开发者选项 → 动画程序时长缩放 = 关闭」时会被系统挂起
+ * （小米等机型常见设置，真机实测复现涟漪静止），而涟漪是状态语言的一部分，必须始终播放；
+ * 直接消费 vsync 帧回调不受该缩放影响。
+ */
+@Composable
+fun rememberFrameDrivenProgress(periodMs: Int): Float {
+    var progress by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(periodMs) {
+        val startNanos = System.nanoTime()
+        while (true) {
+            withFrameNanos {
+                val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L
+                progress = (elapsedMs % periodMs) / periodMs.toFloat()
+            }
+        }
+    }
+    return progress
+}
 
 /**
  * 全屏涟漪背景，参考 magicui ripple（numCircles=8、基础透明度 0.24、交错相位扩散）。
@@ -51,16 +71,7 @@ private fun AnimatedRipple(state: ServiceState, modifier: Modifier = Modifier) {
         else -> 2500                                                 // 急促警示
     }
 
-    val transition = rememberInfiniteTransition(label = "ripple")
-    val t by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = periodMs, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "progress"
-    )
+    val t = rememberFrameDrivenProgress(periodMs)
 
     Canvas(modifier = modifier) {
         // 内圈起点略大于核心开关半径（44dp），让涟漪视觉上从开关边缘生长出来

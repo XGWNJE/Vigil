@@ -13,10 +13,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -506,19 +502,12 @@ private fun CoreSwitch(
         animationSpec = tween(durationMillis = 400),
         label = "coreColor"
     )
-    // 呼吸：仅 ON 时启动，2s 半程与涟漪节奏呼应
+    // 呼吸：仅 ON 时启动，帧驱动（与涟漪同因：InfiniteTransition 会被系统动画缩放=0 挂起）
     val breatheScale = if (enabled) {
-        val transition = rememberInfiniteTransition(label = "coreBreath")
-        val s by transition.animateFloat(
-            initialValue = 1f,
-            targetValue = 1.2f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "scale"
-        )
-        s
+        val p = rememberFrameDrivenProgress(4000)
+        // 三角波往返 + 缓动，与涟漪 4s 周期同步
+        val tri = if (p < 0.5f) p * 2f else (1f - p) * 2f
+        1f + 0.2f * FastOutSlowInEasing.transform(tri)
     } else {
         1f
     }

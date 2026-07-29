@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +62,7 @@ import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.VigilEventBus
+import com.example.vigil.VigilLogger
 import com.example.vigil.ui.dialogs.PermissionGuideDialog
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.monitoring.ServiceState
@@ -98,13 +100,13 @@ fun MainScreen(
     val hasNotificationAccess by settingsViewModel.hasNotificationAccess
     val isIgnoringBatteryOptimizations by settingsViewModel.isIgnoringBatteryOptimizations
 
-    // 心跳：UI 侧直接收集事件总线，本地计时（ViewModel 逻辑不动）
+    // 心跳：UI 侧直接收集事件总线（payload 为服务发射时刻，replay=1，冷启动立即有值）
     var lastHeartbeatAt by remember { mutableLongStateOf(0L) }
     var nowTick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) {
         launch {
-            VigilEventBus.heartbeat.collect {
-                lastHeartbeatAt = SystemClock.elapsedRealtime()
+            VigilEventBus.heartbeat.collect { beatAt ->
+                lastHeartbeatAt = beatAt
             }
         }
         while (true) {
@@ -193,7 +195,7 @@ fun MainScreen(
                         ServiceState.RUNNING, ServiceState.RUNNING_LIMITED -> "监听中"
                         ServiceState.DISABLED -> "已停止"
                         ServiceState.NO_PERMISSION -> "未授权"
-                        ServiceState.INITIALIZING -> "初始化中"
+                        ServiceState.INITIALIZING -> "连接中"
                         ServiceState.LISTENER_DISCONNECTED -> "重连中"
                         ServiceState.HEARTBEAT_TIMEOUT -> "心跳超时"
                         ServiceState.ERROR -> "异常"
@@ -358,6 +360,30 @@ fun MainScreen(
             }) {
                 RowLabel("后台运行")
                 RowValue("设为无限制", withArrow = true)
+            }
+
+            // 8. 导出日志（真机长测诊断：拼接诊断头 + 本地持久化日志，调起系统分享）
+            LineRow(onClick = {
+                try {
+                    val exportFile = VigilLogger.export(context)
+                    val uri = FileProvider.getUriForFile(
+                        context, "com.example.vigil.fileprovider", exportFile
+                    )
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        putExtra(Intent.EXTRA_SUBJECT, "Vigil 诊断日志")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "发送诊断日志"))
+                    VigilLogger.i(context, "MainScreen", "日志已导出并调起分享: ${exportFile.name}")
+                } catch (e: Exception) {
+                    VigilLogger.e(context, "MainScreen", "导出日志失败", e)
+                    Toast.makeText(context, "导出日志失败: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }) {
+                RowLabel("导出日志")
+                RowValue("分享诊断日志", withArrow = true)
             }
         }
     }

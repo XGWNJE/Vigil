@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.vigil.PermissionUtils
 import com.example.vigil.SharedPreferencesHelper
 import com.example.vigil.VigilEventBus
+import com.example.vigil.VigilLogger
 import kotlinx.coroutines.launch
 
 /**
@@ -65,6 +66,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     // 初始化超时 Runnable：5s 后若仍无信号则退出初始化状态
     private val initTimeoutRunnable = Runnable {
         Log.d(TAG, "init timeout fired, hasReceivedAnySignal=$hasReceivedAnySignal")
+        VigilLogger.w(context, TAG, "初始化窗口超时仍无服务信号 (hasReceivedAnySignal=$hasReceivedAnySignal)")
         isInitializingWindow = false
         recomputeState()
     }
@@ -98,11 +100,12 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             _showKeywordAlertDialog.value = true
         }
 
-        // 收集心跳
+        // 收集心跳（payload 为服务发射时刻的时间戳；replay=1，冷启动立即拿到最近一次心跳）
         viewModelScope.launch {
-            VigilEventBus.heartbeat.collect {
+            VigilEventBus.heartbeat.collect { beatAt ->
                 Log.d(TAG, "heartbeat received")
-                lastHeartbeatTime = SystemClock.elapsedRealtime()
+                // 用发射时刻而非接收时刻计时：replay 出来的旧心跳能算对年龄，服务真死仍会判超时
+                lastHeartbeatTime = beatAt
                 hasReceivedAnySignal = true
                 isInitializingWindow = false
                 mainHandler.removeCallbacks(initTimeoutRunnable)
@@ -138,8 +141,10 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         // 启动心跳检查定时器
         mainHandler.post(heartbeatCheckRunnable)
 
-        // 如果服务已开启，进入初始化窗口期
-        if (_serviceEnabled.value) {
+        // 如果服务已开启，进入初始化窗口期；
+        // 但若 replay 心跳已在上方的收集中先到（服务与 UI 同进程，heartbeat replay=1），
+        // 说明服务刚刚活过，直接保持 RUNNING，不再进窗口空等
+        if (_serviceEnabled.value && !hasReceivedAnySignal) {
             enterInitWindow()
         }
 
@@ -185,8 +190,11 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
 
-        _serviceState.value = newState
         _debugInfo.value = debugParts.joinToString(" | ")
+        if (newState != _serviceState.value) {
+            VigilLogger.i(context, TAG, "服务状态变化: ${_serviceState.value} → $newState [${_debugInfo.value}]")
+        }
+        _serviceState.value = newState
         Log.d(TAG, "recomputeState → $newState [${_debugInfo.value}]")
     }
 
@@ -197,6 +205,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         mainHandler.removeCallbacks(initTimeoutRunnable)
         mainHandler.postDelayed(initTimeoutRunnable, INIT_WINDOW_MS)
         Log.d(TAG, "entered init window (${INIT_WINDOW_MS}ms)")
+        VigilLogger.i(context, TAG, "进入初始化窗口，等待服务信号 (${INIT_WINDOW_MS}ms)")
     }
 
     // ---- 公开操作 ----

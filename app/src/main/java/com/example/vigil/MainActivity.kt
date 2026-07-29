@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "MainActivity onCreate. Intent Action: ${intent?.action}")
+        VigilLogger.i(this, TAG, "MainActivity onCreate (action=${intent?.action})")
         handleWindowFlagsForAlert(intent)
 
         super.onCreate(savedInstanceState)
@@ -159,6 +160,7 @@ class MainActivity : AppCompatActivity() {
             val keyword = intent.getStringExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
             if (!keyword.isNullOrEmpty()) {
                 Log.i(TAG, "MainActivity 从 Intent 中接收到显示提醒的指令，关键词: $keyword")
+                VigilLogger.i(this, TAG, "收到服务弹窗指令 (keyword=$keyword)")
                 monitoringViewModel.triggerShowKeywordAlert(keyword)
                 intent.action = null
                 intent.removeExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
@@ -172,6 +174,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Log.d(TAG, "MainActivity onResume。")
+        VigilLogger.d(this, TAG, "MainActivity onResume")
         settingsViewModel.updatePermissionStates()
         // 用户从系统设置返回后，若通知权限被取消则再次申请
         requestPostNotificationsIfNeeded()
@@ -182,6 +185,7 @@ class MainActivity : AppCompatActivity() {
             && !sharedPreferencesHelper.getListenerConnectedState()
         ) {
             Log.w(TAG, "检测到监听绑定断开（打开 App 时），自动 requestRebind。")
+            VigilLogger.w(this, TAG, "打开 App 检测到监听绑定断开，自动 requestRebind")
             ListenerRecovery.requestRebind(this)
         }
     }

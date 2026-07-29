@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -49,6 +50,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     // 此时进程活着、心跳照发，但通知永远不来 —— 看门狗靠此标志识别并自愈。
     @Volatile private var listenerActuallyConnected: Boolean = false
     private var rebindFailCount: Int = 0
+    private var heartbeatCount: Int = 0
 
     private enum class PlayerState { IDLE, PREPARING, PLAYING, STOPPED }
     @Volatile private var playerState = PlayerState.IDLE
@@ -56,6 +58,12 @@ class MyNotificationListenerService : NotificationListenerService() {
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             sendHeartbeat()
+            // 每 20 次心跳（10 分钟）落一条存活标记，便于事后判断进程/绑定在何时断掉
+            heartbeatCount++
+            if (heartbeatCount % 20 == 0) {
+                VigilLogger.i(applicationContext, TAG,
+                    "存活标记: 心跳#${heartbeatCount}, 绑定=$listenerActuallyConnected, 播放器=$playerState")
+            }
             watchdogListenerBinding()
             handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
         }
@@ -76,10 +84,12 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         rebindFailCount++
         if (rebindFailCount > WATCHDOG_MAX_REBIND_ATTEMPTS) {
+            VigilLogger.w(applicationContext, TAG, "看门狗: requestRebind 连续 ${rebindFailCount - 1} 次未恢复绑定，升级为组件 toggle 强刷")
             Log.w(TAG, "requestRebind 连续 ${rebindFailCount - 1} 次未恢复绑定，升级为组件 toggle 强刷。")
             rebindFailCount = 0
             serviceScope.launch { ListenerRecovery.toggleComponentRebind(applicationContext) }
         } else {
+            VigilLogger.w(applicationContext, TAG, "看门狗: 监听未绑定（第 $rebindFailCount 次），自动 requestRebind")
             Log.w(TAG, "检测到监听服务未绑定（第 $rebindFailCount 次），自动 requestRebind。")
             ListenerRecovery.requestRebind(applicationContext)
         }
@@ -108,6 +118,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "服务创建中...")
+        VigilLogger.i(applicationContext, TAG, "服务创建 (onCreate)")
         sharedPreferencesHelper = SharedPreferencesHelper(applicationContext)
         // 进程若是被系统强杀后重建，onDestroy 不会执行，持久化的绑定状态会残留 true；
         // 重建后绑定状态未知，先重置为 false，等 onListenerConnected 真正回调再置 true
@@ -118,6 +129,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         serviceScope.launch {
             VigilEventBus.alertConfirmed.collect {
                 Log.i(TAG, "收到来自 UI 的确认事件，停止铃声和释放锁。")
+                VigilLogger.i(applicationContext, TAG, "用户确认报警，清除 pending 并停止响铃")
                 sharedPreferencesHelper.clearPendingAlert()
                 stopRingtoneAndLock()
             }
@@ -136,6 +148,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "通知监听器已连接。")
+        VigilLogger.i(applicationContext, TAG, "onListenerConnected: 系统监听绑定已建立")
         listenerActuallyConnected = true
         rebindFailCount = 0
         sharedPreferencesHelper.saveListenerConnectedState(true)
@@ -151,6 +164,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.w(TAG, "通知监听器已断开连接！")
+        VigilLogger.w(applicationContext, TAG, "onListenerDisconnected: 系统监听绑定断开，心跳停止（看门狗随心跳暂停）")
         listenerActuallyConnected = false
         sharedPreferencesHelper.saveListenerConnectedState(false)
         stopHeartbeat()
@@ -168,6 +182,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             loadSettings() // loadSettings内部会调用updateForegroundNotification
         } else if (intent?.action == null) {
             Log.i(TAG, "服务由系统或 START_STICKY 重启，重新加载设置并发送心跳。")
+            VigilLogger.i(applicationContext, TAG, "onStartCommand: 系统重建服务 (action=null, START_STICKY)")
             loadSettings()
             startHeartbeat()
         } else {
@@ -181,6 +196,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.w(TAG, "服务销毁中...")
+        VigilLogger.w(applicationContext, TAG, "服务销毁 (onDestroy)")
         listenerActuallyConnected = false
         sharedPreferencesHelper.saveListenerConnectedState(false)
         serviceScope.cancel()
@@ -197,18 +213,23 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
             if (sbn.packageName !in filteredAppPackages) {
                 Log.d(TAG, "通知来自 ${sbn.packageName}，不在过滤列表中，忽略。当前过滤应用列表: $filteredAppPackages")
+                VigilLogger.d(applicationContext, TAG, "过滤排除: pkg=${sbn.packageName} 不在监听列表 $filteredAppPackages")
                 return
             }
             Log.d(TAG, "通知来自 ${sbn.packageName}，在过滤列表中，继续处理。")
+            VigilLogger.d(applicationContext, TAG, "通知到达: pkg=${sbn.packageName} (在过滤列表中)")
         }
 
         if (sbn.packageName == packageName && (sbn.id == FOREGROUND_NOTIFICATION_ID)) {
             return
         }
 
+        VigilLogger.d(applicationContext, TAG, "通知到达: pkg=${sbn.packageName}")
+
         // 检查服务是否被用户启用 - 只在这里检查，因为我们想保持前台服务运行，即使通知提醒功能被禁用
         if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
             Log.d(TAG, "服务未被用户启用，忽略通知。")
+            VigilLogger.d(applicationContext, TAG, "忽略通知: pkg=${sbn.packageName}, 原因=服务开关关闭")
             return
         }
 
@@ -225,6 +246,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         val currentKeywords = keywords
         if (currentKeywords.isEmpty()) {
             Log.d(TAG, "关键词列表为空，忽略通知 (Pkg: ${sbn.packageName})。")
+            VigilLogger.d(applicationContext, TAG, "忽略通知: pkg=${sbn.packageName}, 原因=关键词列表为空")
             return
         }
 
@@ -237,13 +259,19 @@ class MyNotificationListenerService : NotificationListenerService() {
             }
         }
 
+        if (matchedKeyword == null) {
+            VigilLogger.d(applicationContext, TAG, "忽略通知: pkg=${sbn.packageName}, 原因=未命中关键词")
+        }
+
         if (matchedKeyword != null) {
             val notifKey = sbn.key
             if (notifKey in alertedNotificationKeys) {
                 Log.d(TAG, "通知 $notifKey 已报警过，跳过重复触发。")
+                VigilLogger.d(applicationContext, TAG, "忽略通知: pkg=${sbn.packageName}, 原因=已报警过去重 (keyword=$matchedKeyword)")
                 return
             }
             alertedNotificationKeys.add(notifKey)
+            VigilLogger.i(applicationContext, TAG, "命中关键词 '$matchedKeyword' (pkg=${sbn.packageName})，触发报警")
 
             // 持久化未确认报警：进程被省电策略杀死后，服务重建时可恢复响铃
             sharedPreferencesHelper.savePendingAlert(matchedKeyword)
@@ -289,6 +317,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun stopRingtoneAndLock() {
+        VigilLogger.i(applicationContext, TAG, "停止报警铃声并释放唤醒锁")
         stopRingtone()
         releaseWakeLock()
     }
@@ -307,6 +336,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             return
         }
         Log.w(TAG, "检测到未确认报警 (关键词: $keyword)，进程重建后恢复响铃与提醒。")
+        VigilLogger.w(applicationContext, TAG, "恢复未确认报警 (keyword=$keyword)：进程重建后重新响铃")
         handler.post {
             acquireWakeLock()
             playRingtoneLooping()
@@ -380,9 +410,11 @@ class MyNotificationListenerService : NotificationListenerService() {
         filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
         Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
+        VigilLogger.i(applicationContext, TAG, "设置已加载: ${keywords.size}个关键词, 过滤启用=$filterAppsEnabled (${filteredAppPackages.size}个应用)")
         // 添加详细日志以便调试
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
             Log.d(TAG, "应用过滤已启用，包含的应用包名: ${filteredAppPackages.joinToString()}")
+            VigilLogger.i(applicationContext, TAG, "过滤列表: ${filteredAppPackages.joinToString()}")
         } else if (filterAppsEnabled) {
             Log.w(TAG, "应用过滤已启用，但过滤列表为空，将监听所有应用")
         } else {
@@ -432,6 +464,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                     if (playerState == PlayerState.PREPARING) {
                         playerState = PlayerState.PLAYING
                         Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
+                        VigilLogger.i(applicationContext, TAG, "报警铃声开始循环播放 (uri=$ringtoneUriToPlay)")
                         try {
                             mp.start()
                         } catch (startEx: IllegalStateException) {
@@ -447,6 +480,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 }
                 setOnErrorListener { _, what, extra ->
                     Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, URI: $ringtoneUriToPlay")
+                    VigilLogger.e(applicationContext, TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, URI: $ringtoneUriToPlay")
                     playerState = PlayerState.STOPPED
                     stopRingtoneAndLock()
                     true
@@ -586,7 +620,8 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun sendHeartbeat() {
-        serviceScope.launch { VigilEventBus.heartbeat.emit(Unit) }
+        // 携带发射时刻时间戳：replay=1 下冷启动的收集方据此计算心跳真实年龄
+        serviceScope.launch { VigilEventBus.heartbeat.emit(SystemClock.elapsedRealtime()) }
     }
 
     private fun startHeartbeat() {

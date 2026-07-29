@@ -11,7 +11,7 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/version-1.6.1-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
+[![Version](https://img.shields.io/badge/version-1.7.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [技术架构](#-技术架构)
@@ -40,6 +40,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | **权限引导** | 主界面集中展示必要权限状态（通知使用权、电池白名单、自启动、后台运行），缺失时一键跳转授权 |
 | **心跳检测** | 单调时钟心跳，实时感知服务存活状态；绑定断开时显示「重连中」而非误报「监听中」 |
 | **监听自愈** | 服务看门狗检测到断连自动 `requestRebind`，失败时升级组件 toggle 重绑 |
+| **诊断日志** | 关键运行事件本地持久化（自动滚动、不含通知正文），主屏「导出日志」一键分享，便于真机长测后排查问题 |
 
 ---
 

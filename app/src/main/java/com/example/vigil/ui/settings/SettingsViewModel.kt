@@ -21,6 +21,7 @@ import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.SharedPreferencesHelper
+import com.example.vigil.VigilLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,9 +98,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _isAppFilterEnabled.value = enabled
         sharedPreferencesHelper.saveFilterAppsEnabledState(enabled)
         Log.i(TAG, "App filter enabled state changed to: $enabled and saved.")
-        
-        // 保存当前选中的应用列表
-        saveFilteredApps()
+        // 注意：不要在这里调用 saveFilteredApps() —— 应用列表异步加载，
+        // 若在加载完成前切换开关会把用户已选应用清空。选中集合由 toggleAppSelection 逐项持久化。
+        notifyServiceToUpdateSettingsCallback?.invoke()
     }
     
     // 将方法改为 public
@@ -197,6 +198,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val selectedPackages = _installedApps.filter { it.isSelected }.map { it.packageName }.toSet()
         sharedPreferencesHelper.saveFilteredAppPackages(selectedPackages)
         Log.i(TAG, "已保存 ${selectedPackages.size} 个选中应用到过滤列表")
+        VigilLogger.i(context, TAG, "过滤选择已保存: ${selectedPackages.size} 个应用 ${selectedPackages.joinToString()}")
         
         // 通知服务更新设置
         notifyServiceToUpdateSettingsCallback?.invoke()

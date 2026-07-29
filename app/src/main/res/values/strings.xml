@@ -9,7 +9,7 @@
     <string name="service_status_label">服务状态:</string>
     <string name="service_running">监听中</string>
     <string name="service_stopped">已停止</string>
-    <string name="service_initializing">初始化中</string>
+    <string name="service_initializing">连接中</string>
     <string name="grant_notification_access_button">通知监听权限</string>
     <string name="notification_listener_service_label">Vigil 通知监听服务</string>
     <string name="permission_notification_access_missing">需要通知读取权限以运行服务。</string>

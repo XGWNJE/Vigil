@@ -90,6 +90,8 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 > 主力机若已安装 release 签名包，debug 包会因签名冲突无法覆盖安装，此时请改用 `./gradlew assembleRelease` 并安装 `app/build/outputs/apk/release/app-release.apk`（数据无损）。
 
+> **签名密钥轮换公告**：v1.8.1 及之前的 release 包使用旧签名密钥（该密钥曾意外随仓库公开，已作废轮换）。从下一版本起 release 包使用新密钥签名，**老版本直接覆盖安装会报签名冲突，请先卸载再安装**（关键词等配置需重新设置）。
+
 ### 首次使用
 
 1. 打开应用，点右上角齿轮打开设置 Sheet，完成权限授权：
@@ -111,11 +113,12 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 | 发送通知（POST_NOTIFICATIONS，Android 13+） | 前台服务常驻通知 | 首次启动自动弹窗 |
 | 前台服务（FOREGROUND_SERVICE_SPECIAL_USE） | 维持后台监听服务持续运行 | 自动（Manifest 声明） |
 | 唤醒锁（WAKE_LOCK） | 报警触发时保持 CPU 唤醒，确保铃声持续播放 | 自动（Manifest 声明） |
-| 查询已安装应用（QUERY_ALL_PACKAGES） | 应用过滤列表枚举设备应用 | 自动（Manifest 声明） |
 | 忽略电池优化（REQUEST_IGNORE_BATTERY_OPTIMIZATIONS） | 防止厂商省电策略在报警响铃时强杀进程 | 首页「电池白名单」一键引导 |
 | 全屏 Intent（USE_FULL_SCREEN_INTENT） | 后台无法弹出应用内弹窗时，备选报警通知以全屏 Intent 在锁屏上弹出 | 自动（Manifest 声明） |
 
 > **注意**：通知使用权需在系统设置中手动授予，应用内提供直达跳转入口。
+
+> **应用过滤无需任何权限**：应用列表通过 launcher intent 查询（只列出桌面可见应用），不申请 `QUERY_ALL_PACKAGES`；应用也未声明 `INTERNET` 权限，不具备联网能力，全部数据仅在设备本地处理。详见 [隐私政策](PRIVACY.md)。
 
 > **国产 ROM（小米 / 华为 / OPPO / vivo / 荣耀等）使用须知**：这些系统有激进的省电与自启动管控，可能在进程被清理后不再重新绑定监听服务。请在首页完成「自启动管理」与「后台运行」两项额外引导。应用内置断连自愈机制（心跳看门狗自动 `requestRebind` / 组件重绑），断连时状态显示「重连中」而非误报「监听中」。
 

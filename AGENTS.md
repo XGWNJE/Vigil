@@ -15,7 +15,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 1. 真机测试不得让设备实际出声：先调最小音量，一律用 `dumpsys media.player` 验证播放/停止，不依赖人耳。
 2. 改动报警核心链路（通知匹配 → 响铃 → 弹窗 → 确认停止）后，必须跑完整闭环测试才允许交付（验证设备选择见「真机测试流程」：有真机用真机，无真机退模拟器并优先高版本）；不接受纯静态检查结论。
 3. 报警状态必须持久化（SharedPreferences），不得只存内存：厂商省电策略（Motorola Device Guard 等）随时可能强杀进程，内存状态 = 报警丢失。
-4. 不得删除或替换 `keystore/vigil.keystore`：release 签名依赖它，丢失则无法发布更新包。
+4. 不得删除或丢失 `keystore/vigil.keystore`（2026-07 轮换后的新密钥）：release 签名依赖它，丢失则无法发布更新包。旧密钥曾意外入库+密码明文，公网视为泄露，已轮换并改名 `keystore/OLD-COMPROMISED-DO-NOT-USE.keystore` 存档（gitignored，仅存档不得使用）。签名密码只放 `keystore.properties`（gitignored）或 CI 环境变量（`VIGIL_STORE_PASSWORD`/`VIGIL_KEY_ALIAS`/`VIGIL_KEY_PASSWORD`），**任何密钥文件与密码都不得提交进仓库**。
 5. `VigilEventBus` 除 `heartbeat` 外均为无 replay 的 SharedFlow，进程重建后事件即丢；任何"服务 → UI"的关键事件都必须有持久化兜底。`heartbeat` 例外：`replay=1` 且 payload 携带发射时刻时间戳（`elapsedRealtime`），收集方按时间戳算年龄，陈旧 replay 不会掩盖服务已死。
 
 ## 关键路径与命令
@@ -102,12 +102,17 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 ## 发布
 
-- release 构建：`./gradlew assembleRelease`（minify + 资源压缩，签名配置在 `app/build.gradle.kts` 的 `signingConfigs.release`）。
+- release 构建：`./gradlew assembleRelease`（minify + 资源压缩，签名配置在 `app/build.gradle.kts` 的 `signingConfigs.release`，密码读 `keystore.properties` 或环境变量兜底）。
 - 发版动作：递增 `versionCode`/`versionName`（README 已无更新日志板块，无需维护变更记录）。
+- CI：`.github/workflows/release.yml` 在推 `v*` tag 时自动构建 release APK 并创建 GitHub Release；依赖仓库 secrets `VIGIL_KEYSTORE_BASE64`（keystore base64）、`VIGIL_STORE_PASSWORD`、`VIGIL_KEY_ALIAS`、`VIGIL_KEY_PASSWORD`。
+- 商店素材：`store/`（中英文案、权限用途说明表、feature-graphic.png）、隐私政策 `PRIVACY.md`（Play Console 隐私政策 URL 直接用它的 GitHub 链接）。
+- 已移除 `QUERY_ALL_PACKAGES`（Play 高敏感权限）：应用过滤改用 launcher intent 查询，只列桌面可见应用。
 
 ## 文档地图
 
 - `README.md` — 功能、使用、权限说明（功能事实的唯一来源）。
+- `PRIVACY.md` — 中英双语隐私政策（商店表单直接引用其 GitHub 链接）。
+- `store/README.md` — 商店上架文案与权限用途说明表。
 - `AGENTS.md` — 协作与真机测试规则（本文件）。
 - `design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
 - 事实变化时只更新负责该事实的文档。

@@ -111,32 +111,37 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             try {
                 val apps = withContext(Dispatchers.IO) {
                     val pm = context.packageManager
-                    
-                    // 使用 getInstalledPackages 代替 getInstalledApplications
-                    // 并添加 GET_META_DATA 标志以获取更多信息
-                    val installedPackages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        pm.getInstalledPackages(
-                            PackageManager.PackageInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+
+                    // 用 launcher intent 查询代替 getInstalledPackages：
+                    // 无需 QUERY_ALL_PACKAGES（Google Play 对该权限有严格用途限制），
+                    // 只列出桌面可见（有启动入口）的应用，正是用户需要过滤的通知来源。
+                    val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    val resolveInfos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        pm.queryIntentActivities(
+                            launcherIntent,
+                            PackageManager.ResolveInfoFlags.of(0)
                         )
                     } else {
                         @Suppress("DEPRECATION")
-                        pm.getInstalledPackages(PackageManager.GET_META_DATA)
+                        pm.queryIntentActivities(launcherIntent, 0)
                     }
-                    
+
                     // 获取已保存的选中应用列表
                     val selectedPackages = sharedPreferencesHelper.getFilteredAppPackages()
                     Log.d(TAG, "已从设置中加载 ${selectedPackages.size} 个选中的应用")
 
-                    Log.d(TAG, "加载到 ${installedPackages.size} 个已安装应用包")
-                    
+                    Log.d(TAG, "加载到 ${resolveInfos.size} 个 launcher 应用")
+
                     val appInfoList = mutableListOf<AppInfo>()
-                    
-                    for (packageInfo in installedPackages) {
+
+                    for (resolveInfo in resolveInfos) {
                         try {
-                            val packageName = packageInfo.packageName
-                            
-                            // 安全处理 applicationInfo 可能为空的情况
-                            val appInfo = packageInfo.applicationInfo ?: continue
+                            val packageName = resolveInfo.activityInfo.packageName
+
+                            // 同一应用多个 launcher 入口只保留一条
+                            if (appInfoList.any { it.packageName == packageName }) continue
+
+                            val appInfo = resolveInfo.activityInfo.applicationInfo
                             
                             // 安全获取应用名称
                             val appName = try {
@@ -154,7 +159,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                             
                             appInfoList.add(AppInfo(packageName, appName, isSystemApp, isSelected))
                         } catch (e: Exception) {
-                            Log.e(TAG, "处理应用 ${packageInfo.packageName} 信息时出错", e)
+                            Log.e(TAG, "处理应用 ${resolveInfo.activityInfo.packageName} 信息时出错", e)
                         }
                     }
                     

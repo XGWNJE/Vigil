@@ -10,6 +10,15 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// 签名凭据：本机读 keystore.properties（gitignored），CI 读环境变量。
+// 历史教训：旧 keystore 曾随仓库提交、密码明文写在本文件，公开仓库 = 密钥泄露，已轮换。
+import java.util.Properties
+
+val keystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.example.vigil"
     compileSdk = 35 // Android 编译 SDK 版本
@@ -30,9 +39,12 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("../keystore/vigil.keystore")
-            storePassword = "vigilapp"
-            keyAlias = "vigil"
-            keyPassword = "vigilapp"
+            storePassword = keystoreProperties.getProperty("storePassword")
+                ?: System.getenv("VIGIL_STORE_PASSWORD")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+                ?: System.getenv("VIGIL_KEY_ALIAS") ?: "vigil"
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+                ?: System.getenv("VIGIL_KEY_PASSWORD")
         }
     }
 

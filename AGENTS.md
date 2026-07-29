@@ -97,7 +97,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。
 - Android 10+ 后台 `startActivity` 静默失败（不抛异常，`try/catch` 兜底不触发）：报警弹窗靠持久化 + App 打开时补弹（`MonitoringViewModel.init`）。
 - `cmd notification`、`cmd media_session` 等 cmd 子命令各厂商可用性不同，用前先 `cmd <name> --help` 探明。
-- Compose `rememberInfiniteTransition`/`animate*AsState` 会被「开发者选项 → 动画程序时长缩放 = 关闭」挂起（Compose 把 animator_duration_scale 读进 MotionDurationScale），关键状态动效（首页涟漪/核心呼吸）因此改用 `withFrameNanos` 帧驱动（`RippleBackground.kt` 的 `rememberFrameDrivenProgress`），不受该设置影响。真机出现"单机不动效"时先做对照（模拟器/另一台真机）并重启设备排查系统瞬时状态，再升级假设。
+- Compose `rememberInfiniteTransition`/`animate*AsState` 会被「开发者选项 → 动画程序时长缩放 = 关闭」挂起（Compose 把 animator_duration_scale 读进 MotionDurationScale）。实测案例（v1.8.0 小米真机）：首页涟漪单机静止，模拟器与另一台平板正常；装帧驱动修复包（v1.8.1）后立即恢复，坐实根因是该设置。关键状态动效（首页涟漪/核心呼吸）因此改用 `withFrameNanos` 帧驱动（`RippleBackground.kt` 的 `rememberFrameDrivenProgress`），不受该设置影响。真机"单机异常"先做对照（模拟器/另一台真机/构建变体）再升级假设。
 - Android 15+（targetSdk 35+）禁止应用修改全局勿扰状态：`setInterruptionFilter`/`setNotificationPolicy` 只会创建/更新应用名下的隐式 AutomaticZenRule，按"最严格策略胜出"合并——既突破不了用户手动开启的勿扰，且隐式规则可能在用户手动关闭勿扰后继续强加全局静默（实测 API 36 模拟器：调用 setInterruptionFilter(NONE) 后，用户手动关勿扰设备仍完全静音）。项目因此移除了勿扰穿透功能：不申请勿扰访问权限、不干预用户勿扰设置，勿扰下按系统当前策略响铃（官方说明：https://developer.android.com/develop/ui/views/notifications/notification-policy ）。
 
 ## 发布

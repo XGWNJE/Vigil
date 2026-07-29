@@ -106,7 +106,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 发版动作：递增 `versionCode`/`versionName`（README 已无更新日志板块，无需维护变更记录）。
 - CI：`.github/workflows/release.yml` 在推 `v*` tag 时自动构建 release APK 并创建 GitHub Release；依赖仓库 secrets `VIGIL_KEYSTORE_BASE64`（keystore base64）、`VIGIL_STORE_PASSWORD`、`VIGIL_KEY_ALIAS`、`VIGIL_KEY_PASSWORD`。
 - 商店素材：`store/`（中英文案、权限用途说明表、feature-graphic.png）、隐私政策 `PRIVACY.md`（Play Console 隐私政策 URL 直接用它的 GitHub 链接）。
-- 已移除 `QUERY_ALL_PACKAGES`（Play 高敏感权限）：应用过滤改用 launcher intent 查询，只列桌面可见应用。
+- 已移除 `QUERY_ALL_PACKAGES`（Play 高敏感权限）：应用过滤改用 launcher intent 查询，只列桌面可见应用。**注意**：Android 11+ 应用可见性要求 manifest 用 `<queries>` 块声明该 launcher intent（`AndroidManifest.xml`），否则 queryIntentActivities 只能看到极少数应用（曾漏声明导致真机列表只剩 4 个、微信不可见）。
 
 ## 文档地图
 

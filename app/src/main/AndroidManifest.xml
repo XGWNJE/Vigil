@@ -12,6 +12,16 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Android 11+ 应用可见性：声明 launcher 查询意图后，
+         queryIntentActivities 才能看到全部桌面应用（应用过滤列表用）。
+         这是官方推荐做法，无需 QUERY_ALL_PACKAGES 权限。 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
 
     <application
         android:allowBackup="true"

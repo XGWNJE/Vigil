@@ -28,7 +28,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
   - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、铃声、未确认报警、listener_connected 绑定状态）
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
   - `app/src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt` — 服务状态/心跳/报警弹窗状态
-  - `app/src/main/java/com/example/vigil/VigilLogger.kt` — 持久化诊断日志（filesDir/logs/vigil.log，1MB 滚动双文件；每条立即 flush）+ 导出拼接（诊断头 + old + 当前），主屏「导出日志」行经 FileProvider 分享；不写通知正文
+  - `app/src/main/java/com/example/vigil/VigilLogger.kt` — 持久化诊断日志（filesDir/logs/vigil.log，1MB 滚动双文件；每条立即 flush）+ 导出拼接（诊断头 + old + 当前），主屏设置 Sheet「导出日志」行经 FileProvider 分享；不写通知正文
 
 ## 真机测试流程（闭环测试标准操作）
 
@@ -73,7 +73,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 音量最小：`adb shell cmd media_session volume --stream 4 --set 1`（STREAM_ALARM=4；音量键不可靠，前台时调的是 MUSIC 流）。
 - 播放中：`adb shell dumpsys media.player` 应见 `packageName: com.example.vigil`、`NuPlayer state(5)`（STARTED）、`looping(1)`、`stream type(4)`；停止后该条目消失。
 - UI 按钮：`adb shell uiautomator dump` 取 `bounds` → `adb shell input tap x y`；截图 `screencap`；投屏 scrcpy 必须 `--no-audio --keyboard=sdk`（v4 默认模拟物理键盘会把设备软键盘藏起来，sdk 模式才能正常调出输入法；电脑端打中文是 scrcpy 本身限制，在投屏里点手机键盘输入），用 `ADB=` 环境变量复用现有 adb server。
-- 诊断日志：debug 包可 `run-as com.example.vigil cat /data/data/com.example.vigil/files/logs/vigil.log` 直读（含进程启动标记、绑定/断连、看门狗、通知处理结果、报警链路）；release 包让用户在主屏点「导出日志」分享导出。
+- 诊断日志：debug 包可 `run-as com.example.vigil cat /data/data/com.example.vigil/files/logs/vigil.log` 直读（含进程启动标记、绑定/断连、看门狗、通知处理结果、报警链路）；release 包让用户在主屏设置 Sheet 点「导出日志」分享导出。
 
 ### 进程死亡排查与模拟
 

@@ -11,7 +11,7 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/version-1.7.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
+[![Version](https://img.shields.io/badge/version-1.8.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [技术架构](#-技术架构)
@@ -32,7 +32,8 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 | 功能 | 描述 |
 |------|------|
-| **关键词匹配** | 多关键词 Chip 标签式管理，添加/删除即保存，无需手动确认 |
+| **关键词匹配** | 多关键词 Chip 标签式管理，添加即保存；删除需二次确认，防止误触 |
+| **状态首页** | 全屏涟漪动效与服务状态融合（颜色/节奏随状态变化），中央核心圆点即服务开关；设置项收进底部浮出 Sheet，首页只看状态 |
 | **强制报警** | 以闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立于铃声/媒体音量，静音模式下照常响铃；应用内全屏弹窗展示命中关键词与通知摘要 |
 | **应用过滤** | 可选择只监听指定应用的通知，或监听全部应用 |
 | **报警恢复** | 触发报警时持久化未确认状态，进程被系统杀死后重建可在 30 分钟有效期内自动恢复响铃与弹窗 |
@@ -91,14 +92,14 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ### 首次使用
 
-1. 打开应用，在首页完成权限授权：
+1. 打开应用，点右上角齿轮打开设置 Sheet，完成权限授权：
    - **通知使用权**（核心必需，系统设置中授予）
    - **电池白名单**（防止省电策略强杀进程）
    - **自启动管理 / 后台运行**（国产 ROM 建议配置）
-2. 点击关键词行的 **+** 添加需要监控的关键词
+2. 在设置 Sheet 点击关键词行的 **+** 添加需要监控的关键词（删除需二次确认）
 3. 点击「铃声」选择报警铃声（默认使用系统闹钟铃声）
 4. 可选：点击「应用过滤」选择只监听特定应用
-5. 打开顶部服务开关，状态显示「监听中」即开始工作
+5. 回到首页，点按屏幕中央的核心圆点开启服务，状态显示「监听中」并伴有绿色涟漪扩散即开始工作
 
 ---
 
@@ -156,7 +157,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 | 页面 | 描述 |
 |------|------|
-| **MainScreen** | 「一线」单页主界面：状态词 + 服务大开关，发丝线列表承载关键词、铃声、应用过滤、权限入口 |
+| **MainScreen** | 「一线」状态首页：全屏涟漪从中央核心开关扩散，涟漪颜色/节奏即服务状态；顶栏齿轮呼出底部设置 Sheet（关键词、铃声、应用过滤、权限、导出日志、开源地址） |
 | **AppFilterScreen** | 「一线」独立全屏页，支持搜索、系统 / 用户应用标记、多选 |
 | **KeywordAlertDialog** | 命中关键词时全屏弹出，确认后停止铃声；内容居中，避开系统导航栏 |
 | **PermissionGuideDialog** | 「一线」权限引导确认弹窗，确认后跳转对应系统设置 |

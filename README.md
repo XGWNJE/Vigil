@@ -11,7 +11,7 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/version-1.8.2-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
+[![Version](https://img.shields.io/badge/version-1.8.3-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [技术架构](#-技术架构)
@@ -137,45 +137,9 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ## 🏗 技术架构
 
-### 语言 / 框架
-
-- **Kotlin** + **Jetpack Compose**（Material 3）
-- **MVVM** 架构：`ViewModel` + `mutableStateOf`
-- **Navigation Compose** 单页 + 子页导航
-
-### 核心组件
-
-| 文件 | 职责 |
-|------|------|
-| `MyNotificationListenerService` | 通知监听、关键词匹配、铃声播放、WakeLock 管理、报警恢复 |
-| `VigilEventBus` | 基于 `SharedFlow` 的进程内事件总线 |
-| `MonitoringViewModel` | 服务状态、心跳检测、报警 Dialog 状态管理 |
-| `SettingsViewModel` | 关键词列表、铃声、应用过滤列表的状态与持久化 |
-| `SharedPreferencesHelper` | 所有配置的读写封装（关键词以 `StringSet` 存储） |
-| `ListenerRecovery` | 监听绑定自愈：`requestRebind` / 组件 toggle 重绑 |
-| `PermissionUtils` | 各权限的检测与跳转逻辑，含国产 ROM 自启动 / 后台运行引导 |
-| `MainActivity` | Compose 根宿主，生命周期管理，服务启停，报警弹窗承载 |
-
-### UI 页面
-
-| 页面 | 描述 |
-|------|------|
-| **MainScreen** | 「一线」状态首页：全屏涟漪从中央核心开关扩散，涟漪颜色/节奏即服务状态；顶栏齿轮呼出底部设置 Sheet（关键词、铃声、应用过滤、权限、导出日志、开源地址） |
-| **AppFilterScreen** | 「一线」独立全屏页，支持搜索、系统 / 用户应用标记、多选 |
-| **KeywordAlertDialog** | 命中关键词时全屏弹出，确认后停止铃声；内容居中，避开系统导航栏 |
-| **PermissionGuideDialog** | 「一线」权限引导确认弹窗，确认后跳转对应系统设置 |
-
-### 设计主题
-
-「一线」极简深色主题，发丝线分区、无卡片，单一强调色：
-
-```
-背景色:   #0A0A0B
-文字色:   #EAEAE7
-分割线:   #1F1F23
-主色调:   #E4FF54（酸橙绿）
-警示色:   #FFB020（琥珀）
-```
+- **Kotlin** + **Jetpack Compose**（Material 3），MVVM，单 Activity + Navigation Compose
+- 核心链路：`MyNotificationListenerService` 监听匹配 → 闹钟音频流循环响铃 + WakeLock → 全屏弹窗确认停止，关键状态全程持久化
+- 组件职责、页面结构与设计主题详见 `AGENTS.md`
 
 ---
 

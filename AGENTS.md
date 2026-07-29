@@ -30,6 +30,11 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
   - `app/src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt` — 服务状态/心跳/报警弹窗状态
   - `app/src/main/java/com/example/vigil/VigilLogger.kt` — 持久化诊断日志（filesDir/logs/vigil.log，1MB 滚动双文件；每条立即 flush）+ 导出拼接（诊断头 + old + 当前），主屏设置 Sheet「导出日志」行经 FileProvider 分享；不写通知正文
+  - `app/src/main/java/com/example/vigil/VigilEventBus.kt` — 进程内事件总线（SharedFlow，replay 语义与持久化兜底要求见铁律 5）
+  - `app/src/main/java/com/example/vigil/ui/settings/SettingsViewModel.kt` — 关键词/铃声/应用过滤状态与持久化；过滤列表排序：已勾选 → 用户应用优先 → 名称（`appListComparator`，初始加载与勾选切换共用）
+  - `app/src/main/java/com/example/vigil/MainActivity.kt` — Compose 根宿主，生命周期管理，服务启停，报警弹窗承载
+- UI 页面：`MainScreen`（涟漪状态首页 + 顶栏齿轮呼出底部设置 Sheet：关键词、铃声、应用过滤、权限、导出日志、开源地址）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）
+- 设计主题「一线」：极简深色、发丝线分区、无卡片、单一强调色。背景 #0A0A0B / 文字 #EAEAE7 / 分割线 #1F1F23 / 主色 #E4FF54 酸橙绿 / 警示 #FFB020 琥珀
 
 ## 真机测试流程（闭环测试标准操作）
 

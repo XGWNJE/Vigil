@@ -17,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +64,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -73,6 +75,7 @@ import androidx.compose.ui.unit.sp
 import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
+import com.example.vigil.SharedPreferencesHelper
 import com.example.vigil.VigilEventBus
 import com.example.vigil.VigilLogger
 import com.example.vigil.ui.dialogs.PermissionGuideDialog
@@ -160,10 +163,39 @@ fun MainScreen(
     // 关键词删除二次确认：待删除的关键词，非空时弹出确认框
     var keywordPendingDelete by remember { mutableStateOf<String?>(null) }
 
+    // 入口提示与引导行的持久化状态（纯 UI 标记，与服务/ViewModel 无关，直接读 prefs）
+    val prefs = remember { SharedPreferencesHelper(context) }
+    var swipeHintShown by remember { mutableStateOf(prefs.hasShownSwipeHint()) }
+    var lockTaskTipDismissed by remember { mutableStateOf(prefs.isLockTaskTipDismissed()) }
+    // 设置 Sheet 被打开过一次（任意入口）即视为已发现入口，收起手势提示文案
+    LaunchedEffect(showSettingsSheet) {
+        if (showSettingsSheet && !swipeHintShown) {
+            prefs.markSwipeHintShown()
+            swipeHintShown = true
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(VigilDirABg)
+            // 上滑手势打开设置 Sheet（齿轮外的第二入口，符合底部 Sheet「从下往上拉出」直觉）。
+            // 只在垂直拖拽越过阈值后触发，不影响核心开关/齿轮的点击。
+            .pointerInput(Unit) {
+                var dragAccum = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { dragAccum = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        dragAccum += dragAmount
+                    },
+                    onDragEnd = {
+                        if (dragAccum < -120.dp.toPx()) showSettingsSheet = true
+                        dragAccum = 0f
+                    },
+                    onDragCancel = { dragAccum = 0f }
+                )
+            }
     ) {
         // ---- 底层：全屏涟漪，从中央核心开关扩散，颜色/节奏即状态 ----
         RippleBackground(state = serviceState, modifier = Modifier.fillMaxSize())
@@ -278,6 +310,33 @@ fun MainScreen(
                 .align(Alignment.Center)
                 .offset(y = 64.dp)
         )
+
+        // ---- 底部把手：上滑手势的视觉锚点（点按也能打开设置 Sheet） ----
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 28.dp)
+                .padding(vertical = 12.dp)
+                .clickable { showSettingsSheet = true },
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (!swipeHintShown) {
+                Text(
+                    text = "上滑打开设置",
+                    style = MonoTextStyle,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.2.sp,
+                    color = VigilDirADim,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .width(36.dp)
+                    .height(1.dp)
+                    .background(VigilDirAFaint)
+            )
+        }
     }
 
     // ---- 设置 Sheet：底部浮出 ----
@@ -347,7 +406,10 @@ fun MainScreen(
                     RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
                 }
 
-                // 4. 通知使用权
+                // ---- 权限与保活：按必需性分级（必需 / 推荐 / 可选） ----
+                GroupHeader("REQUIRED")
+
+                // 通知使用权：功能前提，未开启则监听不存在
                 LineRow(onClick = {
                     if (!hasNotificationAccess) {
                         showGuideDialog = PermissionGuide.NotificationAccess
@@ -361,7 +423,9 @@ fun MainScreen(
                     }
                 }
 
-                // 5. 电池白名单
+                GroupHeader("RECOMMENDED")
+
+                // 电池白名单：后台稳定检测的前提（Device Guard 类强杀防护），状态可检测
                 LineRow(onClick = {
                     if (!isIgnoringBatteryOptimizations) {
                         showGuideDialog = PermissionGuide.Battery
@@ -375,7 +439,19 @@ fun MainScreen(
                     }
                 }
 
-                // 6. 自启动管理（国产 ROM 通用引导，跳转系统对应设置页）
+                // 锁定任务卡片：防一键清理，无 API 可检测/跳转，纯图文引导（可「不再提示」关闭本行）
+                if (!lockTaskTipDismissed) {
+                    LineRow(onClick = {
+                        showGuideDialog = PermissionGuide.LockTask
+                    }) {
+                        RowLabel("锁定任务卡片")
+                        RowValue("如何锁定", withArrow = true)
+                    }
+                }
+
+                GroupHeader("OPTIONAL")
+
+                // 自启动管理（国产 ROM 通用引导，跳转系统对应设置页；状态不可检测）
                 LineRow(onClick = {
                     activity?.let { PermissionUtils.openAutoStartSettings(it) }
                 }) {
@@ -383,7 +459,7 @@ fun MainScreen(
                     RowValue("允许自启动", withArrow = true)
                 }
 
-                // 7. 后台运行（省电策略/耗电管理设为无限制）
+                // 后台运行（省电策略/耗电管理设为无限制；状态不可检测）
                 LineRow(onClick = {
                     showGuideDialog = PermissionGuide.BackgroundRun
                 }) {
@@ -474,15 +550,24 @@ fun MainScreen(
             onConfirm = { activity?.let { PermissionUtils.openAppDetailsSettings(it) } },
             onDismiss = { showGuideDialog = null }
         )
+        PermissionGuide.LockTask -> LockTaskGuideDialog(
+            onClose = { showGuideDialog = null },
+            onNeverShow = {
+                prefs.markLockTaskTipDismissed()
+                lockTaskTipDismissed = true
+                showGuideDialog = null
+            }
+        )
         null -> Unit
     }
 }
 
-/** 主屏三个权限引导弹窗的种类 */
+/** 主屏权限引导弹窗的种类 */
 private enum class PermissionGuide {
     NotificationAccess,
     Battery,
-    BackgroundRun
+    BackgroundRun,
+    LockTask
 }
 
 private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
@@ -597,6 +682,64 @@ private fun WarnCapsule() {
         modifier = Modifier
             .border(1.dp, VigilDirAAmber, RoundedCornerShape(4.dp))
             .padding(horizontal = 7.dp, vertical = 2.dp)
+    )
+}
+
+/** 分组小标题：mono 大写灰字，设置 Sheet 权限分级（REQUIRED / RECOMMENDED / OPTIONAL）用 */
+@Composable
+private fun GroupHeader(text: String) {
+    Text(
+        text = text,
+        style = MonoTextStyle,
+        fontSize = 10.sp,
+        letterSpacing = 1.6.sp,
+        color = VigilDirAFaint,
+        modifier = Modifier.padding(start = 2.dp, top = 20.dp, bottom = 4.dp)
+    )
+}
+
+/**
+ * 锁定任务卡片图文引导弹窗（DirA 风格）。
+ * 与 PermissionGuideDialog 不同：纯说明、无系统页可跳，确认键仅关闭；
+ * 「不再提示」才持久化关闭设置 Sheet 中的引导行，点外部/返回只是关闭弹窗。
+ */
+@Composable
+private fun LockTaskGuideDialog(
+    onClose: () -> Unit,
+    onNeverShow: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = stringResource(R.string.lock_task_dialog_title),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.lock_task_dialog_message),
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                color = VigilDirADim
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onClose) {
+                Text(text = "知道了", color = VigilDirAAcid)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onNeverShow) {
+                Text(text = "不再提示", color = VigilDirADim)
+            }
+        }
     )
 }
 

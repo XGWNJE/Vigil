@@ -37,6 +37,12 @@ class SharedPreferencesHelper(context: Context) {
         // 通知监听服务与系统的真实绑定状态（心跳只证明进程活着，此标志才代表系统正在投递通知）
         private const val KEY_LISTENER_CONNECTED = "listener_connected"
 
+        // 上滑手势入口提示（设置 Sheet 被打开过一次即标记，不再显示主屏提示文案）
+        private const val KEY_HAS_SHOWN_SWIPE_HINT = "has_shown_swipe_hint"
+
+        // 锁定任务卡片引导行被用户「不再提示」关闭
+        private const val KEY_LOCK_TASK_TIP_DISMISSED = "lock_task_tip_dismissed"
+
         fun isServiceEnabledByUser(context: Context): Boolean {
             return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getBoolean(KEY_SERVICE_ENABLED, false)
@@ -109,6 +115,30 @@ class SharedPreferencesHelper(context: Context) {
 
     fun getListenerConnectedState(): Boolean {
         return prefs.getBoolean(KEY_LISTENER_CONNECTED, false)
+    }
+
+    /**
+     * 是否已展示过上滑手势入口提示。设置 Sheet 被打开过一次（任意入口）即视为已发现。
+     */
+    fun hasShownSwipeHint(): Boolean {
+        return prefs.getBoolean(KEY_HAS_SHOWN_SWIPE_HINT, false)
+    }
+
+    fun markSwipeHintShown() {
+        prefs.edit().putBoolean(KEY_HAS_SHOWN_SWIPE_HINT, true).apply()
+        Log.i("SharedPreferencesHelper", "已标记上滑手势提示完成")
+    }
+
+    /**
+     * 锁定任务卡片引导行是否已被用户「不再提示」关闭。
+     */
+    fun isLockTaskTipDismissed(): Boolean {
+        return prefs.getBoolean(KEY_LOCK_TASK_TIP_DISMISSED, false)
+    }
+
+    fun markLockTaskTipDismissed() {
+        prefs.edit().putBoolean(KEY_LOCK_TASK_TIP_DISMISSED, true).apply()
+        Log.i("SharedPreferencesHelper", "锁定任务卡片引导已标记不再提示")
     }
 
     // --- 应用过滤相关方法 ---

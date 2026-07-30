@@ -27,8 +27,8 @@ android {
         applicationId = "com.example.vigil"
         minSdk = 26 // 最低支持的 SDK 版本
         targetSdk = 35 // 目标 SDK 版本
-        versionCode = 14
-        versionName = "1.8.3" // 应用版本名
+        versionCode = 15
+        versionName = "1.9.0" // 应用版本名
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" // 测试运行器
         vectorDrawables {

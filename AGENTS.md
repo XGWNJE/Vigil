@@ -33,7 +33,8 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
   - `app/src/main/java/com/example/vigil/VigilEventBus.kt` — 进程内事件总线（SharedFlow，replay 语义与持久化兜底要求见铁律 5）
   - `app/src/main/java/com/example/vigil/ui/settings/SettingsViewModel.kt` — 关键词/铃声/应用过滤状态与持久化；过滤列表排序：已勾选 → 用户应用优先 → 名称（`appListComparator`，初始加载与勾选切换共用）
   - `app/src/main/java/com/example/vigil/MainActivity.kt` — Compose 根宿主，生命周期管理，服务启停，报警弹窗承载
-- UI 页面：`MainScreen`（涟漪状态首页 + 顶栏齿轮呼出底部设置 Sheet：关键词、铃声、应用过滤、权限、导出日志、开源地址）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）
+- UI 页面：`MainScreen`（涟漪状态首页；设置 Sheet 双入口：顶栏齿轮 + 上滑手势（底部发丝线把手常驻，首次启动显示「上滑打开设置」，Sheet 打开过一次即收起）；Sheet 内容：关键词、铃声、应用过滤、权限三级分组（REQUIRED 通知使用权 / RECOMMENDED 电池白名单 + 锁定任务卡片引导（「不再提示」后整行隐藏，`lock_task_tip_dismissed`）/ OPTIONAL 自启动管理、后台运行）、导出日志、开源地址）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）
+- 图标资产：launcher icon 内容不得顶边——缩放约 75% 居中、四边预留 ≥15% 安全边距，导出 mipmap 前做圆角 mask 预演（系统圆角 mask 会裁切顶边内容）。来源：notes/inbox/2026-07-27.md，owner 2026-07-30 验收
 - 设计主题「一线」：极简深色、发丝线分区、无卡片、单一强调色。背景 #0A0A0B / 文字 #EAEAE7 / 分割线 #1F1F23 / 主色 #E4FF54 酸橙绿 / 警示 #FFB020 琥珀
 
 ## 真机测试流程（闭环测试标准操作）
@@ -120,5 +121,6 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - `PRIVACY.md` — 中英双语隐私政策（商店表单直接引用其 GitHub 链接）。
 - `store/README.md` — 商店上架文案与权限用途说明表。
 - `AGENTS.md` — 协作与真机测试规则（本文件）。
+- `ROADMAP.md` — 近期开发路线图（P0 设置入口与权限分级 / P1 关键词级铃声 / P2 自定义铃声来源）。
 - `design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
 - 事实变化时只更新负责该事实的文档。

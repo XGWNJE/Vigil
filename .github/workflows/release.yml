@@ -47,7 +47,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          gh release create "${TAG}" \
-            --title "Vigil ${TAG}" \
-            --generate-notes \
-            "vigil-${TAG}.apk"
+          # 优先用仓库内 release-notes/<tag>.md 作为发行描述（发布流程第 1 步写入）；
+          # 缺失时回退到自动生成的提交摘要。
+          if [ -f "release-notes/${TAG}.md" ]; then
+            gh release create "${TAG}" \
+              --title "Vigil ${TAG}" \
+              --notes-file "release-notes/${TAG}.md" \
+              "vigil-${TAG}.apk"
+          else
+            gh release create "${TAG}" \
+              --title "Vigil ${TAG}" \
+              --generate-notes \
+              "vigil-${TAG}.apk"
+          fi

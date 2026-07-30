@@ -117,7 +117,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 owner 的发布指令即授权该流程内的全部 git 操作（commit / tag / push）。按序执行：
 
-1. **收口待发版改动**：对齐文档（铁律 6）、确认 `versionCode`/`versionName` 已递增，提交并 `git push origin main`。
+1. **收口待发版改动**：对齐文档（铁律 6）、确认 `versionCode`/`versionName` 已递增；写 `release-notes/vX.Y.Z.md`（版本变更摘要，CI 自动用作 Release 描述，缺失时回退 `--generate-notes` 只有 compare 链接）；提交并 `git push origin main`。
 2. **检查 CI secrets**：`gh secret list --repo XGWNJE/Vigil` 必须有上述 4 个。缺失则按下方「secrets 重设」补齐（2026-07-30 教训：密钥轮换后 secrets 全缺，v1.8.2/v1.8.3 发版失败，报 `Tag number over 30 is not supported`）。
 3. **打 tag 触发**：`git tag vX.Y.Z`（与 versionName 一致）→ `git push origin vX.Y.Z`。
 4. **盯运行**：`gh run watch --exit-status` 盯到结束；失败用 `gh run view <id> --log-failed` 定位，修复后删远端 tag 重推（`git push origin :vX.Y.Z && git push origin vX.Y.Z`）或打新 tag。
@@ -145,5 +145,6 @@ printf '%s' "vigil" | gh secret set VIGIL_KEY_ALIAS --repo XGWNJE/Vigil
 - `store/README.md` — 商店上架文案与权限用途说明表。
 - `AGENTS.md` — 协作与真机测试规则（本文件）。
 - `ROADMAP.md` — 近期开发路线图（P0 设置入口与权限分级 / P1 关键词级铃声 / P2 自定义铃声来源）。
+- `release-notes/` — 各版本发行描述（`vX.Y.Z.md`，CI 创建 Release 时自动引用）。
 - `design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
 - 事实变化时只更新负责该事实的文档。

@@ -112,6 +112,29 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - release 构建：`./gradlew assembleRelease`（minify + 资源压缩，签名配置在 `app/build.gradle.kts` 的 `signingConfigs.release`，密码读 `keystore.properties` 或环境变量兜底）。
 - 发版动作：递增 `versionCode`/`versionName`（README 已无更新日志板块，无需维护变更记录）。
 - CI：`.github/workflows/release.yml` 在推 `v*` tag 时自动构建 release APK 并创建 GitHub Release；依赖仓库 secrets `VIGIL_KEYSTORE_BASE64`（keystore base64）、`VIGIL_STORE_PASSWORD`、`VIGIL_KEY_ALIAS`、`VIGIL_KEY_PASSWORD`。
+
+### GitHub 发布标准流程（owner 明确说"发布到 GitHub"时默认执行，无需逐步再确认）
+
+owner 的发布指令即授权该流程内的全部 git 操作（commit / tag / push）。按序执行：
+
+1. **收口待发版改动**：对齐文档（铁律 6）、确认 `versionCode`/`versionName` 已递增，提交并 `git push origin main`。
+2. **检查 CI secrets**：`gh secret list --repo XGWNJE/Vigil` 必须有上述 4 个。缺失则按下方「secrets 重设」补齐（2026-07-30 教训：密钥轮换后 secrets 全缺，v1.8.2/v1.8.3 发版失败，报 `Tag number over 30 is not supported`）。
+3. **打 tag 触发**：`git tag vX.Y.Z`（与 versionName 一致）→ `git push origin vX.Y.Z`。
+4. **盯运行**：`gh run watch --exit-status` 盯到结束；失败用 `gh run view <id> --log-failed` 定位，修复后删远端 tag 重推（`git push origin :vX.Y.Z && git push origin vX.Y.Z`）或打新 tag。
+5. **验收（全部通过才算完成）**：`gh release view vX.Y.Z` 确认 Release 与 APK 资产存在；下载 APK 跑 `apksigner verify --print-certs`，证书 SHA-256 必须等于本地 `keystore/vigil.keystore` 指纹（`keytool -list` 可查）。
+
+### CI secrets 重设（缺失时）
+
+```bash
+# base64 单行编码，上传前本地回环验证（base64 -d 后与源文件 cmp 一致）
+base64 -w 0 keystore/vigil.keystore > /tmp/ks.b64
+base64 -d /tmp/ks.b64 | cmp keystore/vigil.keystore - && gh secret set VIGIL_KEYSTORE_BASE64 --repo XGWNJE/Vigil < /tmp/ks.b64
+rm -f /tmp/ks.b64
+# 密码取自 keystore.properties，printf 管道传入不回显；alias 固定 vigil
+printf '%s' "$pw" | gh secret set VIGIL_STORE_PASSWORD --repo XGWNJE/Vigil
+printf '%s' "$kp" | gh secret set VIGIL_KEY_PASSWORD --repo XGWNJE/Vigil
+printf '%s' "vigil" | gh secret set VIGIL_KEY_ALIAS --repo XGWNJE/Vigil
+```
 - 商店素材：`store/`（中英文案、权限用途说明表、feature-graphic.png）、隐私政策 `PRIVACY.md`（Play Console 隐私政策 URL 直接用它的 GitHub 链接）。
 - 已移除 `QUERY_ALL_PACKAGES`（Play 高敏感权限）：应用过滤改用 launcher intent 查询，只列桌面可见应用。**注意**：Android 11+ 应用可见性要求 manifest 用 `<queries>` 块声明该 launcher intent（`AndroidManifest.xml`），否则 queryIntentActivities 只能看到极少数应用（曾漏声明导致真机列表只剩 4 个、微信不可见）。
 

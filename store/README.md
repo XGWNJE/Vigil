@@ -17,14 +17,14 @@
 
 ## 二、短描述（≤80 字符）
 
-### 中文（71 字符）
+### 中文（46 字符）
 ```
-关键词触发通知报警：监控指定应用通知，命中关键词即循环响铃+应用内全屏弹窗，绝不错过重要消息
+轻量关键词通知报警：监控指定应用通知，命中关键词即循环响铃+应用内全屏弹窗，绝不错过重要消息
 ```
 
-### English (76 chars)
+### English (70 chars)
 ```
-Alarm on keyword notifications: looping ringtone + in-app full-screen alert
+Keyword notification alarm: looping ringtone + in-app alert, 2.5MB APK
 ```
 
 ---
@@ -44,6 +44,7 @@ Vigil — 关键词通知报警器
 • 关键词监控：自定义多个关键词，命中即报警
 • 应用过滤：只监控你关心的应用，避免误报
 • 强提醒：循环响铃 + 应用内全屏弹窗，想忽略都难
+• 极致轻量：安装包仅 2.5MB，几乎不占空间
 • 报警恢复：即使进程被系统强杀，重启后自动恢复响铃，报警绝不丢失
 • 自定义铃声：使用系统闹钟铃声，音量独立控制
 • 诊断日志：可选导出，便于排查问题（不含通知内容）
@@ -78,6 +79,7 @@ Set your keywords, and Vigil monitors notifications from the apps you choose. Wh
 • Keyword monitoring: define multiple keywords, alarm on match
 • App filter: watch only the apps you care about
 • Hard-to-miss alarm: looping sound + in-app full-screen alert
+• Ultra-lightweight: only a 2.5MB APK, negligible storage footprint
 • Alarm recovery: even if the process is killed, the alarm resumes automatically after restart
 • Custom ringtone: uses system alarm sounds with independent volume
 • Diagnostic logs: optional export for troubleshooting (never contains notification content)

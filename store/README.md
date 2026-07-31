@@ -17,14 +17,14 @@
 
 ## 二、短描述（≤80 字符）
 
-### 中文（68 字符）
+### 中文（71 字符）
 ```
-关键词触发通知报警：监控指定应用通知，命中关键词即循环响铃+全屏弹窗，绝不错过重要消息
+关键词触发通知报警：监控指定应用通知，命中关键词即循环响铃+应用内全屏弹窗，绝不错过重要消息
 ```
 
-### English (80 chars)
+### English (76 chars)
 ```
-Alarm when notifications match your keywords. Looping ringtone + full-screen alert. Open source.
+Alarm on keyword notifications: looping ringtone + in-app full-screen alert
 ```
 
 ---
@@ -38,12 +38,12 @@ Vigil — 关键词通知报警器
 
 重要消息淹没在通知海洋里？Vigil 帮你盯住它们。
 
-设置关键词后，Vigil 会在后台监控指定应用的通知。一旦通知内容命中关键词，立即触发强提醒：循环播放闹钟铃声 + 唤醒屏幕 + 全屏弹窗，直到你手动确认才会停止。即使错过，下次打开应用时也会补弹未确认的报警。
+设置关键词后，Vigil 会在后台监控指定应用的通知。一旦通知内容命中关键词，立即触发强提醒：循环播放闹钟铃声 + 应用内全屏弹窗，直到你手动确认才会停止。即使错过，下次打开应用时也会补弹未确认的报警。
 
 【核心功能】
 • 关键词监控：自定义多个关键词，命中即报警
 • 应用过滤：只监控你关心的应用，避免误报
-• 强提醒：循环响铃 + 唤醒锁 + 全屏弹窗，想忽略都难
+• 强提醒：循环响铃 + 应用内全屏弹窗，想忽略都难
 • 报警恢复：即使进程被系统强杀，重启后自动恢复响铃，报警绝不丢失
 • 自定义铃声：使用系统闹钟铃声，音量独立控制
 • 诊断日志：可选导出，便于排查问题（不含通知内容）
@@ -59,7 +59,7 @@ Vigil — 关键词通知报警器
 
 【权限说明】
 • 通知监听：核心功能，读取通知用于本地关键词匹配
-• 前台服务/唤醒锁：报警期间保持响铃与亮屏
+• 前台服务/唤醒锁：报警期间保持服务运行，确保循环响铃不被中断
 • 忽略电池优化（可选）：防止系统省电策略中断报警
 
 开源地址：https://github.com/XGWNJE/Vigil
@@ -72,12 +72,12 @@ Vigil — Keyword Notification Alarm
 
 Drowning in notifications? Vigil makes sure you never miss the ones that matter.
 
-Set your keywords, and Vigil monitors notifications from the apps you choose. When a notification matches a keyword, it fires a hard-to-ignore alarm: looping ringtone + screen wake + full-screen alert that keeps going until you acknowledge it. Missed it anyway? Unacknowledged alarms pop up again the next time you open the app.
+Set your keywords, and Vigil monitors notifications from the apps you choose. When a notification matches a keyword, it fires a hard-to-ignore alarm: looping ringtone + in-app full-screen alert that keeps going until you acknowledge it. Missed it anyway? Unacknowledged alarms pop up again the next time you open the app.
 
 [Features]
 • Keyword monitoring: define multiple keywords, alarm on match
 • App filter: watch only the apps you care about
-• Hard-to-miss alarm: looping sound + wake lock + full-screen alert
+• Hard-to-miss alarm: looping sound + in-app full-screen alert
 • Alarm recovery: even if the process is killed, the alarm resumes automatically after restart
 • Custom ringtone: uses system alarm sounds with independent volume
 • Diagnostic logs: optional export for troubleshooting (never contains notification content)
@@ -93,7 +93,7 @@ All processing happens entirely on your device. The app doesn't even declare the
 
 [Permissions]
 • Notification Listener: core feature, reads notifications for local keyword matching
-• Foreground service / wake lock: keeps the alarm ringing and screen on
+• Foreground service / wake lock: keeps the alarm service alive and ringing until you acknowledge it
 • Ignore battery optimizations (optional): prevents the system from killing the alarm
 
 Source code: https://github.com/XGWNJE/Vigil
@@ -110,8 +110,8 @@ Source code: https://github.com/XGWNJE/Vigil
 | 通知使用权（通知监听） | 核心功能。读取系统通知内容，仅在设备本地与用户设置的关键词比对，命中时触发报警。不存储、不上传通知内容。 |
 | 前台服务 | 报警触发时保持服务运行，持续播放报警铃声直至用户确认。 |
 | 特殊用途前台服务（specialUse） | 同上，用于 Android 14+ 系统声明通知监听类前台服务的合法用途。 |
-| 唤醒锁（WAKE_LOCK） | 报警期间保持 CPU 运行与屏幕唤醒，确保用户能及时看到报警。 |
-| 全屏通知（USE_FULL_SCREEN_INTENT） | 报警触发时以全屏弹窗形式提醒用户。 |
+| 唤醒锁（WAKE_LOCK） | 报警期间保持 CPU 唤醒运行，确保铃声持续播放。 |
+| 全屏通知（USE_FULL_SCREEN_INTENT） | 后台无法弹出应用内弹窗时，以全屏通知形式在锁屏提醒用户。 |
 | 通知权限（POST_NOTIFICATIONS） | Android 13+ 显示前台服务状态通知与报警提醒。 |
 | 忽略电池优化（REQUEST_IGNORE_BATTERY_OPTIMIZATIONS） | 用户自愿开启。防止系统省电策略（如厂商管家类应用）强杀报警服务导致报警失效。 |
 

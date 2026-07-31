@@ -60,6 +60,7 @@ gradle/wrapper/gradle-wrapper.jar
 *.swo
 *~
 out/
+vigil_log_*.txt
 
 # NDK / CMake
 *.so

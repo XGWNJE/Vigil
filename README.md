@@ -11,10 +11,10 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-[![Version](https://img.shields.io/badge/version-1.8.3-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
+[![Version](https://img.shields.io/badge/version-1.9.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [技术架构](#-技术架构)
+[功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
 </div>
 
@@ -22,7 +22,7 @@
 
 ## 简介
 
-Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送的通知内容命中预设关键词时，Vigil 会**在应用内弹出全屏报警提醒，并强制触发报警铃声**（后台运行时铃声同样生效）。报警铃声走闹钟音频流，音量独立于铃声/媒体音量，设备静音或震动模式下照常响铃；勿扰模式下的行为见[已知限制](#-已知限制)。
+Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送的通知内容命中预设关键词时，Vigil 会**在应用内弹出全屏报警提醒，并强制触发报警铃声**（后台运行时铃声同样生效）。报警铃声走闹钟音频流，音量独立于铃声/媒体音量，设备静音或震动模式下照常响铃。
 
 适用场景：服务器宕机告警、银行到账提醒、特定消息监控等对通知实时性要求极高的场景。
 
@@ -32,16 +32,14 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 | 功能 | 描述 |
 |------|------|
-| **关键词匹配** | 多关键词 Chip 标签式管理，添加即保存；删除需二次确认，防止误触 |
-| **状态首页** | 全屏涟漪动效与服务状态融合（颜色/节奏随状态变化），中央核心圆点即服务开关；设置项收进底部浮出 Sheet，首页只看状态 |
-| **强制报警** | 以闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立于铃声/媒体音量，静音模式下照常响铃；应用内全屏弹窗展示命中关键词与通知摘要 |
-| **应用过滤** | 可选择只监听指定应用的通知，或监听全部应用；已勾选应用置顶显示 |
-| **报警恢复** | 触发报警时持久化未确认状态，进程被系统杀死后重建可在 30 分钟有效期内自动恢复响铃与弹窗 |
-| **前台服务保活** | 以前台服务形式常驻，配合电池白名单降低系统回收概率 |
-| **权限引导** | 主界面集中展示必要权限状态（通知使用权、电池白名单、自启动、后台运行），缺失时一键跳转授权 |
-| **心跳检测** | 单调时钟心跳，实时感知服务存活状态；绑定断开时显示「重连中」而非误报「监听中」 |
-| **监听自愈** | 服务看门狗检测到断连自动 `requestRebind`，失败时升级组件 toggle 重绑 |
-| **诊断日志** | 关键运行事件本地持久化（自动滚动、不含通知正文），主屏「导出日志」一键分享，便于真机长测后排查问题 |
+| **关键词匹配** | 多关键词 Chip 管理，添加即保存；删除需二次确认 |
+| **状态首页** | 全屏涟漪动效随服务状态变化（颜色/节奏），中央核心圆点即服务开关；设置收进底部 Sheet |
+| **强制报警** | 闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立、静音模式照常响铃；全屏弹窗展示命中关键词与摘要 |
+| **应用过滤** | 只监听指定应用或全部应用；已勾选应用置顶 |
+| **报警恢复** | 未确认状态持久化，进程被系统杀死后重建可在 30 分钟内自动恢复响铃与弹窗 |
+| **前台保活** | 前台服务常驻 + 心跳检测 + 断连自动重绑（`requestRebind` / 组件 toggle） |
+| **权限引导** | 设置内按必需/推荐/可选分级展示权限状态，缺失时一键跳转授权 |
+| **诊断日志** | 本地滚动日志（不含通知正文），主屏一键导出分享，便于排查 |
 
 ---
 
@@ -53,6 +51,10 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 |:--------:|:--------:|:--------:|
 | <img src="./image1.png" alt="主界面" width="240" /> | <img src="./image2.png" alt="报警界面" width="240" /> | <img src="./image3.png" alt="应用过滤" width="240" /> |
 
+| 报警演示 |
+|:--------:|
+| <img src="./demo.gif" alt="报警演示动画" width="240" /> |
+
 *点击图片可查看大图*
 
 </div>
@@ -61,47 +63,15 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 ## 🚀 快速开始
 
-### 环境要求
+1. 从 [Releases](https://github.com/XGWNJE/Vigil/releases) 下载 APK 直接安装；或自行构建：
 
-- Android Studio Hedgehog 或更高版本
-- JDK 17+
-- 最低 Android 版本：**8.0（API 26）**
-- 目标 / 编译 SDK：**35（Android 15）**
+   ```bash
+   git clone https://github.com/XGWNJE/Vigil.git && cd Vigil && ./gradlew assembleDebug
+   ```
 
-### 构建步骤
+   环境要求：Android Studio Hedgehog+ / JDK 17+；最低 Android 8.0（API 26），目标 SDK 35。构建与真机测试完整细节见 `AGENTS.md`。
 
-```bash
-# 克隆仓库
-git clone https://github.com/XGWNJE/Vigil.git
-cd Vigil
-
-# 构建 debug APK
-./gradlew assembleDebug
-```
-
-生成的 APK 位于 `app/build/outputs/apk/debug/`。
-
-### 安装
-
-```bash
-# 通过 ADB 安装到已连接设备
-adb install app/build/outputs/apk/debug/app-debug.apk
-```
-
-> 主力机若已安装 release 签名包，debug 包会因签名冲突无法覆盖安装，此时请改用 `./gradlew assembleRelease` 并安装 `app/build/outputs/apk/release/app-release.apk`（数据无损）。
-
-> **签名密钥轮换公告**：v1.8.1 及之前的 release 包使用旧签名密钥（该密钥曾意外随仓库公开，已作废轮换）。从下一版本起 release 包使用新密钥签名，**老版本直接覆盖安装会报签名冲突，请先卸载再安装**（关键词等配置需重新设置）。
-
-### 首次使用
-
-1. 打开应用，点右上角齿轮打开设置 Sheet，完成权限授权：
-   - **通知使用权**（核心必需，系统设置中授予）
-   - **电池白名单**（防止省电策略强杀进程）
-   - **自启动管理 / 后台运行**（国产 ROM 建议配置）
-2. 在设置 Sheet 点击关键词行的 **+** 添加需要监控的关键词（删除需二次确认）
-3. 点击「铃声」选择报警铃声（默认使用系统闹钟铃声）
-4. 可选：点击「应用过滤」选择只监听特定应用
-5. 回到首页，点按屏幕中央的核心圆点开启服务，状态显示「监听中」并伴有绿色涟漪扩散即开始工作
+2. 首次使用：授予**通知使用权**与**电池白名单**（可选：自启动/后台运行）→ 添加关键词 → 选择铃声 → 回到首页点按中央核心圆点开启服务。
 
 ---
 
@@ -109,37 +79,43 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 | 权限 | 用途 | 授权方式 |
 |------|------|----------|
-| 通知使用权（NotificationListenerService） | 读取所有应用通知内容，核心功能依赖 | 系统设置手动授予 |
+| 通知使用权（NotificationListenerService） | 读取通知内容，核心功能依赖 | 系统设置手动授予 |
 | 发送通知（POST_NOTIFICATIONS，Android 13+） | 前台服务常驻通知 | 首次启动自动弹窗 |
 | 前台服务（FOREGROUND_SERVICE_SPECIAL_USE） | 维持后台监听服务持续运行 | 自动（Manifest 声明） |
-| 唤醒锁（WAKE_LOCK） | 报警触发时保持 CPU 唤醒，确保铃声持续播放 | 自动（Manifest 声明） |
-| 忽略电池优化（REQUEST_IGNORE_BATTERY_OPTIMIZATIONS） | 防止厂商省电策略在报警响铃时强杀进程 | 首页「电池白名单」一键引导 |
-| 全屏 Intent（USE_FULL_SCREEN_INTENT） | 后台无法弹出应用内弹窗时，备选报警通知以全屏 Intent 在锁屏上弹出 | 自动（Manifest 声明） |
+| 唤醒锁（WAKE_LOCK） | 报警时保持 CPU 唤醒，确保铃声持续播放 | 自动（Manifest 声明） |
+| 忽略电池优化 | 防止厂商省电策略在报警时强杀进程 | 设置内一键引导 |
+| 全屏 Intent（USE_FULL_SCREEN_INTENT） | 后台无法弹窗时，以全屏通知在锁屏上报警 | 自动（Manifest 声明） |
 
-> **注意**：通知使用权需在系统设置中手动授予，应用内提供直达跳转入口。
+> 通知使用权需手动授予，应用内提供直达跳转入口。应用过滤无需任何权限（通过 launcher intent 查询，不申请 `QUERY_ALL_PACKAGES`）；应用未声明 `INTERNET` 权限，无联网能力，数据全部本地处理。详见 [隐私政策](PRIVACY.md)。
 
-> **应用过滤无需任何权限**：应用列表通过 launcher intent 查询（只列出桌面可见应用），不申请 `QUERY_ALL_PACKAGES`；应用也未声明 `INTERNET` 权限，不具备联网能力，全部数据仅在设备本地处理。详见 [隐私政策](PRIVACY.md)。
-
-> **国产 ROM（小米 / 华为 / OPPO / vivo / 荣耀等）使用须知**：这些系统有激进的省电与自启动管控，可能在进程被清理后不再重新绑定监听服务。请在首页完成「自启动管理」与「后台运行」两项额外引导。应用内置断连自愈机制（心跳看门狗自动 `requestRebind` / 组件重绑），断连时状态显示「重连中」而非误报「监听中」。
+> **国产 ROM 使用须知**：小米 / 华为 / OPPO / vivo 等系统有激进的省电与自启动管控，可能清理进程后不再重绑监听服务。请完成「自启动管理」与「后台运行」引导；应用内置断连自愈，断连时显示「重连中」而非误报「监听中」。
 
 ---
 
 ## ⚠️ 已知限制
 
-为避免误设预期，以下边界条件如实说明：
-
-- **勿扰模式**：报警铃声走闹钟音频流，Android 勿扰默认允许「闹钟」例外，此时正常响铃；若用户在勿扰设置中关闭了闹钟例外或设为完全静音，铃声会被系统压制。应用不申请勿扰访问权限、不干预用户的勿扰设置（Android 15+ 起平台也已[禁止应用修改全局勿扰状态](https://developer.android.com/about/versions/15/behavior-changes-15)），按系统当前策略响铃。
-- **后台弹窗**：Android 10+ 限制后台应用启动 Activity，应用内全屏弹窗不保证能立即前置到锁屏/其他应用之上；此时自动回退为高优先级全屏 Intent 通知，响铃不受影响。
-- **进程存活**：响铃依赖服务进程存活。前台服务 + 电池白名单可大幅降低被回收概率，但无法根除厂商省电策略强杀；未确认报警已持久化，进程重建后 30 分钟内可自动恢复响铃与弹窗。
-- **监听绑定**：部分国产 ROM 在清理进程后可能不再重新绑定监听服务，此时权限设置仍在但通知不再送达；应用内置看门狗自愈（见上方权限说明），无法自愈时需重新打开应用触发重绑。
+- **勿扰模式**：闹钟音频流默认被勿扰策略放行（闹钟例外），正常响铃；若用户在勿扰设置中关闭闹钟例外或设为完全静音，铃声会被压制。应用不申请勿扰访问权限、不干预勿扰设置（Android 15+ 已[禁止应用修改全局勿扰状态](https://developer.android.com/about/versions/15/behavior-changes-15)）。
+- **后台弹窗**：Android 10+ 限制后台启动 Activity，全屏弹窗不一定能立即前置；自动回退为全屏 Intent 通知，响铃不受影响。
+- **进程存活**：响铃依赖服务进程存活；前台服务 + 电池白名单大幅降低被回收概率但无法根除；未确认报警已持久化，进程重建后 30 分钟内自动恢复。
+- **监听绑定**：部分国产 ROM 清理进程后可能不再重绑监听；内置看门狗自愈，无法自愈时重新打开应用触发重绑。
 
 ---
 
 ## 🏗 技术架构
 
-- **Kotlin** + **Jetpack Compose**（Material 3），MVVM，单 Activity + Navigation Compose
-- 核心链路：`MyNotificationListenerService` 监听匹配 → 闹钟音频流循环响铃 + WakeLock → 全屏弹窗确认停止，关键状态全程持久化
-- 组件职责、页面结构与设计主题详见 `AGENTS.md`
+Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 → 闹钟音频流循环响铃 + WakeLock → 全屏弹窗确认停止，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
+
+---
+
+## 📚 文档地图
+
+- `README.md` — 本文件：项目是什么、怎么开始（面向人）
+- `AGENTS.md` — 面向 Agent 的完整操作规则：铁律、构建命令、真机测试流程、验证矩阵
+- `ROADMAP.md` — 开发路线图（P1 关键词级铃声 / P2 自定义铃声来源）
+- `PRIVACY.md` — 中英双语隐私政策
+- `store/` — 商店上架文案与执行清单
+- `release-notes/` — 各版本发行描述
+- `design-backup/` — UI 设计稿存档（只读）
 
 ---
 

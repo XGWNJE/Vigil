@@ -1,6 +1,6 @@
 # Vigil 商店文案素材
 
-供 Google Play 与国内各应用商店填表使用。截图与设计稿见 `design/` 目录。
+供 Google Play 与国内各应用商店填表使用。商店截图用仓库根目录 `image1.png` / `image2.png` / `image3.png`；UI 设计稿存档见 `design-backup/`，图标素材见 `design/icons/`。
 
 ---
 
@@ -74,7 +74,7 @@ Drowning in notifications? Vigil makes sure you never miss the ones that matter.
 
 Set your keywords, and Vigil monitors notifications from the apps you choose. When a notification matches a keyword, it fires a hard-to-ignore alarm: looping ringtone + screen wake + full-screen alert that keeps going until you acknowledge it. Missed it anyway? Unacknowledged alarms pop up again the next time you open the app.
 
-【Features】
+[Features]
 • Keyword monitoring: define multiple keywords, alarm on match
 • App filter: watch only the apps you care about
 • Hard-to-miss alarm: looping sound + wake lock + full-screen alert
@@ -82,16 +82,16 @@ Set your keywords, and Vigil monitors notifications from the apps you choose. Wh
 • Custom ringtone: uses system alarm sounds with independent volume
 • Diagnostic logs: optional export for troubleshooting (never contains notification content)
 
-【Use cases】
+[Use cases]
 • On-call engineers: catch alerts buried in chat groups at 3 AM
 • Parents: monitor school group messages for key announcements
 • Traders: catch specific signals from market apps
 • Any "I MUST see this message immediately" moment
 
-【Privacy】
+[Privacy]
 All processing happens entirely on your device. The app doesn't even declare the INTERNET permission — it is technically incapable of going online. No data collection, no ads, no analytics SDKs. Fully open source and auditable.
 
-【Permissions】
+[Permissions]
 • Notification Listener: core feature, reads notifications for local keyword matching
 • Foreground service / wake lock: keeps the alarm ringing and screen on
 • Ignore battery optimizations (optional): prevents the system from killing the alarm

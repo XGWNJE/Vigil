@@ -144,8 +144,9 @@ printf '%s' "vigil" | gh secret set VIGIL_KEY_ALIAS --repo XGWNJE/Vigil
 - `README.md` — 功能、使用、权限说明（功能事实的唯一来源）。
 - `PRIVACY.md` — 中英双语隐私政策（商店表单直接引用其 GitHub 链接）。
 - `store/README.md` — 商店上架文案与权限用途说明表。
+- `store/owner-checklist.md` — 上架执行清单（secrets / Play / 国内平台，需 owner 本人操作）。
 - `AGENTS.md` — 协作与真机测试规则（本文件）。
-- `ROADMAP.md` — 近期开发路线图（P0 设置入口与权限分级 / P1 关键词级铃声 / P2 自定义铃声来源）。
+- `ROADMAP.md` — 近期开发路线图（P1 关键词级铃声 / P2 自定义铃声来源）。
 - `release-notes/` — 各版本发行描述（`vX.Y.Z.md`，CI 创建 Release 时自动引用）。
-- `design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
+- `design/` — 图标与视觉素材（含生成脚本）；`design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
 - 事实变化时只更新负责该事实的文档。

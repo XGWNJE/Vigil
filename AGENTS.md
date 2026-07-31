@@ -102,6 +102,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 - 系统（国产 ROM 尤甚）可能在进程被杀重建后不再重新绑定 NotificationListenerService，但 `enabled_notification_listeners` 设置仍在——权限检查与"进程活着"都不能证明监听在工作，唯一可信信号是 `onListenerConnected` 回调（持久化为 `listener_connected`）。自愈手段：`NotificationListenerService.requestRebind()`，失败时组件 toggle 强刷（等效用户撤销再授予权限）。
 - Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。
+- 小米 HyperOS（真机实测）：应用内「电池白名单」（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）与「后台运行」（应用详情→省电策略）两个入口同质——电池优化请求被重定向到小米自家省电策略页；白名单设成功后后台相对稳定，但任务卡片（recents）不锁定 + 未开自启动时，用户划掉卡片进程仍会被杀。原生 Android 上两入口不同质（系统弹窗 vs 应用详情页），华为/OPPO/vivo 的 OEM 后台限制独立于标准白名单 → 跨 ROM 的权限引导设计必须同时保留两个入口，不因单一 ROM 观察而合并。来源：notes/inbox/2026-07-30.md，owner 2026-07-31 验收。
 - Android 10+ 后台 `startActivity` 静默失败（不抛异常，`try/catch` 兜底不触发）：报警弹窗靠持久化 + App 打开时补弹（`MonitoringViewModel.init`）。
 - `cmd notification`、`cmd media_session` 等 cmd 子命令各厂商可用性不同，用前先 `cmd <name> --help` 探明。
 - Compose `rememberInfiniteTransition`/`animate*AsState` 会被「开发者选项 → 动画程序时长缩放 = 关闭」挂起（Compose 把 animator_duration_scale 读进 MotionDurationScale）。实测案例（v1.8.0 小米真机）：首页涟漪单机静止，模拟器与另一台平板正常；装帧驱动修复包（v1.8.1）后立即恢复，坐实根因是该设置。关键状态动效（首页涟漪/核心呼吸）因此改用 `withFrameNanos` 帧驱动（`RippleBackground.kt` 的 `rememberFrameDrivenProgress`），不受该设置影响。真机"单机异常"先做对照（模拟器/另一台真机/构建变体）再升级假设。

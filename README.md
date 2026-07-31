@@ -1,21 +1,33 @@
 <div align="center">
+
 <img src="app/src/main/ic_launcher-playstore.png" alt="Vigil Logo" width="120" />
+
 # Vigil
+
 **Android 通知关键词监控应用**
+
 以闹钟音频流强制响铃穿透静音，让关键通知尽可能不被错过
+
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
+
 [![Version](https://img.shields.io/badge/version-1.9.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
+
 </div>
 
 ---
+
 ## 简介
+
 Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送的通知内容命中预设关键词时，Vigil 会**在应用内弹出全屏报警提醒，并强制触发报警铃声**（后台运行时铃声同样生效）。报警铃声走闹钟音频流，音量独立于铃声/媒体音量，设备静音或震动模式下照常响铃。
 
 适用场景：服务器宕机告警、银行到账提醒、特定消息监控等对通知实时性要求极高的场景。
 
 ---
+
 ## ✨ 功能特性
+
 | 功能 | 描述 |
 |------|------|
 | **关键词匹配** | 多关键词 Chip 管理，添加即保存；删除需二次确认 |
@@ -28,8 +40,11 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | **诊断日志** | 本地滚动日志（不含通知正文），主屏一键导出分享，便于排查 |
 
 ---
+
 ## 📸 截图
+
 <div align="center">
+
 | 主界面 | 报警界面 | 应用过滤 |
 |:--------:|:--------:|:--------:|
 | <img src="./image1.png" alt="主界面" width="240" /> | <img src="./image2.png" alt="报警界面" width="240" /> | <img src="./image3.png" alt="应用过滤" width="240" /> |
@@ -37,11 +52,15 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | 报警演示 |
 |:--------:|
 | <img src="./demo.gif" alt="报警演示动画" width="240" /> |
+
 *点击图片可查看大图*
+
 </div>
 
 ---
+
 ## 🚀 快速开始
+
 1. 从 [Releases](https://github.com/XGWNJE/Vigil/releases) 下载 APK 直接安装；或自行构建：
 
    ```bash
@@ -53,7 +72,9 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 2. 首次使用：授予**通知使用权**与**电池白名单**（可选：自启动/后台运行）→ 添加关键词 → 选择铃声 → 回到首页点按中央核心圆点开启服务。
 
 ---
+
 ## 🔒 权限说明
+
 | 权限 | 用途 | 授权方式 |
 |------|------|----------|
 | 通知使用权（NotificationListenerService） | 读取通知内容，核心功能依赖 | 系统设置手动授予 |
@@ -68,26 +89,30 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 > **国产 ROM 使用须知**：小米 / 华为 / OPPO / vivo 等系统有激进的省电与自启动管控，可能清理进程后不再重绑监听服务。请完成「自启动管理」与「后台运行」引导；应用内置断连自愈，断连时显示「重连中」而非误报「监听中」。
 
 ---
+
 ## ⚠️ 已知限制
+
 - **勿扰模式**：闹钟音频流默认被勿扰策略放行（闹钟例外），正常响铃；若用户在勿扰设置中关闭闹钟例外或设为完全静音，铃声会被压制。应用不申请勿扰访问权限、不干预勿扰设置（Android 15+ 已[禁止应用修改全局勿扰状态](https://developer.android.com/about/versions/15/behavior-changes-15)）。
 - **后台弹窗**：Android 10+ 限制后台启动 Activity，全屏弹窗不一定能立即前置；自动回退为全屏 Intent 通知，响铃不受影响。
 - **进程存活**：响铃依赖服务进程存活；前台服务 + 电池白名单大幅降低被回收概率但无法根除；未确认报警已持久化，进程重建后 30 分钟内自动恢复。
 - **监听绑定**：部分国产 ROM 清理进程后可能不再重绑监听；内置看门狗自愈，无法自愈时重新打开应用触发重绑。
 
 ---
+
 ## 🏗 技术架构
+
 Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 → 闹钟音频流循环响铃 + WakeLock → 全屏弹窗确认停止，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
 
 ---
+
 ## 📚 文档地图
-- `README.md` — 本文件：项目是什么、怎么开始（面向人）
-- `AGENTS.md` — 面向 Agent 的完整操作规则：铁律、构建命令、真机测试流程、验证矩阵
-- `ROADMAP.md` — 开发路线图（P1 关键词级铃声 / P2 自定义铃声来源）
-- `PRIVACY.md` — 中英双语隐私政策
-- `store/` — 商店上架文案与执行清单
-- `release-notes/` — 各版本发行描述
-- `design-backup/` — UI 设计稿存档（只读）
+
+- `README.md` — 本文件（面向人：项目是什么、怎么开始）
+- `AGENTS.md` — 面向 Agent 的完整操作规则（铁律、构建命令、真机测试流程、验证矩阵）
+- `ROADMAP.md`（路线图）· `PRIVACY.md`（隐私政策）· `store/`（商店素材）· `release-notes/`（发行描述）· `design-backup/`（设计稿存档）
 
 ---
+
 ## 📄 许可证
+
 本项目基于 [MIT License](LICENSE) 开源。

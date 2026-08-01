@@ -14,4 +14,7 @@ object AppDestinations {
 
     // 报警记录屏幕（不在主导航，从主屏设置 Sheet 进入）
     const val AlertHistory = "alert_history"
+
+    // 铃声库屏幕（不在主导航，从主屏设置 Sheet 进入）
+    const val RingtoneLibrary = "ringtone_library"
 }

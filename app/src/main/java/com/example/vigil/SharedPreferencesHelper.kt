@@ -71,6 +71,9 @@ class SharedPreferencesHelper(context: Context) {
         private const val KEY_ALERT_HISTORY = "alert_history"
         private const val MAX_ALERT_HISTORY = 100
 
+        // 铃声库元数据（JSON：{fileName: displayName}），文件本体在 filesDir/ringtones/
+        private const val KEY_RINGTONE_LIBRARY = "ringtone_library"
+
         // 通知监听服务与系统的真实绑定状态（心跳只证明进程活着，此标志才代表系统正在投递通知）
         private const val KEY_LISTENER_CONNECTED = "listener_connected"
 
@@ -117,6 +120,19 @@ class SharedPreferencesHelper(context: Context) {
     fun saveRingtoneUri(ringtoneUri: Uri?) {
         prefs.edit().putString(KEY_RINGTONE_URI, ringtoneUri?.toString()).apply()
         Log.i("SharedPreferencesHelper", "铃声 URI 已保存: $ringtoneUri")
+    }
+
+    /**
+     * 保存默认铃声值：content:// 系统铃声 URI 或铃声库本地文件路径；null = 系统默认闹钟铃声。
+     */
+    fun saveRingtoneValue(value: String?) {
+        prefs.edit().putString(KEY_RINGTONE_URI, value).apply()
+        Log.i("SharedPreferencesHelper", "默认铃声已保存: $value")
+    }
+
+    /** 默认铃声值（URI 字符串或文件路径），未设置返回 null。 */
+    fun getRingtoneValue(): String? {
+        return prefs.getString(KEY_RINGTONE_URI, null)
     }
 
     fun getRingtoneUri(): Uri? {
@@ -306,17 +322,17 @@ class SharedPreferencesHelper(context: Context) {
 
     // --- 关键词级铃声与循环次数 ---
 
-    /** 保存关键词 → 铃声 URI 映射；uri 为 null 表示移除映射（回落默认铃声）。 */
-    fun saveKeywordRingtone(keyword: String, uri: Uri?) {
+    /** 保存关键词 → 铃声值映射（content:// URI 或铃声库文件路径）；value 为 null 表示移除映射（回落默认铃声）。 */
+    fun saveKeywordRingtone(keyword: String, value: String?) {
         val map = getKeywordRingtoneMap().toMutableMap()
-        if (uri == null) map.remove(keyword) else map[keyword] = uri.toString()
+        if (value == null) map.remove(keyword) else map[keyword] = value
         prefs.edit().putString(KEY_KEYWORD_RINGTONES, JSONObject(map as Map<*, *>).toString()).apply()
-        Log.i("SharedPreferencesHelper", "关键词铃声映射已保存: $keyword -> $uri")
+        Log.i("SharedPreferencesHelper", "关键词铃声映射已保存: $keyword -> $value")
     }
 
-    /** 关键词绑定的铃声；未绑定返回 null（调用方回落默认铃声）。 */
-    fun getKeywordRingtone(keyword: String): Uri? {
-        return getKeywordRingtoneMap()[keyword]?.let { Uri.parse(it) }
+    /** 关键词绑定的铃声值；未绑定返回 null（调用方回落默认铃声）。 */
+    fun getKeywordRingtoneValue(keyword: String): String? {
+        return getKeywordRingtoneMap()[keyword]
     }
 
     fun getKeywordRingtoneMap(): Map<String, String> {
@@ -421,6 +437,28 @@ class SharedPreferencesHelper(context: Context) {
         } catch (e: Exception) {
             Log.e("SharedPreferencesHelper", "读取报警记录失败，按空处理", e)
             JSONArray()
+        }
+    }
+
+    // --- 铃声库元数据（fileName → displayName；文件本体由 RingtoneLibrary 管理） ---
+
+    /** 铃声库条目映射：fileName → displayName。 */
+    fun getRingtoneLibraryMap(): Map<String, String> {
+        return readJsonStringMap(KEY_RINGTONE_LIBRARY)
+    }
+
+    fun putRingtoneLibraryEntry(fileName: String, displayName: String) {
+        val map = getRingtoneLibraryMap().toMutableMap()
+        map[fileName] = displayName
+        prefs.edit().putString(KEY_RINGTONE_LIBRARY, JSONObject(map as Map<*, *>).toString()).apply()
+        Log.i("SharedPreferencesHelper", "铃声库条目已保存: $fileName -> $displayName")
+    }
+
+    fun removeRingtoneLibraryEntry(fileName: String) {
+        val map = getRingtoneLibraryMap().toMutableMap()
+        if (map.remove(fileName) != null) {
+            prefs.edit().putString(KEY_RINGTONE_LIBRARY, JSONObject(map as Map<*, *>).toString()).apply()
+            Log.i("SharedPreferencesHelper", "铃声库条目已移除: $fileName")
         }
     }
 }

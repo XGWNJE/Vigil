@@ -17,6 +17,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +42,7 @@ import com.example.vigil.ui.dialogs.KeywordAlertDialog
 import com.example.vigil.ui.main.MainScreen
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.settings.AppFilterScreen
+import com.example.vigil.ui.settings.RingtoneLibraryScreen
 import com.example.vigil.ui.history.AlertHistoryScreen
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
@@ -285,14 +291,28 @@ class MainActivity : AppCompatActivity() {
         NavHost(
             navController = navController,
             startDestination = AppDestinations.Main,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            // 统一页面过渡：右滑入 + 淡入，返回时反向。克制的 300ms，与全屏暗底不抢戏
+            enterTransition = {
+                slideInHorizontally(animationSpec = tween(300)) { it / 3 } + fadeIn(tween(300))
+            },
+            exitTransition = {
+                slideOutHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeOut(tween(300))
+            },
+            popEnterTransition = {
+                slideInHorizontally(animationSpec = tween(300)) { -it / 3 } + fadeIn(tween(300))
+            },
+            popExitTransition = {
+                slideOutHorizontally(animationSpec = tween(300)) { it / 3 } + fadeOut(tween(300))
+            }
         ) {
             composable(AppDestinations.Main) {
                 MainScreen(
                     monitoringViewModel = monitoringViewModel,
                     settingsViewModel = settingsViewModel,
                     onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter) },
-                    onNavigateToAlertHistory = { navController.navigate(AppDestinations.AlertHistory) }
+                    onNavigateToAlertHistory = { navController.navigate(AppDestinations.AlertHistory) },
+                    onNavigateToRingtoneLibrary = { navController.navigate(AppDestinations.RingtoneLibrary) }
                 )
             }
             composable(AppDestinations.AppFilter) {
@@ -303,6 +323,12 @@ class MainActivity : AppCompatActivity() {
             }
             composable(AppDestinations.AlertHistory) {
                 AlertHistoryScreen(
+                    viewModel = settingsViewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(AppDestinations.RingtoneLibrary) {
+                RingtoneLibraryScreen(
                     viewModel = settingsViewModel,
                     onNavigateBack = { navController.popBackStack() }
                 )

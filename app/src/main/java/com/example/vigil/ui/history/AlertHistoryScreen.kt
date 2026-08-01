@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -55,6 +57,7 @@ import java.util.Locale
  * 「A · 一线」报警记录页：与应用过滤页同一语言——暗底、发丝线分区、等宽元信息。
  * 记录由服务在报警结束（手动确认 / 循环次数用完自动结束）时写入，本页只读 + 清空。
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AlertHistoryScreen(
     onNavigateBack: () -> Unit,
@@ -71,7 +74,9 @@ fun AlertHistoryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(VigilDirABg)
-            .padding(start = 24.dp, end = 24.dp, top = 44.dp, bottom = 24.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)
     ) {
         // ---- 顶部：返回 + 标题 + 清空 ----
         Row(
@@ -104,7 +109,9 @@ fun AlertHistoryScreen(
                     fontSize = 10.sp,
                     letterSpacing = 1.2.sp,
                     color = VigilDirAAmber,
-                    modifier = Modifier.clickable { showClearConfirm = true }
+                    modifier = Modifier
+                        .clickable { showClearConfirm = true }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }
         }
@@ -140,8 +147,8 @@ fun AlertHistoryScreen(
             }
         } else {
             LazyColumn {
-                items(records) { record ->
-                    AlertRecordRow(record)
+                items(records, key = { "${it.timestamp}-${it.keyword}" }) { record ->
+                    AlertRecordRow(record, modifier = Modifier.animateItemPlacement())
                 }
             }
         }
@@ -188,12 +195,12 @@ fun AlertHistoryScreen(
 
 /** 单条记录：关键词 + 结束方式徽标 / 来源应用 + 时间，底部发丝线 */
 @Composable
-private fun AlertRecordRow(record: AlertRecord) {
+private fun AlertRecordRow(record: AlertRecord, modifier: Modifier = Modifier) {
     val timeText = remember(record.timestamp) {
         SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(record.timestamp))
     }
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .drawBehind {
                 val stroke = 1.dp.toPx()

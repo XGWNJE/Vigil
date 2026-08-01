@@ -1,6 +1,15 @@
 package com.example.vigil.ui.settings
 
 import android.app.Application
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,8 +23,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -53,6 +66,7 @@ import com.example.vigil.ui.theme.VigilDirALine
  * 「A · 一线」应用过滤页：与主屏同一语言——暗底、发丝线分区、等宽元信息、酸橙绿强调。
  * ViewModel 接口不变，仅重写 UI。
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AppFilterScreen(
     onNavigateBack: () -> Unit,
@@ -69,7 +83,9 @@ fun AppFilterScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(VigilDirABg)
-            .padding(start = 24.dp, end = 24.dp, top = 44.dp, bottom = 24.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)
     ) {
         // ---- 顶部：返回 + 标题 + 刷新 ----
         Row(
@@ -106,7 +122,9 @@ fun AppFilterScreen(
                 fontSize = 10.sp,
                 letterSpacing = 1.2.sp,
                 color = VigilDirADim,
-                modifier = Modifier.clickable { viewModel.loadInstalledApps() }
+                modifier = Modifier
+                    .clickable { viewModel.loadInstalledApps() }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             )
         }
 
@@ -208,7 +226,8 @@ fun AppFilterScreen(
                     items(filteredApps, key = { it.packageName }) { app ->
                         AppFilterRow(
                             app = app,
-                            onToggle = { viewModel.toggleAppSelection(app.packageName) }
+                            onToggle = { viewModel.toggleAppSelection(app.packageName) },
+                            modifier = Modifier.animateItemPlacement()
                         )
                     }
                 }
@@ -254,50 +273,58 @@ private fun RowLabel(text: String) {
     )
 }
 
-/** 主屏大开关的缩小版：描边胶囊 + 实心圆点 */
+/** 主屏大开关的缩小版：描边胶囊 + 实心圆点（位置/颜色随状态平滑过渡） */
 @Composable
 private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
+    val transition = updateTransition(targetState = checked, label = "miniSwitch")
+    val dotColor by transition.animateColor(label = "dotColor") { on ->
+        if (on) VigilDirAAcid else VigilDirAFaint
+    }
+    // 圆点中心偏移：0f=左，1f=右（胶囊内径 44-3*2=38dp，圆点 16dp，行程 22dp）
+    val dotOffset by transition.animateFloat(label = "dotOffset") { on -> if (on) 1f else 0f }
     Box(
         modifier = Modifier
             .size(44.dp, 24.dp)
-            .border(
-                width = 1.dp,
-                color = if (checked) VigilDirAAcid else VigilDirAFaint,
-                shape = CircleShape
-            )
+            .border(width = 1.dp, color = dotColor, shape = CircleShape)
+            .clip(CircleShape)
             .clickable { onToggle(!checked) }
             .padding(3.dp),
-        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart
+        contentAlignment = Alignment.CenterStart
     ) {
         Box(
             modifier = Modifier
+                .offset(x = (22.dp * dotOffset))
                 .size(16.dp)
-                .background(
-                    if (checked) VigilDirAAcid else VigilDirAFaint,
-                    CircleShape
-                )
+                .background(dotColor, CircleShape)
         )
     }
 }
 
-/** 自定义勾选框：描边小方块，选中酸橙实心 + 对勾 */
+/** 自定义勾选框：描边小方块，选中酸橙实心 + 对勾（颜色淡入、对勾缩放弹入） */
 @Composable
 private fun AppCheck(checked: Boolean) {
+    val bgColor by animateColorAsState(
+        targetValue = if (checked) VigilDirAAcid else Color.Transparent,
+        animationSpec = tween(180),
+        label = "checkBg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (checked) VigilDirAAcid else VigilDirAFaint,
+        animationSpec = tween(180),
+        label = "checkBorder"
+    )
     Box(
         modifier = Modifier
             .size(20.dp)
-            .background(
-                if (checked) VigilDirAAcid else Color.Transparent,
-                RoundedCornerShape(2.dp)
-            )
-            .border(
-                1.dp,
-                if (checked) VigilDirAAcid else VigilDirAFaint,
-                RoundedCornerShape(2.dp)
-            ),
+            .background(bgColor, RoundedCornerShape(2.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(2.dp)),
         contentAlignment = Alignment.Center
     ) {
-        if (checked) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = checked,
+            enter = scaleIn(tween(180)) + fadeIn(tween(180)),
+            exit = scaleOut(tween(120)) + fadeOut(tween(120))
+        ) {
             Text(
                 text = "✓",
                 fontSize = 12.sp,
@@ -312,7 +339,8 @@ private fun AppCheck(checked: Boolean) {
 @Composable
 private fun AppFilterRow(
     app: AppInfo,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val appIcon = remember(app.packageName) {
@@ -324,7 +352,7 @@ private fun AppFilterRow(
     }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .drawBehind {
                 val stroke = 1.dp.toPx()

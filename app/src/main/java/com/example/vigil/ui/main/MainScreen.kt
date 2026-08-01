@@ -11,9 +11,17 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,11 +35,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -43,28 +54,32 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -75,6 +90,7 @@ import androidx.compose.ui.unit.sp
 import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
+import com.example.vigil.RingtoneLibrary
 import com.example.vigil.SharedPreferencesHelper
 import com.example.vigil.VigilEventBus
 import com.example.vigil.VigilLogger
@@ -104,7 +120,8 @@ fun MainScreen(
     monitoringViewModel: MonitoringViewModel,
     settingsViewModel: SettingsViewModel,
     onNavigateToAppFilter: () -> Unit,
-    onNavigateToAlertHistory: () -> Unit
+    onNavigateToAlertHistory: () -> Unit,
+    onNavigateToRingtoneLibrary: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -160,7 +177,7 @@ fun MainScreen(
             if (target == null) {
                 settingsViewModel.onRingtoneUriSelected(uri)
             } else {
-                settingsViewModel.onKeywordRingtoneSelected(target, uri)
+                settingsViewModel.onKeywordRingtoneSelected(target, uri?.toString())
             }
         }
         ringtonePickTarget = null
@@ -187,13 +204,33 @@ fun MainScreen(
 
     var showAddKeywordDialog by remember { mutableStateOf(false) }
     var showGuideDialog by remember { mutableStateOf<PermissionGuide?>(null) }
-    var showSettingsSheet by remember { mutableStateOf(false) }
+    // 设置面板开关：rememberSaveable——从面板进子页（主屏出组合）再返回时自动恢复展开，
+    // 实现「返回一次只退一个层级」：子页 → 面板 → 主屏
+    var sheetOpen by rememberSaveable { mutableStateOf(false) }
+    // 面板跟手进度：0=收起 1=全展开；拖动中同步改值实时贴手指，松手后 animate 吸附。
+    // 不用 Animatable：drag 高频 launch snapTo 会在互斥锁上排队/与吸附动画互相取消，状态竞态。
+    var sheetProgress by remember { mutableFloatStateOf(0f) }
+    // 拖动结束信号：每次松手/取消自增。sheetOpen 未变化时 LaunchedEffect 不会重触发，
+    // 低于阈值的拖动会把面板卡在半开——用它保证松手后吸附动画无条件执行。
+    var sheetSnapNonce by remember { mutableIntStateOf(0) }
+    LaunchedEffect(sheetOpen, sheetSnapNonce) {
+        // 磁铁吸附段：FastOutSlowInEasing 非线性弹出/收回
+        animate(
+            initialValue = sheetProgress,
+            targetValue = if (sheetOpen) 1f else 0f,
+            animationSpec = tween(300, easing = FastOutSlowInEasing)
+        ) { value, _ -> sheetProgress = value }
+    }
+    // 面板像素高（屏高 0.85），drag 距离↔进度换算与 translationY 都用它
+    var panelHeightPx by remember { mutableFloatStateOf(1f) }
     // 关键词删除二次确认：待删除的关键词，非空时弹出确认框
     var keywordPendingDelete by remember { mutableStateOf<String?>(null) }
     // 关键词个性化配置弹窗：待配置的关键词，非空时弹出（铃声 + 循环次数）
     var keywordPendingConfig by remember { mutableStateOf<String?>(null) }
     // 循环次数档位弹窗：null=不显示；""=全局默认档位；非空=该关键词的覆盖档位
     var loopCountDialogTarget by remember { mutableStateOf<String?>(null) }
+    // 铃声选择弹窗：null=不显示；""=默认铃声；非空=该关键词的铃声
+    var ringtoneSelectTarget by remember { mutableStateOf<String?>(null) }
     val defaultLoopCount by settingsViewModel.defaultLoopCount
     // 关键词配置变化信号（读取即订阅，chip 弹窗里的值随配置保存即时刷新）
     val keywordConfigVersion by settingsViewModel.keywordConfigVersion
@@ -202,45 +239,60 @@ fun MainScreen(
     val prefs = remember { SharedPreferencesHelper(context) }
     var swipeHintShown by remember { mutableStateOf(prefs.hasShownSwipeHint()) }
     var lockTaskTipDismissed by remember { mutableStateOf(prefs.isLockTaskTipDismissed()) }
-    // 设置 Sheet 被打开过一次（任意入口）即视为已发现入口，收起手势提示文案
-    LaunchedEffect(showSettingsSheet) {
-        if (showSettingsSheet && !swipeHintShown) {
+    // 设置面板被打开过一次（任意入口）即视为已发现入口，收起手势提示文案
+    LaunchedEffect(sheetOpen) {
+        if (sheetOpen && !swipeHintShown) {
             prefs.markSwipeHintShown()
             swipeHintShown = true
         }
+    }
+
+    // 返回键/侧边返回手势：面板展开时先收面板，一次只退一个层级
+    BackHandler(enabled = sheetOpen) {
+        sheetOpen = false
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(VigilDirABg)
-            // 上滑手势打开设置 Sheet（齿轮外的第二入口，符合底部 Sheet「从下往上拉出」直觉）。
-            // 只在垂直拖拽越过阈值后触发，不影响核心开关/齿轮的点击。
+            .onSizeChanged { panelHeightPx = it.height * 0.85f }
+            // 磁铁式上滑开面板：前段跟手，进度越过 35% 意图阈值立即交非线性动画吸附全开，
+            // 之后本次拖动不再跟手；未越阈值则松手时按进度吸附开/关。
             .pointerInput(Unit) {
-                var dragAccum = 0f
+                var committed = false
                 detectVerticalDragGestures(
-                    onDragStart = { dragAccum = 0f },
+                    onDragStart = { committed = false },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        dragAccum += dragAmount
+                        if (committed) return@detectVerticalDragGestures
+                        sheetProgress = (sheetProgress - dragAmount / panelHeightPx).coerceIn(0f, 1f)
+                        if (sheetProgress >= 0.35f) {
+                            committed = true
+                            sheetOpen = true
+                        }
                     },
                     onDragEnd = {
-                        if (dragAccum < -120.dp.toPx()) showSettingsSheet = true
-                        dragAccum = 0f
+                        if (!committed) sheetOpen = sheetProgress > 0.35f
+                        sheetSnapNonce++
                     },
-                    onDragCancel = { dragAccum = 0f }
+                    onDragCancel = {
+                        if (!committed) sheetOpen = sheetProgress > 0.35f
+                        sheetSnapNonce++
+                    }
                 )
             }
     ) {
         // ---- 底层：全屏涟漪，从中央核心开关扩散，颜色/节奏即状态 ----
         RippleBackground(state = serviceState, modifier = Modifier.fillMaxSize())
 
-        // ---- 顶栏：字标 + 心跳 + 设置齿轮 ----
+        // ---- 顶栏：字标 + 心跳 + 设置齿轮（statusBarsPadding 避让状态栏） ----
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = 24.dp, end = 24.dp, top = 44.dp),
+                .statusBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, top = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -268,40 +320,56 @@ fun MainScreen(
                     color = VigilDirADim,
                     letterSpacing = 0.8.sp
                 )
-                Spacer(modifier = Modifier.width(14.dp))
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "设置",
-                    tint = VigilDirADim,
+                Spacer(modifier = Modifier.width(6.dp))
+                // 齿轮：18dp 字形 + 48dp 触控热区（右端与页面右边距对齐）
+                Box(
                     modifier = Modifier
-                        .size(18.dp)
-                        .clickable { showSettingsSheet = true }
-                )
+                        .size(48.dp)
+                        .clickable { sheetOpen = true },
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "设置",
+                        tint = VigilDirADim,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
-        // ---- 状态词：悬浮于核心开关正上方 ----
+        // ---- 状态词：悬浮于核心开关正上方；状态切换时交叉淡入 + 轻微上浮 ----
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
                 .offset(y = (-148).dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = when (serviceState) {
-                    ServiceState.RUNNING, ServiceState.RUNNING_LIMITED -> "监听中"
-                    ServiceState.DISABLED -> "已停止"
-                    ServiceState.NO_PERMISSION -> "未授权"
-                    ServiceState.INITIALIZING -> "连接中"
-                    ServiceState.LISTENER_DISCONNECTED -> "重连中"
-                    ServiceState.HEARTBEAT_TIMEOUT -> "心跳超时"
-                    ServiceState.ERROR -> "异常"
+            val stateText = when (serviceState) {
+                ServiceState.RUNNING, ServiceState.RUNNING_LIMITED -> "监听中"
+                ServiceState.DISABLED -> "已停止"
+                ServiceState.NO_PERMISSION -> "未授权"
+                ServiceState.INITIALIZING -> "连接中"
+                ServiceState.LISTENER_DISCONNECTED -> "重连中"
+                ServiceState.HEARTBEAT_TIMEOUT -> "心跳超时"
+                ServiceState.ERROR -> "异常"
+            }
+            AnimatedContent(
+                targetState = stateText,
+                transitionSpec = {
+                    (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 3 })
+                        .togetherWith(fadeOut(tween(180)) + slideOutVertically(tween(180)) { -it / 3 })
                 },
-                fontSize = 34.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 2.sp,
-                color = VigilDirAInk
-            )
+                label = "stateWord"
+            ) { word ->
+                Text(
+                    text = word,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 2.sp,
+                    color = VigilDirAInk
+                )
+            }
             Text(
                 text = "${keywordList.size} KEYWORDS",
                 style = MonoTextStyle,
@@ -334,25 +402,31 @@ fun MainScreen(
             }
         )
 
-        // ---- SERVICE ON/OFF：核心正下方 ----
+        // ---- SERVICE ON/OFF：核心正下方；颜色随开关平滑过渡 ----
+        val serviceLabelColor by animateColorAsState(
+            targetValue = if (serviceEnabled) VigilDirAAcid else VigilDirADim,
+            animationSpec = tween(400),
+            label = "serviceLabelColor"
+        )
         Text(
             text = if (serviceEnabled) "SERVICE ON" else "SERVICE OFF",
             style = MonoTextStyle,
             fontSize = 10.sp,
             letterSpacing = 2.sp,
-            color = if (serviceEnabled) VigilDirAAcid else VigilDirADim,
+            color = serviceLabelColor,
             modifier = Modifier
                 .align(Alignment.Center)
                 .offset(y = 64.dp)
         )
 
-        // ---- 底部把手：上滑手势的视觉锚点（点按也能打开设置 Sheet） ----
+        // ---- 底部把手：上滑手势的视觉锚点（点按也能打开设置 Sheet），避让手势导航条 ----
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 28.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
                 .padding(vertical = 12.dp)
-                .clickable { showSettingsSheet = true },
+                .clickable { sheetOpen = true },
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (!swipeHintShown) {
@@ -374,14 +448,63 @@ fun MainScreen(
         }
     }
 
-    // ---- 设置 Sheet：底部浮出 ----
-    if (showSettingsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = VigilDirABg,
-            tonalElevation = 0.dp
+    // ---- 设置面板：跟手底部浮出（进度驱动，拖动实时贴手指） ----
+    if (sheetProgress > 0.001f) {
+        Box(modifier = Modifier.fillMaxSize()) {
+        // 遮罩：透明度随进度，展开后才拦截点击（点遮罩收面板）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f * sheetProgress))
+                .clickable(enabled = sheetProgress > 0.5f) { sheetOpen = false }
+        )
+        // 面板本体：translationY 随进度，松手吸附
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .align(Alignment.BottomCenter)
+                .graphicsLayer { translationY = (1f - sheetProgress) * panelHeightPx }
+                .background(VigilDirABg)
         ) {
+            // 顶部把手：视觉锚点 + 下拉跟手收面板的热区
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    // 对称的磁铁式下拉关面板：跟手到越过 65% 进度即交动画吸附关闭
+                    .pointerInput(Unit) {
+                        var committed = false
+                        detectVerticalDragGestures(
+                            onDragStart = { committed = false },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                if (committed) return@detectVerticalDragGestures
+                                sheetProgress = (sheetProgress - dragAmount / panelHeightPx).coerceIn(0f, 1f)
+                                if (sheetProgress <= 1f - 0.35f) {
+                                    committed = true
+                                    sheetOpen = false
+                                }
+                            },
+                            onDragEnd = {
+                                if (!committed) sheetOpen = sheetProgress > 0.35f
+                                sheetSnapNonce++
+                            },
+                            onDragCancel = {
+                                if (!committed) sheetOpen = sheetProgress > 0.35f
+                                sheetSnapNonce++
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .background(VigilDirAFaint, RoundedCornerShape(2.dp))
+                )
+            }
             Column(
                 modifier = Modifier
                     .verticalScroll(rememberScrollState())
@@ -415,8 +538,8 @@ fun MainScreen(
                     }
                 }
 
-                // 2. 默认铃声（未单独配置的关键词统一使用）
-                LineRow(onClick = { launchRingtonePicker(null) }) {
+                // 2. 默认铃声（未单独配置的关键词统一使用；系统铃声或铃声库文件）
+                LineRow(onClick = { ringtoneSelectTarget = "" }) {
                     RowLabel("默认铃声")
                     RowValue(selectedRingtoneName, withArrow = true)
                 }
@@ -427,13 +550,19 @@ fun MainScreen(
                     RowValue(formatLoopCount(defaultLoopCount), withArrow = true)
                 }
 
-                // 4. 报警记录
+                // 4. 铃声库（自定义铃声来源：导入音频 / 录音，支持命名、删除、试听）
+                LineRow(onClick = onNavigateToRingtoneLibrary) {
+                    RowLabel("铃声库")
+                    RowValue("导入 / 录音", withArrow = true)
+                }
+
+                // 5. 报警记录
                 LineRow(onClick = onNavigateToAlertHistory) {
                     RowLabel("报警记录")
                     RowValue("查看历史", withArrow = true)
                 }
 
-                // 5. 应用过滤
+                // 6. 应用过滤
                 LineRow(onClick = onNavigateToAppFilter) {
                     RowLabel("应用过滤")
                     RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
@@ -539,6 +668,7 @@ fun MainScreen(
                 }
             }
         }
+        }
     }
 
     if (showAddKeywordDialog) {
@@ -570,10 +700,39 @@ fun MainScreen(
             ringtoneName = settingsViewModel.getKeywordRingtoneName(keyword),
             loopCountOverride = settingsViewModel.getKeywordLoopCount(keyword),
             defaultLoopCount = defaultLoopCount,
-            onPickRingtone = { launchRingtonePicker(keyword) },
+            onPickRingtone = { ringtoneSelectTarget = keyword },
             onClearRingtone = { settingsViewModel.onKeywordRingtoneSelected(keyword, null) },
             onPickLoopCount = { loopCountDialogTarget = keyword },
             onDismiss = { keywordPendingConfig = null }
+        )
+    }
+
+    // 铃声选择弹窗（系统铃声或铃声库文件；默认铃声与关键词共用）
+    ringtoneSelectTarget?.let { target ->
+        val isDefault = target.isEmpty()
+        val keyword = target.takeIf { !isDefault }
+        val currentValue = if (isDefault) {
+            prefs.getRingtoneValue()
+        } else {
+            prefs.getKeywordRingtoneValue(target)
+        }
+        RingtoneSelectDialog(
+            libraryEntries = settingsViewModel.ringtoneLibrary,
+            currentValue = currentValue,
+            onPickSystemRingtone = {
+                ringtoneSelectTarget = null
+                launchRingtonePicker(keyword)
+            },
+            onPickLibraryFile = { fileName ->
+                val path = java.io.File(RingtoneLibrary.libraryDir(context), fileName).absolutePath
+                if (isDefault) {
+                    settingsViewModel.onRingtoneValueSelected(path)
+                } else {
+                    settingsViewModel.onKeywordRingtoneSelected(target, path)
+                }
+                ringtoneSelectTarget = null
+            },
+            onDismiss = { ringtoneSelectTarget = null }
         )
     }
 
@@ -657,7 +816,7 @@ private fun CoreSwitch(
         val p = rememberFrameDrivenProgress(4000)
         // 三角波往返 + 缓动，与涟漪 4s 周期同步
         val tri = if (p < 0.5f) p * 2f else (1f - p) * 2f
-        1f + 0.2f * FastOutSlowInEasing.transform(tri)
+        1f + 0.3f * FastOutSlowInEasing.transform(tri)
     } else {
         1f
     }
@@ -665,6 +824,8 @@ private fun CoreSwitch(
     Box(
         modifier = modifier
             .size(88.dp)
+            // 裁剪成圆形再加 clickable：按压涟漪不溢出圆环外成方形
+            .clip(CircleShape)
             .border(width = 1.dp, color = ringColor, shape = CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -1061,6 +1222,98 @@ private fun KeywordConfigDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(text = "完成", color = VigilDirAAcid)
+            }
+        }
+    )
+}
+
+/**
+ * 铃声选择弹窗：系统铃声（系统选择器）+ 铃声库文件。
+ * 当前生效的铃声值高亮；铃声库为空时提示去「铃声库」页导入/录音。
+ */
+@Composable
+private fun RingtoneSelectDialog(
+    libraryEntries: List<Pair<String, String>>,
+    currentValue: String?,
+    onPickSystemRingtone: () -> Unit,
+    onPickLibraryFile: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "选择铃声",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Column {
+                // 系统铃声入口
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onPickSystemRingtone)
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "系统铃声…", fontSize = 13.sp, color = VigilDirAInk)
+                    Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                }
+                if (libraryEntries.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(VigilDirALine)
+                    )
+                }
+                libraryEntries.forEach { (fileName, displayName) ->
+                    val path = java.io.File(RingtoneLibrary.libraryDir(context), fileName).absolutePath
+                    val isSelected = currentValue == path
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPickLibraryFile(fileName) }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = displayName,
+                            fontSize = 13.sp,
+                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(VigilDirAAcid, CircleShape)
+                            )
+                        }
+                    }
+                }
+                if (libraryEntries.isEmpty()) {
+                    Text(
+                        text = "铃声库为空，可在「铃声库」页导入音频或录音",
+                        fontSize = 11.sp,
+                        color = VigilDirADim,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消", color = VigilDirADim)
             }
         }
     )

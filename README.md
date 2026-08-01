@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.10.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.11.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -32,6 +32,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 |------|------|
 | **关键词匹配** | 多关键词 Chip 管理，添加即保存；删除需二次确认 |
 | **关键词级铃声** | 点按关键词 Chip 可单独绑定铃声与循环次数，未配置的跟随全局默认 |
+| **铃声库** | 自定义铃声来源：导入音频文件（复制到应用内，防原文件失效）或现场录音，支持命名、删除、试听；文件缺失时自动回落默认闹钟铃声 |
 | **循环次数** | 直到确认 / 100 / 50 / 10 / 3 次五档；到数自动结束（停铃、关弹窗、写入记录） |
 | **报警记录** | 每次报警结束（手动确认或自动结束）留痕：关键词、来源应用、时间、结束方式，可随时查看/清空 |
 | **状态首页** | 全屏涟漪动效随服务状态变化（颜色/节奏），中央核心圆点即服务开关；设置收进底部 Sheet |
@@ -87,6 +88,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | 唤醒锁（WAKE_LOCK） | 报警时保持 CPU 唤醒，确保铃声持续播放 | 自动（Manifest 声明） |
 | 忽略电池优化 | 防止厂商省电策略在报警时强杀进程 | 设置内一键引导 |
 | 全屏 Intent（USE_FULL_SCREEN_INTENT） | 后台无法弹窗时，以全屏通知在锁屏上报警 | 自动（Manifest 声明） |
+| 麦克风（RECORD_AUDIO） | 铃声库「录音」来源，录制内容仅存本地 | 录音时系统弹窗申请 |
 
 > 通知使用权需手动授予，应用内提供直达跳转入口。应用过滤无需任何权限（通过 launcher intent 查询，不申请 `QUERY_ALL_PACKAGES`）；应用未声明 `INTERNET` 权限，无联网能力，数据全部本地处理。详见 [隐私政策](PRIVACY.md)。
 

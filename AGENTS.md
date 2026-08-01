@@ -10,6 +10,11 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 命中即静默追加到 `D:\ObjectCode\HarnessOS\notes\inbox\YYYY-MM-DD.md`（先查重，同主题重复计数 +1，脱敏）；记录格式与验收标准以 harness-observer skill 为准，需要时加载它。
 - 静默 = 不打断当前任务、不在对话中提及、不改动当前项目任何文件；只追加 inbox，归并提炼留给 owner 评审。
 
+## 中转站真机验证（常驻职责）
+
+- 若你的系统提示已注入全局协作规则（Claude Code / Codex / OpenCode 会自动注入），其中已含本职责，跳过本节。
+- 否则（如 Kimi Code）：开发内容未外部发版、仍在测试阶段，且发现用户在用模拟器/虚拟机调试验证、未连接真机时，主动询问用户是否把构建产物传到中转站（get.xgwnje.cn），让用户自行安装到真机测试；问过才传，不擅自上传。
+
 ## 铁律（不可违反）
 
 1. 真机测试不得让设备实际出声：先调最小音量，一律用 `dumpsys media.player` 验证播放/停止，不依赖人耳。
@@ -26,6 +31,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 核心代码：
   - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连并自动 requestRebind → 组件 toggle 强刷）；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束（写记录 → 清 pending → 停铃 → emit alertAutoEnded 关弹窗）
   - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（requestRebind / 组件 toggle），Service 与 MainActivity 共用
+  - `app/src/main/java/com/example/vigil/RingtoneLibrary.kt` — 铃声库（P2 自定义铃声来源）：导入 SAF 音频复制到 `filesDir/ringtones/`、录音（MediaRecorder m4a/AAC）、试听、删除；铃声值约定 `content://` = 系统铃声 / 其他非空 = 库内文件绝对路径 / null = 系统默认闹钟；`resolve()` 解析播放数据源，文件缺失回落并写日志
   - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、默认铃声、关键词级铃声/循环次数映射 `keyword_ringtones`/`keyword_loop_counts`、全局默认循环次数 `default_loop_count`（0=直到确认）、未确认报警 pending（含铃声 URI/loopLimit/已播次数/来源应用）、报警历史 `alert_history`（JSON，上限 100 条）、listener_connected 绑定状态）
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
   - `app/src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt` — 服务状态/心跳/报警弹窗状态

@@ -1,6 +1,8 @@
 // src/main/java/com/example/vigil/ui/main/RippleBackground.kt
 package com.example.vigil.ui.main
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,18 +46,21 @@ fun rememberFrameDrivenProgress(periodMs: Int): Float {
  * 全屏涟漪背景，参考 magicui ripple（numCircles=8、基础透明度 0.24、交错相位扩散）。
  * 环心 = 屏幕中心，与中央核心开关对齐：涟漪即从开关处向外扩散。
  * 颜色与节奏随服务状态变化，状态本身即是动效语言。
+ * 静止环（DISABLED）与动画涟漪之间用 Crossfade 过渡，避免开关瞬间背景硬闪。
  */
 @Composable
 fun RippleBackground(state: ServiceState, modifier: Modifier = Modifier) {
-    if (state == ServiceState.DISABLED) {
-        StaticRings(modifier)
-    } else {
-        AnimatedRipple(state, modifier)
+    Crossfade(targetState = state == ServiceState.DISABLED, animationSpec = tween(500), label = "rippleMode") { disabled ->
+        if (disabled) {
+            StaticRings(modifier)
+        } else {
+            AnimatedRipple(state, modifier)
+        }
     }
 }
 
 private const val NUM_CIRCLES = 8
-private const val BASE_ALPHA = 0.24f
+private const val BASE_ALPHA = 0.30f
 
 @Composable
 private fun AnimatedRipple(state: ServiceState, modifier: Modifier = Modifier) {

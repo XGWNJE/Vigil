@@ -76,6 +76,11 @@ object PermissionUtils {
         }
     }
 
+    /** 录音权限（铃声库录音来源）是否已授予。 */
+    fun isRecordAudioGranted(context: Context): Boolean {
+        return ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+
     /**
      * 打开"自启动管理"设置页（国产 ROM 通用）。
      * 国产 ROM（小米/华为/OPPO/vivo/荣耀等）默认禁止应用自启动，进程被系统清理后

@@ -19,6 +19,7 @@
     <string name="settings_saved">设置已保存</string>
     <string name="error_saving_settings">保存设置失败</string>
     <string name="default_ringtone_name">默认提醒音</string>
+    <string name="ringtone_file_missing">铃声已失效，将回落系统闹钟</string>
     <string name="notification_permission_dialog_title">权限请求</string>
     <string name="notification_permission_dialog_message">为了使应用正常工作，请在系统设置中授予"通知使用权"。</string>
     <string name="dialog_go_to_settings">前往设置</string>

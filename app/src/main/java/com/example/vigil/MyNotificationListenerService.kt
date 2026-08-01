@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 class MyNotificationListenerService : NotificationListenerService() {
 
     private lateinit var sharedPreferencesHelper: SharedPreferencesHelper
-    private var currentRingtoneUri: Uri? = null
+    private var currentRingtoneValue: String? = null
     @Volatile private var keywords: List<String> = emptyList()
 
     // 关键词级铃声/循环次数映射与全局默认循环次数（0=直到确认）
@@ -286,7 +286,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             VigilLogger.i(applicationContext, TAG, "命中关键词 '$matchedKeyword' (pkg=${sbn.packageName})，触发报警")
 
             // 解析该关键词的铃声与循环次数（未配置则回落全局默认）
-            val alertRingtoneUri = keywordRingtoneMap[matchedKeyword]?.let { Uri.parse(it) } ?: currentRingtoneUri
+            val alertRingtoneValue = keywordRingtoneMap[matchedKeyword] ?: currentRingtoneValue
             val alertLoopLimit = keywordLoopCountMap[matchedKeyword] ?: defaultLoopCount
 
             // 获取来源应用名称（用于 Dialog 展示与历史记录）
@@ -297,7 +297,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             } catch (e: Exception) { null }
 
             // 持久化未确认报警：进程被省电策略杀死后，服务重建时可恢复响铃（含铃声/剩余次数，铁律 3）
-            sharedPreferencesHelper.savePendingAlert(matchedKeyword, alertRingtoneUri?.toString(), alertLoopLimit, sourceAppName)
+            sharedPreferencesHelper.savePendingAlert(matchedKeyword, alertRingtoneValue, alertLoopLimit, sourceAppName)
             activeAlertKeyword = matchedKeyword
             activeAlertSourceApp = sourceAppName
 
@@ -306,7 +306,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
             handler.post {
                 acquireWakeLock()
-                playRingtoneLooping(alertRingtoneUri, alertLoopLimit, alreadyPlayed = 0)
+                playRingtoneLooping(alertRingtoneValue, alertLoopLimit, alreadyPlayed = 0)
 
                 // 通过 VigilEventBus 通知 ViewModel 显示报警 Dialog（替代 LocalBroadcastManager）
                 serviceScope.launch {
@@ -366,10 +366,9 @@ class MyNotificationListenerService : NotificationListenerService() {
         VigilLogger.w(applicationContext, TAG, "恢复未确认报警 (keyword=$keyword, 已播=${pending.playedLoops}/${pending.loopLimit})：进程重建后重新响铃")
         activeAlertKeyword = keyword
         activeAlertSourceApp = pending.sourceApp
-        val resumeUri = pending.ringtoneUri?.let { Uri.parse(it) }
         handler.post {
             acquireWakeLock()
-            playRingtoneLooping(resumeUri, pending.loopLimit, pending.playedLoops)
+            playRingtoneLooping(pending.ringtoneUri, pending.loopLimit, pending.playedLoops)
 
             serviceScope.launch {
                 VigilEventBus.keywordAlert.emit(AlertEvent(keyword, null, null))
@@ -436,13 +435,13 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private fun loadSettings() {
         keywords = sharedPreferencesHelper.getKeywords()
-        currentRingtoneUri = sharedPreferencesHelper.getRingtoneUri()
+        currentRingtoneValue = sharedPreferencesHelper.getRingtoneValue()
         keywordRingtoneMap = sharedPreferencesHelper.getKeywordRingtoneMap()
         keywordLoopCountMap = sharedPreferencesHelper.getKeywordLoopCountMap()
         defaultLoopCount = sharedPreferencesHelper.getDefaultLoopCount()
         filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
-        Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 关键词铃声映射: ${keywordRingtoneMap.size}个, 默认循环次数: $defaultLoopCount, 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
+        Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声: '$currentRingtoneValue', 关键词铃声映射: ${keywordRingtoneMap.size}个, 默认循环次数: $defaultLoopCount, 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
         VigilLogger.i(applicationContext, TAG, "设置已加载: ${keywords.size}个关键词, 过滤启用=$filterAppsEnabled (${filteredAppPackages.size}个应用)")
         // 添加详细日志以便调试
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
@@ -472,25 +471,37 @@ class MyNotificationListenerService : NotificationListenerService() {
     /**
      * 播放报警铃声。loopLimit=0 表示直到用户确认（isLooping 无限循环）；
      * 有限档位下不用 isLooping，改用 OnCompletion 手动重启计数，到数自动结束。
+     * preferredValue 为铃声值（content:// URI 或铃声库文件路径），null/文件缺失时回落默认铃声，再回落系统默认闹钟铃声。
      */
-    private fun playRingtoneLooping(preferredUri: Uri?, loopLimit: Int = 0, alreadyPlayed: Int = 0) {
+    private fun playRingtoneLooping(preferredValue: String?, loopLimit: Int = 0, alreadyPlayed: Int = 0) {
         // 防止并发触发：正在准备或播放中则忽略新请求
         if (playerState == PlayerState.PREPARING || playerState == PlayerState.PLAYING) {
             Log.d(TAG, "playRingtoneLooping: 已在播放中 ($playerState)，忽略重复请求。")
             return
         }
         stopRingtone()
-        val ringtoneUriToPlay = preferredUri ?: currentRingtoneUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-        if (ringtoneUriToPlay == null) {
-            Log.e(TAG, "无法获取铃声 URI！")
+        val dataSource = RingtoneLibrary.resolve(applicationContext, preferredValue)
+            // preferred 与默认铃声同值时跳过重复解析，避免回落警告打两遍
+            ?: (if (currentRingtoneValue == preferredValue) null
+                else RingtoneLibrary.resolve(applicationContext, currentRingtoneValue))
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)?.let { RingtoneLibrary.DataSource.ContentUri(it) }
+        if (dataSource == null) {
+            Log.e(TAG, "无法获取铃声数据源！")
             releaseWakeLock()
             return
+        }
+        val dataSourceDesc = when (dataSource) {
+            is RingtoneLibrary.DataSource.ContentUri -> dataSource.uri.toString()
+            is RingtoneLibrary.DataSource.LocalFile -> dataSource.file.absolutePath
         }
         playerState = PlayerState.PREPARING
         var playedCount = alreadyPlayed
         try {
             mediaPlayer = MediaPlayer().apply {
-                setDataSource(applicationContext, ringtoneUriToPlay)
+                when (dataSource) {
+                    is RingtoneLibrary.DataSource.ContentUri -> setDataSource(applicationContext, dataSource.uri)
+                    is RingtoneLibrary.DataSource.LocalFile -> setDataSource(dataSource.file.absolutePath)
+                }
                 val audioAttributes = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -502,7 +513,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                     if (playerState == PlayerState.PREPARING) {
                         playerState = PlayerState.PLAYING
                         Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
-                        VigilLogger.i(applicationContext, TAG, "报警铃声开始播放 (uri=$ringtoneUriToPlay, loopLimit=${if (loopLimit == 0) "无限" else loopLimit}, 已播=$alreadyPlayed)")
+                        VigilLogger.i(applicationContext, TAG, "报警铃声开始播放 (source=$dataSourceDesc, loopLimit=${if (loopLimit == 0) "无限" else loopLimit}, 已播=$alreadyPlayed)")
                         try {
                             mp.start()
                         } catch (startEx: IllegalStateException) {
@@ -544,8 +555,8 @@ class MyNotificationListenerService : NotificationListenerService() {
                     }
                 }
                 setOnErrorListener { _, what, extra ->
-                    Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, URI: $ringtoneUriToPlay")
-                    VigilLogger.e(applicationContext, TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, URI: $ringtoneUriToPlay")
+                    Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, source: $dataSourceDesc")
+                    VigilLogger.e(applicationContext, TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, source: $dataSourceDesc")
                     playerState = PlayerState.STOPPED
                     stopRingtoneAndLock()
                     true

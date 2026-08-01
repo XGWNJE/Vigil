@@ -24,9 +24,9 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 构建：`./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`
 - 版本号：`app/build.gradle.kts` 的 `versionCode`/`versionName`
 - 核心代码：
-  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连并自动 requestRebind → 组件 toggle 强刷）
+  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连并自动 requestRebind → 组件 toggle 强刷）；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束（写记录 → 清 pending → 停铃 → emit alertAutoEnded 关弹窗）
   - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（requestRebind / 组件 toggle），Service 与 MainActivity 共用
-  - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、铃声、未确认报警、listener_connected 绑定状态）
+  - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、默认铃声、关键词级铃声/循环次数映射 `keyword_ringtones`/`keyword_loop_counts`、全局默认循环次数 `default_loop_count`（0=直到确认）、未确认报警 pending（含铃声 URI/loopLimit/已播次数/来源应用）、报警历史 `alert_history`（JSON，上限 100 条）、listener_connected 绑定状态）
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
   - `app/src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt` — 服务状态/心跳/报警弹窗状态
   - `app/src/main/java/com/example/vigil/VigilLogger.kt` — 持久化诊断日志（filesDir/logs/vigil.log，1MB 滚动双文件；每条立即 flush）+ 导出拼接（诊断头 + old + 当前），主屏设置 Sheet「导出日志」行经 FileProvider 分享；不写通知正文

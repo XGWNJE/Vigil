@@ -23,6 +23,9 @@ object VigilEventBus {
 
     /** 用户确认报警：ViewModel → Service，触发停止铃声 */
     val alertConfirmed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** 循环次数用完自动结束：Service → ViewModel（payload=关键词），UI 据此关闭弹窗 */
+    val alertAutoEnded = MutableSharedFlow<String>(extraBufferCapacity = 1)
 }
 
 data class AlertEvent(

@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.9.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.10.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -31,6 +31,9 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | 功能 | 描述 |
 |------|------|
 | **关键词匹配** | 多关键词 Chip 管理，添加即保存；删除需二次确认 |
+| **关键词级铃声** | 点按关键词 Chip 可单独绑定铃声与循环次数，未配置的跟随全局默认 |
+| **循环次数** | 直到确认 / 100 / 50 / 10 / 3 次五档；到数自动结束（停铃、关弹窗、写入记录） |
+| **报警记录** | 每次报警结束（手动确认或自动结束）留痕：关键词、来源应用、时间、结束方式，可随时查看/清空 |
 | **状态首页** | 全屏涟漪动效随服务状态变化（颜色/节奏），中央核心圆点即服务开关；设置收进底部 Sheet |
 | **强制报警** | 闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立、静音模式照常响铃；应用内全屏弹窗展示命中关键词与摘要 |
 | **应用过滤** | 只监听指定应用或全部应用；已勾选应用置顶 |

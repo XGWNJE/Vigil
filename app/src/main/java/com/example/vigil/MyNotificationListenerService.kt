@@ -36,6 +36,15 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var currentRingtoneUri: Uri? = null
     @Volatile private var keywords: List<String> = emptyList()
 
+    // 关键词级铃声/循环次数映射与全局默认循环次数（0=直到确认）
+    @Volatile private var keywordRingtoneMap: Map<String, String> = emptyMap()
+    @Volatile private var keywordLoopCountMap: Map<String, Int> = emptyMap()
+    @Volatile private var defaultLoopCount: Int = 0
+
+    // 当前活动报警信息（写历史记录用；进程重建后为 null，恢复路径另行回填）
+    private var activeAlertKeyword: String? = null
+    private var activeAlertSourceApp: String? = null
+
     @Volatile private var filterAppsEnabled: Boolean = false
     @Volatile private var filteredAppPackages: Set<String> = emptySet()
 
@@ -130,8 +139,11 @@ class MyNotificationListenerService : NotificationListenerService() {
             VigilEventBus.alertConfirmed.collect {
                 Log.i(TAG, "收到来自 UI 的确认事件，停止铃声和释放锁。")
                 VigilLogger.i(applicationContext, TAG, "用户确认报警，清除 pending 并停止响铃")
+                recordAlertEnd(AlertEndType.MANUAL)
                 sharedPreferencesHelper.clearPendingAlert()
                 stopRingtoneAndLock()
+                activeAlertKeyword = null
+                activeAlertSourceApp = null
             }
         }
         createNotificationChannel()
@@ -273,21 +285,28 @@ class MyNotificationListenerService : NotificationListenerService() {
             alertedNotificationKeys.add(notifKey)
             VigilLogger.i(applicationContext, TAG, "命中关键词 '$matchedKeyword' (pkg=${sbn.packageName})，触发报警")
 
-            // 持久化未确认报警：进程被省电策略杀死后，服务重建时可恢复响铃
-            sharedPreferencesHelper.savePendingAlert(matchedKeyword)
+            // 解析该关键词的铃声与循环次数（未配置则回落全局默认）
+            val alertRingtoneUri = keywordRingtoneMap[matchedKeyword]?.let { Uri.parse(it) } ?: currentRingtoneUri
+            val alertLoopLimit = keywordLoopCountMap[matchedKeyword] ?: defaultLoopCount
 
-            val finalMatchedKeyword = matchedKeyword
-            // 获取来源应用名称（用于 Dialog 展示）
+            // 获取来源应用名称（用于 Dialog 展示与历史记录）
             val sourceAppName = try {
                 packageManager.getApplicationLabel(
                     packageManager.getApplicationInfo(sbn.packageName, 0)
                 ).toString()
             } catch (e: Exception) { null }
+
+            // 持久化未确认报警：进程被省电策略杀死后，服务重建时可恢复响铃（含铃声/剩余次数，铁律 3）
+            sharedPreferencesHelper.savePendingAlert(matchedKeyword, alertRingtoneUri?.toString(), alertLoopLimit, sourceAppName)
+            activeAlertKeyword = matchedKeyword
+            activeAlertSourceApp = sourceAppName
+
+            val finalMatchedKeyword = matchedKeyword
             val snippet = "$title $text".trim().take(100).ifEmpty { null }
 
             handler.post {
                 acquireWakeLock()
-                playRingtoneLooping()
+                playRingtoneLooping(alertRingtoneUri, alertLoopLimit, alreadyPlayed = 0)
 
                 // 通过 VigilEventBus 通知 ViewModel 显示报警 Dialog（替代 LocalBroadcastManager）
                 serviceScope.launch {
@@ -329,17 +348,28 @@ class MyNotificationListenerService : NotificationListenerService() {
      */
     private fun recoverPendingAlertIfNeeded() {
         val pending = sharedPreferencesHelper.getPendingAlert() ?: return
-        val (keyword, timestamp) = pending
-        if (System.currentTimeMillis() - timestamp > PENDING_ALERT_TTL_MS) {
-            Log.w(TAG, "未确认报警 (关键词: $keyword) 已超过 ${PENDING_ALERT_TTL_MS / 60000} 分钟，按过期处理，清除。")
+        if (System.currentTimeMillis() - pending.timestamp > PENDING_ALERT_TTL_MS) {
+            Log.w(TAG, "未确认报警 (关键词: ${pending.keyword}) 已超过 ${PENDING_ALERT_TTL_MS / 60000} 分钟，按过期处理，清除。")
             sharedPreferencesHelper.clearPendingAlert()
             return
         }
+        val keyword = pending.keyword
+        // 有限档位剩余次数为 0（crash 前已到数但未来得及收尾）：直接走自动结束
+        if (pending.loopLimit > 0 && pending.playedLoops >= pending.loopLimit) {
+            Log.w(TAG, "未确认报警 (关键词: $keyword) 剩余次数为 0，按自动结束处理。")
+            activeAlertKeyword = keyword
+            activeAlertSourceApp = pending.sourceApp
+            autoEndAlert(keyword)
+            return
+        }
         Log.w(TAG, "检测到未确认报警 (关键词: $keyword)，进程重建后恢复响铃与提醒。")
-        VigilLogger.w(applicationContext, TAG, "恢复未确认报警 (keyword=$keyword)：进程重建后重新响铃")
+        VigilLogger.w(applicationContext, TAG, "恢复未确认报警 (keyword=$keyword, 已播=${pending.playedLoops}/${pending.loopLimit})：进程重建后重新响铃")
+        activeAlertKeyword = keyword
+        activeAlertSourceApp = pending.sourceApp
+        val resumeUri = pending.ringtoneUri?.let { Uri.parse(it) }
         handler.post {
             acquireWakeLock()
-            playRingtoneLooping()
+            playRingtoneLooping(resumeUri, pending.loopLimit, pending.playedLoops)
 
             serviceScope.launch {
                 VigilEventBus.keywordAlert.emit(AlertEvent(keyword, null, null))
@@ -407,9 +437,12 @@ class MyNotificationListenerService : NotificationListenerService() {
     private fun loadSettings() {
         keywords = sharedPreferencesHelper.getKeywords()
         currentRingtoneUri = sharedPreferencesHelper.getRingtoneUri()
+        keywordRingtoneMap = sharedPreferencesHelper.getKeywordRingtoneMap()
+        keywordLoopCountMap = sharedPreferencesHelper.getKeywordLoopCountMap()
+        defaultLoopCount = sharedPreferencesHelper.getDefaultLoopCount()
         filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
-        Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
+        Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声 URI: '$currentRingtoneUri', 关键词铃声映射: ${keywordRingtoneMap.size}个, 默认循环次数: $defaultLoopCount, 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
         VigilLogger.i(applicationContext, TAG, "设置已加载: ${keywords.size}个关键词, 过滤启用=$filterAppsEnabled (${filteredAppPackages.size}个应用)")
         // 添加详细日志以便调试
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
@@ -436,20 +469,25 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
     }
 
-    private fun playRingtoneLooping() {
+    /**
+     * 播放报警铃声。loopLimit=0 表示直到用户确认（isLooping 无限循环）；
+     * 有限档位下不用 isLooping，改用 OnCompletion 手动重启计数，到数自动结束。
+     */
+    private fun playRingtoneLooping(preferredUri: Uri?, loopLimit: Int = 0, alreadyPlayed: Int = 0) {
         // 防止并发触发：正在准备或播放中则忽略新请求
         if (playerState == PlayerState.PREPARING || playerState == PlayerState.PLAYING) {
             Log.d(TAG, "playRingtoneLooping: 已在播放中 ($playerState)，忽略重复请求。")
             return
         }
         stopRingtone()
-        val ringtoneUriToPlay = currentRingtoneUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        val ringtoneUriToPlay = preferredUri ?: currentRingtoneUri ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         if (ringtoneUriToPlay == null) {
             Log.e(TAG, "无法获取铃声 URI！")
             releaseWakeLock()
             return
         }
         playerState = PlayerState.PREPARING
+        var playedCount = alreadyPlayed
         try {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(applicationContext, ringtoneUriToPlay)
@@ -458,13 +496,13 @@ class MyNotificationListenerService : NotificationListenerService() {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
                 setAudioAttributes(audioAttributes)
-                isLooping = true
+                isLooping = (loopLimit == 0)
                 prepareAsync()
                 setOnPreparedListener { mp ->
                     if (playerState == PlayerState.PREPARING) {
                         playerState = PlayerState.PLAYING
                         Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
-                        VigilLogger.i(applicationContext, TAG, "报警铃声开始循环播放 (uri=$ringtoneUriToPlay)")
+                        VigilLogger.i(applicationContext, TAG, "报警铃声开始播放 (uri=$ringtoneUriToPlay, loopLimit=${if (loopLimit == 0) "无限" else loopLimit}, 已播=$alreadyPlayed)")
                         try {
                             mp.start()
                         } catch (startEx: IllegalStateException) {
@@ -476,6 +514,33 @@ class MyNotificationListenerService : NotificationListenerService() {
                         // 在 prepare 期间已被取消，释放此孤立实例
                         Log.d(TAG, "onPrepared: 播放已取消 ($playerState)，释放孤立 MediaPlayer。")
                         mp.release()
+                    }
+                }
+                if (loopLimit > 0) {
+                    setOnCompletionListener { mp ->
+                        if (playerState != PlayerState.PLAYING) {
+                            Log.d(TAG, "onCompletion: 播放已停止 ($playerState)，忽略。")
+                            return@setOnCompletionListener
+                        }
+                        playedCount++
+                        sharedPreferencesHelper.updatePendingAlertPlayedLoops(playedCount)
+                        // 续期唤醒锁：高档位（如 100 次 × 长铃声）总时长会超过单次 wakelock 超时
+                        releaseWakeLock()
+                        acquireWakeLock()
+                        if (playedCount >= loopLimit) {
+                            Log.i(TAG, "循环次数已用完 ($playedCount/$loopLimit)，自动结束报警。")
+                            autoEndAlert(activeAlertKeyword)
+                        } else {
+                            Log.d(TAG, "循环续播 ($playedCount/$loopLimit)")
+                            try {
+                                mp.seekTo(0)
+                                mp.start()
+                            } catch (e: IllegalStateException) {
+                                Log.e(TAG, "循环续播失败", e)
+                                playerState = PlayerState.STOPPED
+                                stopRingtoneAndLock()
+                            }
+                        }
                     }
                 }
                 setOnErrorListener { _, what, extra ->
@@ -491,6 +556,29 @@ class MyNotificationListenerService : NotificationListenerService() {
             playerState = PlayerState.STOPPED
             stopRingtoneAndLock()
         }
+    }
+
+    /** 循环次数用完自动结束：写记录、清 pending、停铃放锁、通知 UI 关弹窗。 */
+    private fun autoEndAlert(keyword: String?) {
+        VigilLogger.i(applicationContext, TAG, "报警自动结束 (keyword=$keyword)：循环次数用完")
+        recordAlertEnd(AlertEndType.AUTO)
+        sharedPreferencesHelper.clearPendingAlert()
+        stopRingtoneAndLock()
+        keyword?.let { kw ->
+            serviceScope.launch { VigilEventBus.alertAutoEnded.emit(kw) }
+        }
+        activeAlertKeyword = null
+        activeAlertSourceApp = null
+    }
+
+    /** 写一条报警历史记录；keyword/sourceApp 缺失时从持久化 pending 兜底。 */
+    private fun recordAlertEnd(endType: AlertEndType) {
+        val pending = sharedPreferencesHelper.getPendingAlert()
+        val keyword = activeAlertKeyword ?: pending?.keyword ?: return
+        val sourceApp = activeAlertSourceApp ?: pending?.sourceApp
+        val timestamp = pending?.timestamp ?: System.currentTimeMillis()
+        sharedPreferencesHelper.appendAlertRecord(AlertRecord(keyword, sourceApp, timestamp, endType))
+        VigilLogger.i(applicationContext, TAG, "报警记录已写入: $keyword ($endType, 来源=${sourceApp ?: "未知"})")
     }
 
     private fun stopRingtone() {

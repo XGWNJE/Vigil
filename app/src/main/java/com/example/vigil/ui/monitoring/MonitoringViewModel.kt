@@ -138,6 +138,16 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
 
+        // 收集自动结束事件：循环次数用完，服务已停铃清 pending，UI 关闭弹窗
+        viewModelScope.launch {
+            VigilEventBus.alertAutoEnded.collect { keyword ->
+                Log.i(TAG, "alertAutoEnded received: keyword=$keyword")
+                if (_showKeywordAlertDialog.value) {
+                    onKeywordAlertDialogDismiss()
+                }
+            }
+        }
+
         // 启动心跳检查定时器
         mainHandler.post(heartbeatCheckRunnable)
 

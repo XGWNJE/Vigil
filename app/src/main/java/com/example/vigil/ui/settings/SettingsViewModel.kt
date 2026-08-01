@@ -21,6 +21,7 @@ import com.example.vigil.MainActivity
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.SharedPreferencesHelper
+import com.example.vigil.AlertRecord
 import com.example.vigil.VigilLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -59,6 +60,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _selectedRingtoneName = mutableStateOf(context.getString(R.string.no_ringtone_selected))
     val selectedRingtoneName: State<String> = _selectedRingtoneName
+
+    // --- 循环次数（0=直到确认）与报警记录 ---
+    private val _defaultLoopCount = mutableStateOf(sharedPreferencesHelper.getDefaultLoopCount())
+    val defaultLoopCount: State<Int> = _defaultLoopCount
+
+    // 关键词个性化配置版本号：配置变化时 +1 触发 Compose 重组（chip 弹窗按关键词即时查询）
+    private val _keywordConfigVersion = mutableStateOf(0)
+    val keywordConfigVersion: State<Int> = _keywordConfigVersion
+
+    private val _alertHistoryVersion = mutableStateOf(0)
+    val alertHistoryVersion: State<Int> = _alertHistoryVersion
 
     // --- 权限状态 ---
     private val _hasNotificationAccess = mutableStateOf(false)
@@ -270,7 +282,63 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun removeKeyword(keyword: String) {
         _keywordList.remove(keyword)
         sharedPreferencesHelper.saveKeywords(_keywordList.toList())
+        // 同步清理该关键词的个性化配置，避免残留垃圾映射
+        sharedPreferencesHelper.clearKeywordConfig(keyword)
         notifyServiceToUpdateSettingsCallback?.invoke()
+    }
+
+    // --- 循环次数与关键词级铃声 ---
+
+    fun onDefaultLoopCountSelected(count: Int) {
+        _defaultLoopCount.value = count
+        sharedPreferencesHelper.saveDefaultLoopCount(count)
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Default loop count saved: $count")
+    }
+
+    /** 关键词的循环次数覆盖；null = 跟随默认。 */
+    fun getKeywordLoopCount(keyword: String): Int? {
+        return sharedPreferencesHelper.getKeywordLoopCount(keyword)
+    }
+
+    fun onKeywordLoopCountSelected(keyword: String, count: Int?) {
+        sharedPreferencesHelper.saveKeywordLoopCount(keyword, count)
+        _keywordConfigVersion.value++
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Keyword loop count saved: $keyword -> $count")
+    }
+
+    /** 关键词绑定铃声的显示名；未绑定返回 null（UI 显示「默认」）。 */
+    fun getKeywordRingtoneName(keyword: String): String? {
+        val uri = sharedPreferencesHelper.getKeywordRingtone(keyword) ?: return null
+        return try {
+            RingtoneManager.getRingtone(context, uri)?.getTitle(context) ?: "未知铃声"
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting keyword ringtone title: $keyword", e)
+            "未知铃声"
+        }
+    }
+
+    fun getKeywordRingtoneUri(keyword: String): Uri? {
+        return sharedPreferencesHelper.getKeywordRingtone(keyword)
+    }
+
+    fun onKeywordRingtoneSelected(keyword: String, uri: Uri?) {
+        sharedPreferencesHelper.saveKeywordRingtone(keyword, uri)
+        _keywordConfigVersion.value++
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Keyword ringtone saved: $keyword -> $uri")
+    }
+
+    // --- 报警记录 ---
+
+    fun getAlertHistory(): List<AlertRecord> {
+        return sharedPreferencesHelper.getAlertHistory()
+    }
+
+    fun clearAlertHistory() {
+        sharedPreferencesHelper.clearAlertHistory()
+        _alertHistoryVersion.value++
     }
 
     @Deprecated("Use addKeyword/removeKeyword instead")

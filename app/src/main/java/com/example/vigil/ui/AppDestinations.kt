@@ -11,4 +11,7 @@ object AppDestinations {
 
     // 应用过滤屏幕（不在主导航，从主屏进入）
     const val AppFilter = "app_filter"
+
+    // 报警记录屏幕（不在主导航，从主屏设置 Sheet 进入）
+    const val AlertHistory = "alert_history"
 }

@@ -37,6 +37,7 @@ import com.example.vigil.ui.dialogs.KeywordAlertDialog
 import com.example.vigil.ui.main.MainScreen
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.settings.AppFilterScreen
+import com.example.vigil.ui.history.AlertHistoryScreen
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
 import com.example.vigil.ui.theme.VigilTheme
@@ -290,11 +291,18 @@ class MainActivity : AppCompatActivity() {
                 MainScreen(
                     monitoringViewModel = monitoringViewModel,
                     settingsViewModel = settingsViewModel,
-                    onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter) }
+                    onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter) },
+                    onNavigateToAlertHistory = { navController.navigate(AppDestinations.AlertHistory) }
                 )
             }
             composable(AppDestinations.AppFilter) {
                 AppFilterScreen(
+                    viewModel = settingsViewModel,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(AppDestinations.AlertHistory) {
+                AlertHistoryScreen(
                     viewModel = settingsViewModel,
                     onNavigateBack = { navController.popBackStack() }
                 )

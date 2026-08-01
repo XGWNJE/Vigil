@@ -119,7 +119,7 @@ object VigilLogger {
             append("电池白名单: ").append(powerManager.isIgnoringBatteryOptimizations(appContext.packageName)).append('\n')
             append("服务开关: ").append(prefs.getServiceEnabledState()).append('\n')
             append("listener_connected(持久化): ").append(prefs.getListenerConnectedState()).append('\n')
-            append("未确认报警: ").append(prefs.getPendingAlert()?.first ?: "无").append('\n')
+            append("未确认报警: ").append(prefs.getPendingAlert()?.keyword ?: "无").append('\n')
             append("关键词数: ").append(prefs.getKeywords().size).append('\n')
             append("==========================\n\n")
         }

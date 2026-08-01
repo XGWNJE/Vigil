@@ -103,7 +103,8 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     monitoringViewModel: MonitoringViewModel,
     settingsViewModel: SettingsViewModel,
-    onNavigateToAppFilter: () -> Unit
+    onNavigateToAppFilter: () -> Unit,
+    onNavigateToAlertHistory: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -143,6 +144,8 @@ fun MainScreen(
     }
 
     // 铃声选择器（逻辑搬自原 SettingsScreen）
+    // ringtonePickTarget 非空时表示正在为某个关键词选铃声，null = 全局默认铃声
+    var ringtonePickTarget by remember { mutableStateOf<String?>(null) }
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -153,7 +156,32 @@ fun MainScreen(
                 @Suppress("DEPRECATION")
                 result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             }
-            settingsViewModel.onRingtoneUriSelected(uri)
+            val target = ringtonePickTarget
+            if (target == null) {
+                settingsViewModel.onRingtoneUriSelected(uri)
+            } else {
+                settingsViewModel.onKeywordRingtoneSelected(target, uri)
+            }
+        }
+        ringtonePickTarget = null
+    }
+
+    // 打开系统铃声选择器：target 为 null 选默认铃声，否则为指定关键词选
+    val launchRingtonePicker: (String?) -> Unit = { target ->
+        ringtonePickTarget = target
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "选择报警铃声")
+            val existing = target?.let { settingsViewModel.getKeywordRingtoneUri(it) }
+                ?: settingsViewModel.selectedRingtoneUri.value
+            existing?.let { putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it) }
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+        }
+        try {
+            ringtonePickerLauncher.launch(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -162,6 +190,13 @@ fun MainScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     // 关键词删除二次确认：待删除的关键词，非空时弹出确认框
     var keywordPendingDelete by remember { mutableStateOf<String?>(null) }
+    // 关键词个性化配置弹窗：待配置的关键词，非空时弹出（铃声 + 循环次数）
+    var keywordPendingConfig by remember { mutableStateOf<String?>(null) }
+    // 循环次数档位弹窗：null=不显示；""=全局默认档位；非空=该关键词的覆盖档位
+    var loopCountDialogTarget by remember { mutableStateOf<String?>(null) }
+    val defaultLoopCount by settingsViewModel.defaultLoopCount
+    // 关键词配置变化信号（读取即订阅，chip 弹窗里的值随配置保存即时刷新）
+    val keywordConfigVersion by settingsViewModel.keywordConfigVersion
 
     // 入口提示与引导行的持久化状态（纯 UI 标记，与服务/ViewModel 无关，直接读 prefs）
     val prefs = remember { SharedPreferencesHelper(context) }
@@ -372,6 +407,7 @@ fun MainScreen(
                         keywordList.forEach { keyword ->
                             KeywordChip(
                                 text = keyword,
+                                onClick = { keywordPendingConfig = keyword },
                                 onRemove = { keywordPendingDelete = keyword }
                             )
                         }
@@ -379,28 +415,25 @@ fun MainScreen(
                     }
                 }
 
-                // 2. 铃声
-                LineRow(onClick = {
-                    val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-                        putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-                        putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "选择报警铃声")
-                        settingsViewModel.selectedRingtoneUri.value?.let { uri ->
-                            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, uri)
-                        }
-                        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
-                        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-                    }
-                    try {
-                        ringtonePickerLauncher.launch(intent)
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "无法打开铃声选择器: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
-                }) {
-                    RowLabel("铃声")
+                // 2. 默认铃声（未单独配置的关键词统一使用）
+                LineRow(onClick = { launchRingtonePicker(null) }) {
+                    RowLabel("默认铃声")
                     RowValue(selectedRingtoneName, withArrow = true)
                 }
 
-                // 3. 应用过滤
+                // 3. 循环次数：0=直到确认；关键词可在 chip 弹窗里逐条覆盖
+                LineRow(onClick = { loopCountDialogTarget = "" }) {
+                    RowLabel("循环次数")
+                    RowValue(formatLoopCount(defaultLoopCount), withArrow = true)
+                }
+
+                // 4. 报警记录
+                LineRow(onClick = onNavigateToAlertHistory) {
+                    RowLabel("报警记录")
+                    RowValue("查看历史", withArrow = true)
+                }
+
+                // 5. 应用过滤
                 LineRow(onClick = onNavigateToAppFilter) {
                     RowLabel("应用过滤")
                     RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
@@ -527,6 +560,38 @@ fun MainScreen(
                 keywordPendingDelete = null
             },
             onDismiss = { keywordPendingDelete = null }
+        )
+    }
+
+    // 关键词个性化配置弹窗（铃声 + 循环次数覆盖）
+    keywordPendingConfig?.let { keyword ->
+        KeywordConfigDialog(
+            keyword = keyword,
+            ringtoneName = settingsViewModel.getKeywordRingtoneName(keyword),
+            loopCountOverride = settingsViewModel.getKeywordLoopCount(keyword),
+            defaultLoopCount = defaultLoopCount,
+            onPickRingtone = { launchRingtonePicker(keyword) },
+            onClearRingtone = { settingsViewModel.onKeywordRingtoneSelected(keyword, null) },
+            onPickLoopCount = { loopCountDialogTarget = keyword },
+            onDismiss = { keywordPendingConfig = null }
+        )
+    }
+
+    // 循环次数档位弹窗（全局默认与关键词覆盖共用；关键词多一档「跟随默认」）
+    loopCountDialogTarget?.let { target ->
+        val isGlobal = target.isEmpty()
+        LoopCountDialog(
+            selected = if (isGlobal) defaultLoopCount else settingsViewModel.getKeywordLoopCount(target),
+            showFollowDefault = !isGlobal,
+            onSelect = { count ->
+                if (isGlobal) {
+                    settingsViewModel.onDefaultLoopCountSelected(count ?: 0)
+                } else {
+                    settingsViewModel.onKeywordLoopCountSelected(target, count)
+                }
+                loopCountDialogTarget = null
+            },
+            onDismiss = { loopCountDialogTarget = null }
         )
     }
 
@@ -743,9 +808,9 @@ private fun LockTaskGuideDialog(
     )
 }
 
-/** 关键词 chip：暗底胶囊 + 独立圆形删除按钮（点按触发二次确认） */
+/** 关键词 chip：点按文本进个性化配置（铃声/循环次数），× 独立圆形删除按钮（点按触发二次确认） */
 @Composable
-private fun KeywordChip(text: String, onRemove: () -> Unit) {
+private fun KeywordChip(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
             .background(VigilDirALine.copy(alpha = 0.45f), CircleShape)
@@ -754,7 +819,12 @@ private fun KeywordChip(text: String, onRemove: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        Text(text = text, fontSize = 11.sp, color = VigilDirAInk)
+        Text(
+            text = text,
+            fontSize = 11.sp,
+            color = VigilDirAInk,
+            modifier = Modifier.clickable(onClick = onClick)
+        )
         // × 独立热区：圆形暗底，矢量图标天然居中（字符 × 有字形基线偏移）
         Box(
             modifier = Modifier
@@ -887,6 +957,178 @@ private fun AddKeywordDialog(
             }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消", color = VigilDirADim)
+            }
+        }
+    )
+}
+
+/** 循环次数档位的显示文案：0 = 直到确认（无限） */
+private fun formatLoopCount(count: Int): String {
+    return if (count == 0) "直到确认" else "$count 次"
+}
+
+/**
+ * 关键词个性化配置弹窗（DirA 风格）：铃声 + 循环次数覆盖。
+ * 未配置的项跟随全局默认；铃声行右侧 × 清除自定义铃声。
+ */
+@Composable
+private fun KeywordConfigDialog(
+    keyword: String,
+    ringtoneName: String?,
+    loopCountOverride: Int?,
+    defaultLoopCount: Int,
+    onPickRingtone: () -> Unit,
+    onClearRingtone: () -> Unit,
+    onPickLoopCount: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "「$keyword」",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Column {
+                // 铃声行
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onPickRingtone)
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "铃声", fontSize = 13.sp, color = VigilDirADim)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = ringtoneName ?: "默认",
+                            fontSize = 13.sp,
+                            color = VigilDirAInk
+                        )
+                        if (ringtoneName != null) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "清除自定义铃声",
+                                tint = VigilDirADim,
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable(onClick = onClearRingtone)
+                            )
+                        } else {
+                            Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                        }
+                    }
+                }
+                // 循环次数行
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onPickLoopCount)
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "循环次数", fontSize = 13.sp, color = VigilDirADim)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = loopCountOverride?.let { formatLoopCount(it) }
+                                ?: "默认（${formatLoopCount(defaultLoopCount)}）",
+                            fontSize = 13.sp,
+                            color = VigilDirAInk
+                        )
+                        Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "完成", color = VigilDirAAcid)
+            }
+        }
+    )
+}
+
+/**
+ * 循环次数档位弹窗：直到确认 / 100 / 50 / 10 / 3 次。
+ * 关键词覆盖场景多一档「跟随默认」（selected=null 时选中它）。
+ */
+@Composable
+private fun LoopCountDialog(
+    selected: Int?,
+    showFollowDefault: Boolean,
+    onSelect: (Int?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    // 选项：null = 跟随默认（仅关键词覆盖场景），0 = 直到确认，其余为次数
+    val options: List<Pair<Int?, String>> = buildList {
+        if (showFollowDefault) add(null to "跟随默认")
+        add(0 to "直到确认")
+        add(100 to "100 次自动结束")
+        add(50 to "50 次自动结束")
+        add(10 to "10 次自动结束")
+        add(3 to "3 次自动结束")
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "循环次数",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Column {
+                options.forEach { (value, label) ->
+                    val isSelected = value == selected
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(value) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 13.sp,
+                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(VigilDirAAcid, CircleShape)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(text = "取消", color = VigilDirADim)
             }

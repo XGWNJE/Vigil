@@ -5,6 +5,29 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** 报警结束方式：用户手动确认 / 循环次数用完自动结束 */
+enum class AlertEndType { MANUAL, AUTO }
+
+/** 一条报警历史记录 */
+data class AlertRecord(
+    val keyword: String,
+    val sourceApp: String?,
+    val timestamp: Long,
+    val endType: AlertEndType
+)
+
+/** 未确认报警的持久化状态（进程被杀后恢复响铃用，铁律 3） */
+data class PendingAlert(
+    val keyword: String,
+    val timestamp: Long,
+    val ringtoneUri: String?,
+    val loopLimit: Int,      // 0 = 直到用户确认（无限循环）
+    val playedLoops: Int,    // 已播放次数（有限档位下续播依据）
+    val sourceApp: String?
+)
 
 /**
  * SharedPreferencesHelper 用于管理应用的持久化存储。
@@ -33,6 +56,20 @@ class SharedPreferencesHelper(context: Context) {
         // 未确认报警（进程被杀后用于恢复响铃与弹窗）
         private const val KEY_PENDING_ALERT_KEYWORD = "pending_alert_keyword"
         private const val KEY_PENDING_ALERT_TIMESTAMP = "pending_alert_timestamp"
+        private const val KEY_PENDING_ALERT_RINGTONE_URI = "pending_alert_ringtone_uri"
+        private const val KEY_PENDING_ALERT_LOOP_LIMIT = "pending_alert_loop_limit"
+        private const val KEY_PENDING_ALERT_PLAYED_LOOPS = "pending_alert_played_loops"
+        private const val KEY_PENDING_ALERT_SOURCE_APP = "pending_alert_source_app"
+
+        // 关键词级铃声与循环次数映射（JSON：{keyword: 值}）
+        private const val KEY_KEYWORD_RINGTONES = "keyword_ringtones"
+        private const val KEY_KEYWORD_LOOP_COUNTS = "keyword_loop_counts"
+        // 全局默认循环次数：0 = 直到用户确认（无限）
+        private const val KEY_DEFAULT_LOOP_COUNT = "default_loop_count"
+
+        // 报警历史记录（JSON array，新→旧，上限 MAX_ALERT_HISTORY 条）
+        private const val KEY_ALERT_HISTORY = "alert_history"
+        private const val MAX_ALERT_HISTORY = 100
 
         // 通知监听服务与系统的真实绑定状态（心跳只证明进程活着，此标志才代表系统正在投递通知）
         private const val KEY_LISTENER_CONNECTED = "listener_connected"
@@ -218,32 +255,172 @@ class SharedPreferencesHelper(context: Context) {
 
     /**
      * 保存一条未确认的报警。触发报警时调用。
+     * ringtoneUri/loopLimit/sourceApp 一并持久化：进程重建恢复时用同一铃声续播剩余次数（铁律 3）。
      */
-    fun savePendingAlert(keyword: String) {
+    fun savePendingAlert(keyword: String, ringtoneUri: String?, loopLimit: Int, sourceApp: String?) {
         prefs.edit()
             .putString(KEY_PENDING_ALERT_KEYWORD, keyword)
             .putLong(KEY_PENDING_ALERT_TIMESTAMP, System.currentTimeMillis())
+            .putString(KEY_PENDING_ALERT_RINGTONE_URI, ringtoneUri)
+            .putInt(KEY_PENDING_ALERT_LOOP_LIMIT, loopLimit)
+            .putInt(KEY_PENDING_ALERT_PLAYED_LOOPS, 0)
+            .putString(KEY_PENDING_ALERT_SOURCE_APP, sourceApp)
             .apply()
-        Log.i("SharedPreferencesHelper", "未确认报警已持久化: $keyword")
+        Log.i("SharedPreferencesHelper", "未确认报警已持久化: $keyword (loopLimit=$loopLimit)")
     }
 
     /**
-     * 读取未确认报警，返回 关键词 to 触发时间戳；无则返回 null。
+     * 读取未确认报警；无则返回 null。
      */
-    fun getPendingAlert(): Pair<String, Long>? {
+    fun getPendingAlert(): PendingAlert? {
         val keyword = prefs.getString(KEY_PENDING_ALERT_KEYWORD, null) ?: return null
-        val timestamp = prefs.getLong(KEY_PENDING_ALERT_TIMESTAMP, 0L)
-        return keyword to timestamp
+        return PendingAlert(
+            keyword = keyword,
+            timestamp = prefs.getLong(KEY_PENDING_ALERT_TIMESTAMP, 0L),
+            ringtoneUri = prefs.getString(KEY_PENDING_ALERT_RINGTONE_URI, null),
+            loopLimit = prefs.getInt(KEY_PENDING_ALERT_LOOP_LIMIT, 0),
+            playedLoops = prefs.getInt(KEY_PENDING_ALERT_PLAYED_LOOPS, 0),
+            sourceApp = prefs.getString(KEY_PENDING_ALERT_SOURCE_APP, null)
+        )
+    }
+
+    /** 有限档位下每播完一次更新已播放次数，进程重建后续播剩余次数。 */
+    fun updatePendingAlertPlayedLoops(playedLoops: Int) {
+        prefs.edit().putInt(KEY_PENDING_ALERT_PLAYED_LOOPS, playedLoops).apply()
     }
 
     /**
-     * 清除未确认报警。用户在弹窗中确认后调用。
+     * 清除未确认报警。用户确认或循环次数用完自动结束后调用。
      */
     fun clearPendingAlert() {
         prefs.edit()
             .remove(KEY_PENDING_ALERT_KEYWORD)
             .remove(KEY_PENDING_ALERT_TIMESTAMP)
+            .remove(KEY_PENDING_ALERT_RINGTONE_URI)
+            .remove(KEY_PENDING_ALERT_LOOP_LIMIT)
+            .remove(KEY_PENDING_ALERT_PLAYED_LOOPS)
+            .remove(KEY_PENDING_ALERT_SOURCE_APP)
             .apply()
         Log.i("SharedPreferencesHelper", "未确认报警已清除。")
+    }
+
+    // --- 关键词级铃声与循环次数 ---
+
+    /** 保存关键词 → 铃声 URI 映射；uri 为 null 表示移除映射（回落默认铃声）。 */
+    fun saveKeywordRingtone(keyword: String, uri: Uri?) {
+        val map = getKeywordRingtoneMap().toMutableMap()
+        if (uri == null) map.remove(keyword) else map[keyword] = uri.toString()
+        prefs.edit().putString(KEY_KEYWORD_RINGTONES, JSONObject(map as Map<*, *>).toString()).apply()
+        Log.i("SharedPreferencesHelper", "关键词铃声映射已保存: $keyword -> $uri")
+    }
+
+    /** 关键词绑定的铃声；未绑定返回 null（调用方回落默认铃声）。 */
+    fun getKeywordRingtone(keyword: String): Uri? {
+        return getKeywordRingtoneMap()[keyword]?.let { Uri.parse(it) }
+    }
+
+    fun getKeywordRingtoneMap(): Map<String, String> {
+        return readJsonStringMap(KEY_KEYWORD_RINGTONES)
+    }
+
+    /** 保存关键词 → 循环次数覆盖；count 为 null 表示移除覆盖（跟随全局默认）。 */
+    fun saveKeywordLoopCount(keyword: String, count: Int?) {
+        val obj = JSONObject(prefs.getString(KEY_KEYWORD_LOOP_COUNTS, null) ?: "{}")
+        if (count == null) obj.remove(keyword) else obj.put(keyword, count)
+        prefs.edit().putString(KEY_KEYWORD_LOOP_COUNTS, obj.toString()).apply()
+        Log.i("SharedPreferencesHelper", "关键词循环次数覆盖已保存: $keyword -> $count")
+    }
+
+    /** 关键词的循环次数覆盖；未覆盖返回 null（调用方用全局默认）。 */
+    fun getKeywordLoopCount(keyword: String): Int? {
+        val obj = JSONObject(prefs.getString(KEY_KEYWORD_LOOP_COUNTS, null) ?: "{}")
+        return if (obj.has(keyword)) obj.getInt(keyword) else null
+    }
+
+    fun getKeywordLoopCountMap(): Map<String, Int> {
+        val obj = JSONObject(prefs.getString(KEY_KEYWORD_LOOP_COUNTS, null) ?: "{}")
+        return obj.keys().asSequence().associateWith { obj.getInt(it) }
+    }
+
+    /** 移除某关键词的全部个性化配置（删除关键词时调用）。 */
+    fun clearKeywordConfig(keyword: String) {
+        saveKeywordRingtone(keyword, null)
+        saveKeywordLoopCount(keyword, null)
+    }
+
+    /** 全局默认循环次数：0 = 直到用户确认（无限）。 */
+    fun saveDefaultLoopCount(count: Int) {
+        prefs.edit().putInt(KEY_DEFAULT_LOOP_COUNT, count).apply()
+        Log.i("SharedPreferencesHelper", "默认循环次数已保存: $count")
+    }
+
+    fun getDefaultLoopCount(): Int {
+        return prefs.getInt(KEY_DEFAULT_LOOP_COUNT, 0)
+    }
+
+    private fun readJsonStringMap(key: String): Map<String, String> {
+        return try {
+            val obj = JSONObject(prefs.getString(key, null) ?: "{}")
+            obj.keys().asSequence().associateWith { obj.getString(it) }
+        } catch (e: Exception) {
+            Log.e("SharedPreferencesHelper", "读取 JSON 映射失败: $key", e)
+            emptyMap()
+        }
+    }
+
+    // --- 报警历史记录 ---
+
+    /** 追加一条报警记录（新记录置顶，超出上限裁掉最旧）。 */
+    fun appendAlertRecord(record: AlertRecord) {
+        val arr = readAlertHistoryArray()
+        val obj = JSONObject().apply {
+            put("keyword", record.keyword)
+            put("sourceApp", record.sourceApp ?: JSONObject.NULL)
+            put("timestamp", record.timestamp)
+            put("endType", record.endType.name)
+        }
+        val newArr = JSONArray().put(obj)
+        for (i in 0 until minOf(arr.length(), MAX_ALERT_HISTORY - 1)) {
+            newArr.put(arr.get(i))
+        }
+        prefs.edit().putString(KEY_ALERT_HISTORY, newArr.toString()).apply()
+        Log.i("SharedPreferencesHelper", "报警记录已写入: ${record.keyword} (${record.endType})")
+    }
+
+    /** 读取报警历史，新→旧。 */
+    fun getAlertHistory(): List<AlertRecord> {
+        val arr = readAlertHistoryArray()
+        val list = mutableListOf<AlertRecord>()
+        for (i in 0 until arr.length()) {
+            try {
+                val obj = arr.getJSONObject(i)
+                list.add(
+                    AlertRecord(
+                        keyword = obj.getString("keyword"),
+                        sourceApp = if (obj.isNull("sourceApp")) null else obj.getString("sourceApp"),
+                        timestamp = obj.getLong("timestamp"),
+                        endType = runCatching { AlertEndType.valueOf(obj.getString("endType")) }
+                            .getOrDefault(AlertEndType.MANUAL)
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e("SharedPreferencesHelper", "解析报警记录失败 (index=$i)", e)
+            }
+        }
+        return list
+    }
+
+    fun clearAlertHistory() {
+        prefs.edit().remove(KEY_ALERT_HISTORY).apply()
+        Log.i("SharedPreferencesHelper", "报警记录已清空。")
+    }
+
+    private fun readAlertHistoryArray(): JSONArray {
+        return try {
+            JSONArray(prefs.getString(KEY_ALERT_HISTORY, null) ?: "[]")
+        } catch (e: Exception) {
+            Log.e("SharedPreferencesHelper", "读取报警记录失败，按空处理", e)
+            JSONArray()
+        }
     }
 }

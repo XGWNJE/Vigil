@@ -1,6 +1,8 @@
 // src/main/java/com/example/vigil/ui/dialogs/KeywordAlertDialog.kt
 package com.example.vigil.ui.dialogs
 
+import android.os.Build
+import android.view.WindowManager
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +31,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.example.vigil.ui.main.rememberFrameDrivenProgress
 import com.example.vigil.ui.theme.VigilDirAAcid
 import com.example.vigil.ui.theme.VigilDirABg
@@ -66,6 +72,19 @@ fun KeywordAlertDialog(
             decorFitsSystemWindows = false
         )
     ) {
+        // 横屏刘海/打孔避让修复：Dialog 窗口默认按 cutout 安全区内缩，
+        // 横屏时挖孔（竖屏顶部）落在左侧，窗口被右推 136px 导致内容右缘被裁、按钮文字跑出屏外。
+        // 本弹窗本来就是全屏暗底设计，声明 always 直接占用完整显示区。
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        LaunchedEffect(dialogWindow) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && dialogWindow != null) {
+                val lp = dialogWindow.attributes
+                lp.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                dialogWindow.attributes = lp
+            }
+        }
+
         // 进入动效：整体淡入 + 内容轻微上滑（帧驱动进度，避免 InfiniteTransition 被动画缩放挂起）
         var enterProgress by remember { mutableFloatStateOf(0f) }
         LaunchedEffect(Unit) {
@@ -95,10 +114,12 @@ fun KeywordAlertDialog(
                 .offset(y = enterOffset),
             contentAlignment = Alignment.Center
         ) {
-            // 内层：酸橙绿 1dp 大框（呼吸脉冲），wrap 内容并垂直居中
+            // 内层：酸橙绿 1dp 大框（呼吸脉冲），wrap 内容并垂直居中；
+            // verticalScroll：横屏高度紧张（411dp 级）时内容可滚动，保证按钮完整可达
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .border(1.dp, VigilDirAAcid.copy(alpha = borderAlpha))
                     .padding(horizontal = 22.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.Start,

@@ -79,28 +79,39 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     /**
-     * 绑定看门狗：进程活着但系统未绑定监听服务时自动自愈。
-     * 先低频 requestRebind；连续失败 WATCHDOG_MAX_REBIND_ATTEMPTS 次后升级为
-     * 组件 toggle 强刷绑定（等效于用户在系统设置里撤销再授予通知使用权）。
+     * 绑定看门狗：进程活着但系统未绑定监听服务时自动自愈（心跳每 30s 触发一次）。
+     * 升级策略（2026-08 issue #2：HyperOS 上 requestRebind 被系统静默忽略）：
+     *   本实例前 2 次：requestRebind（低频尝试，官方 API）
+     *   之后：完整重连序列（stopService → 组件 disable/enable → 重启 → requestRebind，
+     *         90s 节流，等效系统级撤销+重授权；连续无效次数由 ListenerRecovery
+     *         进程级累计，跨服务实例不清零）
+     *   序列连续无效达上限：标记恢复失败（UI 显示"重新授权"引导），此后仅低频
+     *   requestRebind 兜底，不无限升级，避免在系统侧卡死态里空转耗电
      */
     private fun watchdogListenerBinding() {
         if (listenerActuallyConnected) {
-            rebindFailCount = 0
+            if (rebindFailCount > 0 || sharedPreferencesHelper.getListenerRecoveryFailed()) {
+                rebindFailCount = 0
+                ListenerRecovery.markRecoverySuccess(applicationContext)
+            }
             return
         }
         if (!SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) return
         if (!PermissionUtils.isNotificationListenerEnabled(applicationContext)) return
 
         rebindFailCount++
-        if (rebindFailCount > WATCHDOG_MAX_REBIND_ATTEMPTS) {
-            VigilLogger.w(applicationContext, TAG, "看门狗: requestRebind 连续 ${rebindFailCount - 1} 次未恢复绑定，升级为组件 toggle 强刷")
-            Log.w(TAG, "requestRebind 连续 ${rebindFailCount - 1} 次未恢复绑定，升级为组件 toggle 强刷。")
-            rebindFailCount = 0
-            serviceScope.launch { ListenerRecovery.toggleComponentRebind(applicationContext) }
-        } else {
+        if (rebindFailCount <= WATCHDOG_SOFT_REBIND_ATTEMPTS) {
             VigilLogger.w(applicationContext, TAG, "看门狗: 监听未绑定（第 $rebindFailCount 次），自动 requestRebind")
             Log.w(TAG, "检测到监听服务未绑定（第 $rebindFailCount 次），自动 requestRebind。")
             ListenerRecovery.requestRebind(applicationContext)
+        } else if (sharedPreferencesHelper.getListenerRecoveryFailed()) {
+            // 已标记失败：不再升级折腾，保持低频请求兜底，等用户重新授权或系统自行恢复
+            VigilLogger.w(applicationContext, TAG, "看门狗: 自动重连已失败，保持低频 requestRebind 兜底")
+            ListenerRecovery.requestRebind(applicationContext)
+        } else {
+            VigilLogger.w(applicationContext, TAG, "看门狗: requestRebind 未恢复（第 $rebindFailCount 次），升级为完整重连序列")
+            Log.w(TAG, "requestRebind 未恢复（第 $rebindFailCount 次），升级为完整重连序列。")
+            ListenerRecovery.forceReconnect(applicationContext)
         }
     }
 
@@ -115,8 +126,9 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
-        // 看门狗：连续 N 次 requestRebind 未恢复绑定后，升级为组件 toggle 强刷
-        private const val WATCHDOG_MAX_REBIND_ATTEMPTS = 5
+        // 看门狗升级档位（见 watchdogListenerBinding 注释）：
+        // 本实例前 2 次 requestRebind；之后升级完整重连序列（ListenerRecovery 内 90s 节流）
+        private const val WATCHDOG_SOFT_REBIND_ATTEMPTS = 2
         const val ACTION_ALERT_CONFIRMED_FROM_UI = "com.example.vigil.ACTION_ALERT_CONFIRMED_FROM_UI"
 
         // 新增：用于从服务启动 MainActivity 并请求显示对话框的 Action 和 Extra
@@ -133,6 +145,9 @@ class MyNotificationListenerService : NotificationListenerService() {
         // 重建后绑定状态未知，先重置为 false，等 onListenerConnected 真正回调再置 true
         listenerActuallyConnected = false
         sharedPreferencesHelper.saveListenerConnectedState(false)
+        // 同步广播给 UI：冷启动时持久化值可能是旧进程残留的 true，
+        // 不发事件则 UI 只能在下次心跳后靠"绑定已断"才纠正，期间误显示"监听中"
+        sendServiceStatusUpdate(false)
         loadSettings()
         // 监听 UI 确认报警事件（替代 LocalBroadcastManager alertConfirmedReceiver）
         serviceScope.launch {
@@ -164,6 +179,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         listenerActuallyConnected = true
         rebindFailCount = 0
         sharedPreferencesHelper.saveListenerConnectedState(true)
+        ListenerRecovery.markRecoverySuccess(applicationContext)
         loadSettings()
         startHeartbeat()
         sendServiceStatusUpdate(true)

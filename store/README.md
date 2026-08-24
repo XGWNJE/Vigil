@@ -1,6 +1,6 @@
 # Vigil 商店文案素材
 
-供 Google Play 与国内各应用商店填表使用。商店截图用仓库根目录 `image1.png` / `image2.png` / `image3.png`；UI 设计稿存档见 `design-backup/`，图标素材见 `design/icons/`。
+供 Google Play 与国内各应用商店填表使用。商店截图用 `screenshots/` 目录（`main.png` / `alert.png` / `app-filter.png`）；UI 设计稿存档见 `design-backup/`，图标素材见 `design/icons/`。
 
 ---
 

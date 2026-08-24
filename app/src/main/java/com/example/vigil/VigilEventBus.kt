@@ -18,6 +18,13 @@ object VigilEventBus {
     /** 服务连接状态：Service → ViewModel，true=已连接，false=已断开 */
     val serviceStatus = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
 
+    /**
+     * 监听自动重连失败标记：Service/看门狗 → UI。
+     * 完整重连序列也无效时置 true，UI 据此展示"重新授权"引导；
+     * 冷启动兜底读 SharedPreferences（无 replay）。
+     */
+    val listenerRecoveryFailed = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
+
     /** 关键词报警事件：Service → ViewModel */
     val keywordAlert = MutableSharedFlow<AlertEvent>(extraBufferCapacity = 1)
 

@@ -76,6 +76,7 @@ class SharedPreferencesHelper(context: Context) {
 
         // 通知监听服务与系统的真实绑定状态（心跳只证明进程活着，此标志才代表系统正在投递通知）
         private const val KEY_LISTENER_CONNECTED = "listener_connected"
+        private const val KEY_LISTENER_RECOVERY_FAILED = "listener_recovery_failed"
 
         // 上滑手势入口提示（设置 Sheet 被打开过一次即标记，不再显示主屏提示文案）
         private const val KEY_HAS_SHOWN_SWIPE_HINT = "has_shown_swipe_hint"
@@ -168,6 +169,24 @@ class SharedPreferencesHelper(context: Context) {
 
     fun getListenerConnectedState(): Boolean {
         return prefs.getBoolean(KEY_LISTENER_CONNECTED, false)
+    }
+
+    /**
+     * 监听自动重连失败标记：看门狗完整重连序列（stopService + 组件强刷）也无效时置 true，
+     * UI 据此展示"重新授权通知使用权"引导（系统级撤销+重新授权是唯一兜底手段）。
+     * @return 值是否发生变化（发生变化时调用方决定记日志/发事件）
+     */
+    fun saveListenerRecoveryFailed(failed: Boolean): Boolean {
+        if (getListenerRecoveryFailed() != failed) {
+            prefs.edit().putBoolean(KEY_LISTENER_RECOVERY_FAILED, failed).apply()
+            Log.i("SharedPreferencesHelper", "监听恢复失败标记已保存: $failed")
+            return true
+        }
+        return false
+    }
+
+    fun getListenerRecoveryFailed(): Boolean {
+        return prefs.getBoolean(KEY_LISTENER_RECOVERY_FAILED, false)
     }
 
     /**

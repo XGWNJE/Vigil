@@ -54,6 +54,13 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     private val _matchedKeywordForDialog = mutableStateOf<String?>(null)
     val matchedKeywordForDialog: State<String?> = _matchedKeywordForDialog
 
+    // ---- 监听自动重连失败标记（UI 逃生通道：重新授权引导）----
+    // 冷启动兜底读持久化（EventBus 无 replay）；服务侧变化经事件总线通知
+    private val _listenerRecoveryFailed = mutableStateOf(
+        SharedPreferencesHelper(context).getListenerRecoveryFailed()
+    )
+    val listenerRecoveryFailed: State<Boolean> = _listenerRecoveryFailed
+
     // ---- 内部状态跟踪 ----
     private var lastHeartbeatTime: Long = 0L        // SystemClock.elapsedRealtime() 单位
     private var hasReceivedAnySignal = false         // 是否曾收到过心跳或 connected 信号
@@ -135,6 +142,14 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 Log.i(TAG, "AlertEvent received: keyword=${event.keyword}")
                 _matchedKeywordForDialog.value = event.keyword
                 _showKeywordAlertDialog.value = true
+            }
+        }
+
+        // 收集监听自动重连失败标记（服务侧完整重连序列无效时置 true）
+        viewModelScope.launch {
+            VigilEventBus.listenerRecoveryFailed.collect { failed ->
+                Log.i(TAG, "listenerRecoveryFailed received: $failed")
+                _listenerRecoveryFailed.value = failed
             }
         }
 

@@ -88,6 +88,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.MainActivity
+import com.example.vigil.ListenerRecovery
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.RingtoneLibrary
@@ -128,6 +129,7 @@ fun MainScreen(
 
     val serviceState by monitoringViewModel.serviceState
     val serviceEnabled by monitoringViewModel.serviceEnabled
+    val listenerRecoveryFailed by monitoringViewModel.listenerRecoveryFailed
 
     val keywordList = settingsViewModel.keywordList
     val selectedRingtoneName by settingsViewModel.selectedRingtoneName
@@ -378,6 +380,37 @@ fun MainScreen(
                 letterSpacing = 1.2.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
+
+            // ---- 自动重连失败逃生通道：看门狗完整重连序列也无效时出现 ----
+            // HyperOS 等 ROM 上 requestRebind 会被系统静默忽略，唯一可靠恢复是
+            // 系统级撤销+重新授权（用户卸载重装/清数据即此效果），这里直接给出入口
+            if (serviceState == ServiceState.LISTENER_DISCONNECTED && listenerRecoveryFailed) {
+                Column(
+                    modifier = Modifier.padding(top = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "自动重连失败 · 需重新授权",
+                        style = MonoTextStyle,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.0.sp,
+                        color = VigilDirAAmber
+                    )
+                    Row(horizontalArrangement = Arrangement.Center) {
+                        TextButton(onClick = {
+                            Toast.makeText(context, "已触发强制重连", Toast.LENGTH_SHORT).show()
+                            ListenerRecovery.forceReconnect(context)
+                        }) {
+                            Text("立即重试", style = MonoTextStyle, fontSize = 12.sp, color = VigilDirAInk)
+                        }
+                        TextButton(onClick = {
+                            activity?.let { PermissionUtils.openNotificationListenerSettings(it) }
+                        }) {
+                            Text("重新授权", style = MonoTextStyle, fontSize = 12.sp, color = VigilDirAAcid)
+                        }
+                    }
+                }
+            }
         }
 
         // ---- 核心开关：涟漪环心，点按切换服务 ----

@@ -247,14 +247,10 @@ class MainActivity : AppCompatActivity() {
         if (ListenerRecovery.requestRebind(this)) {
             Log.i(TAG, "requestRebind called successfully.")
         } else {
-            Log.w(TAG, "requestRebind failed, falling back to component toggle.")
-            // 降级方案：协程延迟组件切换，保证 OS 有足够时间完成解绑
-            lifecycleScope.launch {
-                ListenerRecovery.toggleComponentRebind(this@MainActivity)
-                if (monitoringViewModel.serviceEnabled.value && PermissionUtils.isNotificationListenerEnabled(this@MainActivity)) {
-                    startVigilService(true)
-                }
-            }
+            Log.w(TAG, "requestRebind failed, falling back to force reconnect.")
+            // 降级方案：完整重连序列（stopService → 组件 toggle → 重启服务 → requestRebind）
+            // 在 ListenerRecovery 独立作用域执行，不受服务生命周期影响
+            ListenerRecovery.forceReconnect(this)
         }
     }
 

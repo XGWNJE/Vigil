@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.11.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.13.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -50,13 +50,13 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 <div align="center">
 
-| 主界面 | 报警界面 | 应用过滤 |
-|:--------:|:--------:|:--------:|
-| <img src="./image1.png" alt="主界面" width="240" /> | <img src="./image2.png" alt="报警界面" width="240" /> | <img src="./image3.png" alt="应用过滤" width="240" /> |
+| 主界面 | 关键词报警 | 应用过滤 |
+|:------:|:---------:|:--------:|
+| <img src="./screenshots/main.png" alt="主界面" width="240" /> | <img src="./screenshots/alert.png" alt="关键词报警弹窗" width="240" /> | <img src="./screenshots/app-filter.png" alt="应用过滤" width="240" /> |
 
-| 报警演示 |
-|:--------:|
-| <img src="./demo.gif" alt="报警演示动画" width="240" /> |
+| 报警闭环演示（命中关键词 → 弹窗脉冲 → 确认停铃） |
+|:----------------------------------------------:|
+| <img src="./screenshots/demo.gif" alt="报警闭环演示动画" width="280" /> |
 
 *点击图片可查看大图*
 

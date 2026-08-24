@@ -107,6 +107,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 ## 已知平台坑
 
 - 系统（国产 ROM 尤甚）可能在进程被杀重建后不再重新绑定 NotificationListenerService，但 `enabled_notification_listeners` 设置仍在——权限检查与"进程活着"都不能证明监听在工作，唯一可信信号是 `onListenerConnected` 回调（持久化为 `listener_connected`）。自愈手段：`NotificationListenerService.requestRebind()`，失败时组件 toggle 强刷（等效用户撤销再授予权限）。
+  - **[HyperOS 3.0.308 实机证据 2026-08（issue #2 日志）]**：应用开关关闭再打开后，`requestRebind()` 被系统静默忽略（连续多次调用、永不回调 onListenerConnected），唯一有效恢复是系统级撤销+重新授权（用户卸载重装/清数据重配即此效果）。因此看门狗升级为「完整重连序列」：stopService → 组件 disable → 1.5s → enable → 重启服务 → requestRebind（`ListenerRecovery.forceReconnect`，须在独立作用域执行——序列会 stopService 销毁服务，用服务自己的 scope 会在 onDestroy 时 cancel 中断）；序列连续 2 次无效 → 持久化 `listener_recovery_failed` 标记 → UI 显示「立即重试 / 重新授权」逃生通道（跳系统「通知使用权」设置页），用户无需再卸载重装。
 - Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。
 - 小米 HyperOS（真机实测）：应用内「电池白名单」（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）与「后台运行」（应用详情→省电策略）两个入口同质——电池优化请求被重定向到小米自家省电策略页；白名单设成功后后台相对稳定，但任务卡片（recents）不锁定 + 未开自启动时，用户划掉卡片进程仍会被杀。原生 Android 上两入口不同质（系统弹窗 vs 应用详情页），华为/OPPO/vivo 的 OEM 后台限制独立于标准白名单 → 跨 ROM 的权限引导设计必须同时保留两个入口，不因单一 ROM 观察而合并。来源：notes/inbox/2026-07-30.md，owner 2026-07-31 验收。
 - Android 10+ 后台 `startActivity` 静默失败（不抛异常，`try/catch` 兜底不触发）：报警弹窗靠持久化 + App 打开时补弹（`MonitoringViewModel.init`）。
@@ -157,4 +158,5 @@ printf '%s' "vigil" | gh secret set VIGIL_KEY_ALIAS --repo XGWNJE/Vigil
 - `ROADMAP.md` — 近期开发路线图（P1 关键词级铃声 / P2 自定义铃声来源）。
 - `release-notes/` — 各版本发行描述（`vX.Y.Z.md`，CI 创建 Release 时自动引用）。
 - `design/` — 图标与视觉素材（含生成脚本）；`design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
+- `screenshots/` — README 界面展示与商店共用素材（`main/alert/app-filter.png` + `demo.gif`，语义命名）；制作规范：裁掉状态栏/手势条等系统元素、聚焦主体，动效录屏转 GIF（裁剪 + ≤10s + ≤5MB）。
 - 事实变化时只更新负责该事实的文档。

@@ -1,7 +1,7 @@
 # Vigil 上架执行清单（需 owner 本人操作）
 
 > 本文档列出只有 owner 本人能完成的上架步骤（涉及付费、实名、账号）。
-> 项目侧物料已全部备好：文案与权限说明见 `store/README.md`，Feature Graphic 见 `store/feature-graphic.png`，隐私政策见仓库根目录 `PRIVACY.md`，截图用仓库根目录 `image1.png` / `image2.png` / `image3.png`。
+> 项目侧物料已全部备好：文案与权限说明见 `store/README.md`，Feature Graphic 见 `store/feature-graphic.png`，隐私政策见仓库根目录 `PRIVACY.md`，截图用 `screenshots/` 目录（`main.png` / `alert.png` / `app-filter.png`）。
 >
 > **建议执行顺序：三 → 二 → 一**（国内软著周期最长，最先启动；GitHub secrets 最快，随手先做）。
 
@@ -58,7 +58,7 @@
    - 完整说明：抄 `store/README.md` 中文完整描述
    - 应用图标：用 `app/src/main/ic_launcher-playstore.png`（512×512）
    - 置顶大图（Feature Graphic）：上传 `store/feature-graphic.png`
-   - 手机截图：至少 2 张，用仓库根目录 `image1.png`（主界面）、`image2.png`（报警界面）、`image3.png`（应用过滤）
+   - 手机截图：至少 2 张，用 `screenshots/main.png`（主界面）、`screenshots/alert.png`（报警界面）、`screenshots/app-filter.png`（应用过滤）
    - 分类：工具（Tools）
    - 联系邮箱：填你的邮箱；官网填 `https://github.com/XGWNJE/Vigil`
 

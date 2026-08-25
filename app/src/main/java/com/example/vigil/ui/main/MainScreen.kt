@@ -752,6 +752,15 @@ fun MainScreen(
         RingtoneSelectDialog(
             libraryEntries = settingsViewModel.ringtoneLibrary,
             currentValue = currentValue,
+            onPickPreset = { preset ->
+                val value = RingtoneLibrary.presetValue(context, preset)
+                if (isDefault) {
+                    settingsViewModel.onRingtoneValueSelected(value)
+                } else {
+                    settingsViewModel.onKeywordRingtoneSelected(target, value)
+                }
+                ringtoneSelectTarget = null
+            },
             onPickSystemRingtone = {
                 ringtoneSelectTarget = null
                 launchRingtonePicker(keyword)
@@ -1261,13 +1270,14 @@ private fun KeywordConfigDialog(
 }
 
 /**
- * 铃声选择弹窗：系统铃声（系统选择器）+ 铃声库文件。
+ * 铃声选择弹窗：内置预设 + 系统铃声（系统选择器）+ 铃声库文件。
  * 当前生效的铃声值高亮；铃声库为空时提示去「铃声库」页导入/录音。
  */
 @Composable
 private fun RingtoneSelectDialog(
     libraryEntries: List<Pair<String, String>>,
     currentValue: String?,
+    onPickPreset: (RingtoneLibrary.PresetRingtone) -> Unit,
     onPickSystemRingtone: () -> Unit,
     onPickLibraryFile: (String) -> Unit,
     onDismiss: () -> Unit
@@ -1289,6 +1299,45 @@ private fun RingtoneSelectDialog(
         },
         text = {
             Column {
+                // 内置预设（随 APK 打包的 WAV 语音）
+                RingtoneLibrary.PRESETS.forEachIndexed { index, preset ->
+                    if (index > 0) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(VigilDirALine)
+                        )
+                    }
+                    val isSelected = currentValue == RingtoneLibrary.presetValue(context, preset)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPickPreset(preset) }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = preset.displayName,
+                            fontSize = 13.sp,
+                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(VigilDirAAcid, CircleShape)
+                            )
+                        }
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(VigilDirALine)
+                )
                 // 系统铃声入口
                 Row(
                     modifier = Modifier

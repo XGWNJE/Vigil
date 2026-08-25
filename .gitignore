@@ -74,3 +74,6 @@ CMakeCache.txt
 .kotlin/
 # Playwright 测试产物
 .playwright-mcp/
+
+# 用户 TTS 语音素材（内置预设已拷贝进 res/raw）
+/Tts put/

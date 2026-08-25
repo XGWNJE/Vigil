@@ -509,6 +509,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         val dataSourceDesc = when (dataSource) {
             is RingtoneLibrary.DataSource.ContentUri -> dataSource.uri.toString()
             is RingtoneLibrary.DataSource.LocalFile -> dataSource.file.absolutePath
+            is RingtoneLibrary.DataSource.RawResource -> "preset:${dataSource.rawName}"
         }
         playerState = PlayerState.PREPARING
         var playedCount = alreadyPlayed
@@ -517,6 +518,16 @@ class MyNotificationListenerService : NotificationListenerService() {
                 when (dataSource) {
                     is RingtoneLibrary.DataSource.ContentUri -> setDataSource(applicationContext, dataSource.uri)
                     is RingtoneLibrary.DataSource.LocalFile -> setDataSource(dataSource.file.absolutePath)
+                    is RingtoneLibrary.DataSource.RawResource -> {
+                        // preset 用资源 fd 播放（android.resource:// URI 在部分平台 MediaPlayer 解析失败）
+                        val afd = RingtoneLibrary.openPresetFd(applicationContext, dataSource.resId)
+                            ?: throw RuntimeException("预设铃声资源打开失败: ${dataSource.rawName}")
+                        try {
+                            setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                        } finally {
+                            afd.close()
+                        }
+                    }
                 }
                 val audioAttributes = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)

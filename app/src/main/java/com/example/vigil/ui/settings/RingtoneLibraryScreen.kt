@@ -243,7 +243,7 @@ fun RingtoneLibraryScreen(
                 }
             }
             Text(
-                text = "${entries.size} RINGTONES · 点击名称重命名",
+                text = "${RingtoneLibrary.PRESETS.size} PRESET · ${entries.size} RINGTONES · 点击名称重命名",
                 style = MonoTextStyle,
                 fontSize = 10.sp,
                 letterSpacing = 1.sp,
@@ -252,22 +252,31 @@ fun RingtoneLibraryScreen(
             )
         }
 
-        // ---- 条目列表 ----
-        if (entries.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 64.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "铃声库为空，点 IMPORT 导入音频或录音",
-                    fontSize = 13.sp,
-                    color = VigilDirADim
+        // ---- 条目列表（内置预设 + 铃声库文件；预设不可删除/重命名） ----
+        LazyColumn {
+            items(RingtoneLibrary.PRESETS, key = { "preset:${it.rawName}" }) { preset ->
+                PresetEntryRow(
+                    preset = preset,
+                    isPreviewing = previewing == "preset:${preset.rawName}",
+                    onTogglePreview = { viewModel.togglePresetPreview(preset) }
                 )
             }
-        } else {
-            LazyColumn {
+            if (entries.isEmpty()) {
+                item(key = "empty_hint") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "铃声库为空，点 IMPORT 导入音频或录音",
+                            fontSize = 13.sp,
+                            color = VigilDirADim
+                        )
+                    }
+                }
+            } else {
                 items(entries, key = { it.first }) { (fileName, displayName) ->
                     RingtoneEntryRow(
                         displayName = displayName,
@@ -383,6 +392,54 @@ private fun InAppToast(message: String?, modifier: Modifier = Modifier) {
                 color = VigilDirAInk
             )
         }
+    }
+}
+
+/** 内置预设铃声条目：展示名 + 试听切换（不可重命名/删除），底部发丝线 */
+@Composable
+private fun PresetEntryRow(
+    preset: RingtoneLibrary.PresetRingtone,
+    isPreviewing: Boolean,
+    onTogglePreview: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val stroke = 1.dp.toPx()
+                drawLine(
+                    VigilDirALine,
+                    start = Offset(0f, size.height - stroke / 2),
+                    end = Offset(size.width, size.height - stroke / 2),
+                    strokeWidth = stroke
+                )
+            }
+            .padding(horizontal = 2.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "预设",
+                style = MonoTextStyle,
+                fontSize = 10.sp,
+                color = VigilDirAAcid,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Text(
+                text = preset.displayName,
+                fontSize = 14.sp,
+                color = VigilDirAInk
+            )
+        }
+        Text(
+            text = if (isPreviewing) "■ 停止" else "试听",
+            style = MonoTextStyle,
+            fontSize = 11.sp,
+            color = if (isPreviewing) VigilDirAAmber else VigilDirADim,
+            modifier = Modifier.clickable(onClick = onTogglePreview)
+        )
     }
 }
 

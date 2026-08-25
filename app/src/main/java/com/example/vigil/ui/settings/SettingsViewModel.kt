@@ -112,6 +112,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     init {
         Log.d(TAG, "SettingsViewModel created.")
+        // 试听自动结束后 UI 版本号也要刷新（否则「■ 停止」状态卡住）
+        RingtoneLibrary.onPreviewStateChanged = { _previewVersion.value++ }
         updatePermissionStates()
         loadInstalledApps() // 只在初始化时加载应用列表
         loadSettings() // 加载关键词和铃声设置
@@ -279,9 +281,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun loadSettings() {
         _keywordList.clear()
         _keywordList.addAll(sharedPreferencesHelper.getKeywords())
-        // 仅 content:// 值回填给系统铃声选择器的 EXISTING_URI；铃声库文件路径不适用
+        // 仅 content:// 值回填给系统铃声选择器的 EXISTING_URI；铃声库文件/内置预设不适用
         _selectedRingtoneUri.value = sharedPreferencesHelper.getRingtoneValue()
-            ?.takeIf { !RingtoneLibrary.isLibraryFile(it) }
+            ?.takeIf { !RingtoneLibrary.isLibraryFile(it) && !RingtoneLibrary.isPresetValue(it) }
             ?.let { Uri.parse(it) }
         updateSelectedRingtoneName()
         loadRingtoneLibrary()
@@ -331,10 +333,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         return ringtoneValueDisplayName(value)
     }
 
-    /** 关键词绑定铃声为系统铃声时返回其 URI（选择器 EXISTING_URI 用）；铃声库文件返回 null。 */
+    /** 关键词绑定铃声为系统铃声时返回其 URI（选择器 EXISTING_URI 用）；铃声库文件/内置预设返回 null。 */
     fun getKeywordRingtoneUri(keyword: String): Uri? {
         return sharedPreferencesHelper.getKeywordRingtoneValue(keyword)
-            ?.takeIf { !RingtoneLibrary.isLibraryFile(it) }
+            ?.takeIf { !RingtoneLibrary.isLibraryFile(it) && !RingtoneLibrary.isPresetValue(it) }
             ?.let { Uri.parse(it) }
     }
 
@@ -417,6 +419,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _previewVersion.value++
     }
 
+    /** 试听内置预设铃声（raw 资源）。 */
+    fun togglePresetPreview(preset: RingtoneLibrary.PresetRingtone) {
+        RingtoneLibrary.togglePresetPreview(context, preset)
+        _previewVersion.value++
+    }
+
     fun stopPreview() {
         RingtoneLibrary.stopPreview()
         _previewVersion.value++
@@ -442,41 +450,46 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun onRingtoneUriSelected(uri: Uri?) {
         _selectedRingtoneUri.value = uri
-        updateSelectedRingtoneName()
-        // 立即持久化，避免依赖手动 saveSettings()
+        // 立即持久化，避免依赖手动 saveSettings()（先保存再刷新展示名，否则读到的是旧值）
         sharedPreferencesHelper.saveRingtoneValue(uri?.toString())
+        updateSelectedRingtoneName()
         // 通知服务重新加载设置（让 Service.loadSettings() 读取新 URI）
         notifyServiceToUpdateSettingsCallback?.invoke()
         Log.i(TAG, "Ringtone URI selected and saved immediately: $uri")
     }
 
-    /** 选择铃声库文件作为默认铃声（value 为文件路径）。 */
+    /** 选择铃声库文件/内置预设作为默认铃声（value 为文件路径或 android.resource:// URI）。 */
     fun onRingtoneValueSelected(value: String?) {
         _selectedRingtoneUri.value = null
-        updateSelectedRingtoneName()
+        // 先保存再刷新展示名，否则读到的是旧值（原逻辑会把行内名称卡在旧值）
         sharedPreferencesHelper.saveRingtoneValue(value)
+        updateSelectedRingtoneName()
         notifyServiceToUpdateSettingsCallback?.invoke()
         Log.i(TAG, "Ringtone value selected and saved immediately: $value")
     }
 
-    /** 铃声值 → 展示名：铃声库文件取库内命名，content URI 取系统铃声标题。 */
+    /** 铃声值 → 展示名：内置预设取预设名，铃声库文件取库内命名，content URI 取系统铃声标题。 */
     private fun ringtoneValueDisplayName(value: String): String {
-        return if (RingtoneLibrary.isLibraryFile(value)) {
-            val fileName = java.io.File(value).name
-            val libraryName = sharedPreferencesHelper.getRingtoneLibraryMap()[fileName]
-            when {
-                libraryName != null -> libraryName
-                // 库条目已删（文件随之删除）：原值已失效，提示会回落，不展示裸路径
-                !java.io.File(value).exists() -> context.getString(R.string.ringtone_file_missing)
-                else -> fileName.substringBeforeLast('.')
+        return when {
+            RingtoneLibrary.isPresetValue(value) -> RingtoneLibrary.presetDisplayName(value) ?: "预设铃声"
+            RingtoneLibrary.isLibraryFile(value) -> {
+                val fileName = java.io.File(value).name
+                val libraryName = sharedPreferencesHelper.getRingtoneLibraryMap()[fileName]
+                when {
+                    libraryName != null -> libraryName
+                    // 库条目已删（文件随之删除）：原值已失效，提示会回落，不展示裸路径
+                    !java.io.File(value).exists() -> context.getString(R.string.ringtone_file_missing)
+                    else -> fileName.substringBeforeLast('.')
+                }
             }
-        } else {
-            try {
-                RingtoneManager.getRingtone(context, Uri.parse(value))?.getTitle(context)
-                    ?: context.getString(R.string.default_ringtone_name)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting ringtone title: $value", e)
-                "未知铃声"
+            else -> {
+                try {
+                    RingtoneManager.getRingtone(context, Uri.parse(value))?.getTitle(context)
+                        ?: context.getString(R.string.default_ringtone_name)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error getting ringtone title: $value", e)
+                    "未知铃声"
+                }
             }
         }
     }

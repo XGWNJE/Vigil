@@ -38,9 +38,10 @@
 1. **系统铃声**：现状的 `RingtoneManager.ACTION_RINGTONE_PICKER`，保留。
 2. **导入音频文件**：SAF `ACTION_OPEN_DOCUMENT`（`audio/*`），**复制**到 `filesDir/ringtones/`（不依赖 persistable URI 权限，避免原文件被删/权限失效导致报警静音）；列表支持命名、删除、试听。
 3. **录音**：`RECORD_AUDIO` 运行时权限 + `MediaRecorder`（m4a/AAC），保存到同一目录；权限拒绝时按 PermissionGuideDialog 模式引导。
+4. **内置预设**（P3，交付 v1.14.0）：6 条 WAV 语音随 APK 打包进 `res/raw`，开箱可选、不可删除；来自 owner 提供的 TTS 语音（MP3 因生成质量未采用）。注意：TTS 工具产出的 WAV 带有 0xFFFFFFFF 占位块长，入库前已修复；预设播放走资源 fd（`android.resource://` URI 在部分平台 MediaPlayer 解析失败，详见 AGENTS.md「已知平台坑」）。
 
 - 播放统一：本地文件直接走现有 MediaPlayer 链路（`USAGE_ALARM` 不变）；铃声文件缺失时回落系统默认闹钟铃声并写 VigilLogger 日志。
-- 映射兼容：P1 的 keyword→ringtone 映射值需同时支持系统 URI 与本地文件路径两种形式。
+- 映射兼容：P1 的 keyword→ringtone 映射值需同时支持系统 URI、本地文件路径与内置预设（`android.resource://`）三种形式。
 - 验证：闭环（自定义文件/录音作为报警铃声）+ 麦克风权限流程 + 文件删除后的回落行为。
 
 ---
@@ -51,5 +52,6 @@
 |---|---|---|
 | P1 | v1.10.0 / 16 | 报警核心链路完整闭环 + `am crash` 恢复 |
 | P2 | v1.11.0 / 17 | 完整闭环 + 权限流程 |
+| P3 | v1.14.0 / 20 | 完整闭环（预设响铃/关键词级预设/`am crash` 恢复）+ UI 截图 |
 
 P1、P2 可合并发一个版本，但实施顺序不变（铃声库依赖关键词级铃声的映射结构）。

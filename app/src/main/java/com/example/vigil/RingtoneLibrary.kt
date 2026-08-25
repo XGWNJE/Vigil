@@ -14,12 +14,13 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 铃声库：自定义铃声来源（P2）的文件管理。
+ * 铃声库：自定义铃声来源（P2）的文件管理 + 内置预设铃声。
  * 文件统一存 filesDir/ringtones/（复制导入而非 persistable URI，避免原文件被删/权限失效导致报警静音）；
  * 展示名元数据在 SharedPreferencesHelper（ringtone_library）。
  *
  * 铃声值约定（默认铃声与关键词映射通用）：
  * - "content://..." → 系统铃声 URI
+ * - "android.resource://<pkg>/raw/<name>" → 内置预设铃声（随 APK 打包，不可删除）
  * - 其他非空字符串 → 铃声库本地文件绝对路径
  * - null → 系统默认闹钟铃声
  */
@@ -28,19 +29,67 @@ object RingtoneLibrary {
     private const val TAG = "RingtoneLibrary"
     private const val DIR_NAME = "ringtones"
 
-    /** 播放解析结果：content URI / 本地文件 / 无（调用方回落系统默认闹钟铃声） */
+    // --- 内置预设铃声（随 APK 打包进 res/raw，不可删除/重命名） ---
+
+    /** 一条内置预设铃声：raw 资源名 → 展示名。 */
+    data class PresetRingtone(val rawName: String, val displayName: String)
+
+    /** 内置预设铃声列表（owner 提供 WAV 语音，MP3 因生成质量未采用）。 */
+    val PRESETS: List<PresetRingtone> = listOf(
+        PresetRingtone("vigil_preset_work_group_msg", "工作群有消息需要查看"),
+        PresetRingtone("vigil_preset_new_voice_msg", "收到一条语音消息"),
+        PresetRingtone("vigil_preset_wife_directive", "收到老婆大人的指示 尽快查看"),
+        PresetRingtone("vigil_preset_supervisor_here", "注意 督导来了"),
+        PresetRingtone("vigil_preset_no_slacking", "注意安全 小心摸鱼"),
+        PresetRingtone("vigil_preset_target_spot", "监控发现目标")
+    )
+
+    // 保留 R.raw 引用：release 开启 shrinkResources，防止预设音频被当作未引用资源剥离
+    @Suppress("unused")
+    private val PRESET_RESOURCE_IDS: List<Int> = listOf(
+        R.raw.vigil_preset_work_group_msg,
+        R.raw.vigil_preset_new_voice_msg,
+        R.raw.vigil_preset_wife_directive,
+        R.raw.vigil_preset_supervisor_here,
+        R.raw.vigil_preset_no_slacking,
+        R.raw.vigil_preset_target_spot
+    )
+
+    /** 预设铃声值（存储格式）：android.resource://<pkg>/raw/<rawName> */
+    fun presetValue(context: Context, preset: PresetRingtone): String {
+        return "android.resource://${context.packageName}/raw/${preset.rawName}"
+    }
+
+    /** value 是否为内置预设铃声。 */
+    fun isPresetValue(value: String?): Boolean {
+        return value?.startsWith("android.resource://") == true
+    }
+
+    /** 由预设铃声值反查展示名；未知预设返回 null。 */
+    fun presetDisplayName(value: String): String? {
+        val rawName = value.substringAfterLast('/')
+        return PRESETS.firstOrNull { it.rawName == rawName }?.displayName
+    }
+
+    /** 播放解析结果：content URI / 本地文件 / 内置预设 raw 资源 / 无（调用方回落系统默认闹钟铃声） */
     sealed class DataSource {
         data class ContentUri(val uri: Uri) : DataSource()
         data class LocalFile(val file: File) : DataSource()
+        /**
+         * 内置预设：raw 资源。经 AssetFileDescriptor 播放——
+         * 实测 android.resource:// URI 在部分平台（API 36 模拟器）MediaPlayer 解析失败（what=1），
+         * fd + offset/length 是各版本都可靠的方式。
+         */
+        data class RawResource(val resId: Int, val rawName: String) : DataSource()
     }
 
     fun libraryDir(context: Context): File {
         return File(context.filesDir, DIR_NAME).apply { mkdirs() }
     }
 
-    /** 铃声值是否为铃声库本地文件（非 content URI）。 */
+    /** 铃声值是否为铃声库本地文件（非 content URI / 非内置预设）。 */
     fun isLibraryFile(value: String?): Boolean {
-        return value != null && !value.startsWith("content://")
+        return value != null && !value.startsWith("content://") && !value.startsWith("android.resource://")
     }
 
     /**
@@ -51,6 +100,16 @@ object RingtoneLibrary {
         if (value == null) return null
         if (value.startsWith("content://")) {
             return DataSource.ContentUri(Uri.parse(value))
+        }
+        if (value.startsWith("android.resource://")) {
+            val rawName = value.substringAfterLast('/')
+            val resId = context.resources.getIdentifier(rawName, "raw", context.packageName)
+            if (resId == 0) {
+                Log.w(TAG, "预设铃声资源不存在: $value")
+                VigilLogger.w(context, TAG, "预设铃声资源缺失，回落系统默认闹钟铃声: $value")
+                return null
+            }
+            return DataSource.RawResource(resId, rawName)
         }
         val file = File(value)
         if (!file.exists()) {
@@ -216,7 +275,13 @@ object RingtoneLibrary {
     private var previewPlayer: MediaPlayer? = null
     private var previewFileName: String? = null
 
-    /** 正在试听的 fileName；未在试听为 null。 */
+    /**
+     * 试听状态变化回调（开始/停止/自动结束都触发）。
+     * ViewModel 注册后 +1 UI 版本号：试听自动结束后 UI 不再卡在「■ 停止」。
+     */
+    var onPreviewStateChanged: (() -> Unit)? = null
+
+    /** 正在试听的条目 key：库文件 = fileName；预设 = "preset:<rawName>"；未在试听为 null。 */
     val previewingFileName: String? get() = previewFileName
 
     /** 试听切换：同一文件再点停止；其他文件切换试听。返回切换后是否正在试听。 */
@@ -230,9 +295,45 @@ object RingtoneLibrary {
             Log.w(TAG, "试听失败，文件缺失: $fileName")
             return false
         }
+        return startPreview(fileName) { setDataSource(file.absolutePath) }
+    }
+
+    /** 打开预设铃声的资源 fd（调用方负责 close）；失败返回 null（已记日志）。 */
+    fun openPresetFd(context: Context, resId: Int): android.content.res.AssetFileDescriptor? {
+        return try {
+            context.resources.openRawResourceFd(resId)
+        } catch (e: Exception) {
+            Log.e(TAG, "打开预设铃声资源失败: $resId", e)
+            VigilLogger.e(context, TAG, "打开预设铃声资源失败: $resId", e)
+            null
+        }
+    }
+
+    /** 试听预设铃声（raw 资源）；同一预设再点停止。 */
+    fun togglePresetPreview(context: Context, preset: PresetRingtone): Boolean {
+        val key = "preset:${preset.rawName}"
+        val wasPreviewing = previewFileName == key
+        stopPreview()
+        if (wasPreviewing) return false
+        val resId = context.resources.getIdentifier(preset.rawName, "raw", context.packageName)
+        if (resId == 0) {
+            Log.w(TAG, "试听失败，预设资源不存在: ${preset.rawName}")
+            return false
+        }
+        return startPreview(key) {
+            val afd = context.resources.openRawResourceFd(resId)
+            try {
+                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            } finally {
+                afd.close()
+            }
+        }
+    }
+
+    private fun startPreview(key: String, setSource: MediaPlayer.() -> Unit): Boolean {
         return try {
             previewPlayer = MediaPlayer().apply {
-                setDataSource(file.absolutePath)
+                setSource()
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
@@ -243,22 +344,25 @@ object RingtoneLibrary {
                 prepare()
                 start()
             }
-            previewFileName = fileName
-            Log.d(TAG, "试听开始: $fileName")
+            previewFileName = key
+            onPreviewStateChanged?.invoke()
+            Log.d(TAG, "试听开始: $key")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "试听失败: $fileName", e)
+            Log.e(TAG, "试听失败: $key", e)
             stopPreview()
             false
         }
     }
 
     fun stopPreview() {
+        val wasActive = previewPlayer != null
         previewPlayer?.let {
             runCatching { if (it.isPlaying) it.stop() }
             runCatching { it.reset(); it.release() }
         }
         previewPlayer = null
         previewFileName = null
+        if (wasActive) onPreviewStateChanged?.invoke()
     }
 }

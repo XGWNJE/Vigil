@@ -398,8 +398,8 @@ fun MainScreen(
                     )
                     Row(horizontalArrangement = Arrangement.Center) {
                         TextButton(onClick = {
-                            Toast.makeText(context, "已触发强制重连", Toast.LENGTH_SHORT).show()
-                            ListenerRecovery.forceReconnect(context)
+                            Toast.makeText(context, "已尝试重连", Toast.LENGTH_SHORT).show()
+                            ListenerRecovery.startFastRecovery(context)
                         }) {
                             Text("立即重试", style = MonoTextStyle, fontSize = 12.sp, color = VigilDirAInk)
                         }

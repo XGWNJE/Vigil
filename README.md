@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.13.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.15.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -39,7 +39,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | **强制报警** | 闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立、静音模式照常响铃；应用内全屏弹窗展示命中关键词与摘要 |
 | **应用过滤** | 只监听指定应用或全部应用；已勾选应用置顶 |
 | **报警恢复** | 未确认状态持久化，进程被系统杀死后重建可在 30 分钟内自动恢复响铃与弹窗 |
-| **前台保活** | 前台服务常驻 + 心跳检测 + 断连自动重绑（`requestRebind` / 组件 toggle） |
+| **前台保活** | 前台服务常驻 + 心跳检测 + 断连自动重绑与快速自愈（`requestRebind` / 组件 toggle / 失效即引导重新授权） |
 | **权限引导** | 设置内按必需/推荐/可选分级展示权限状态，缺失时一键跳转授权 |
 | **诊断日志** | 本地滚动日志（不含通知正文），主屏一键导出分享，便于排查 |
 | **极致轻量** | 安装包约 3.4MB，几乎不占空间，常驻后台资源占用低 |
@@ -92,7 +92,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 > 通知使用权需手动授予，应用内提供直达跳转入口。应用过滤无需任何权限（通过 launcher intent 查询，不申请 `QUERY_ALL_PACKAGES`）；应用未声明 `INTERNET` 权限，无联网能力，数据全部本地处理。详见 [隐私政策](PRIVACY.md)。
 
-> **国产 ROM 使用须知**：小米 / 华为 / OPPO / vivo 等系统有激进的省电与自启动管控，可能清理进程后不再重绑监听服务。请完成「自启动管理」与「后台运行」引导；应用内置断连自愈，断连时显示「重连中」而非误报「监听中」。
+> **国产 ROM 使用须知**：小米 / 华为 / OPPO / vivo 等系统有激进的省电与自启动管控，可能清理进程后不再重绑监听服务。请完成「自启动管理」与「后台运行」引导；应用内置断连自愈，断连时显示「重连中」而非误报「监听中」。建议让 Vigil 长期驻留后台以获得稳定监控——多数安卓系统如今对后台权限与自启动的管理都比较严格，若只是临时打开、用完即退出，之后系统会更频繁地要求重新授权，属正常现象。
 
 ---
 
@@ -101,7 +101,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 - **勿扰模式**：闹钟音频流默认被勿扰策略放行（闹钟例外），正常响铃；若用户在勿扰设置中关闭闹钟例外或设为完全静音，铃声会被压制。应用不申请勿扰访问权限、不干预勿扰设置（Android 15+ 已[禁止应用修改全局勿扰状态](https://developer.android.com/about/versions/15/behavior-changes-15)）。
 - **后台弹窗**：Android 10+ 限制后台启动 Activity，应用内全屏弹窗不一定能立即前置；自动回退为全屏 Intent 通知，响铃不受影响。
 - **进程存活**：响铃依赖服务进程存活；前台服务 + 电池白名单大幅降低被回收概率但无法根除；未确认报警已持久化，进程重建后 30 分钟内自动恢复。
-- **监听绑定**：部分国产 ROM 清理进程后可能不再重绑监听；内置看门狗自愈，无法自愈时重新打开应用触发重绑。
+- **监听绑定**：部分国产 ROM 清理进程后可能不再重绑监听；内置看门狗自愈，仍无效时会在主屏尽快给出「重新授权」引导，无需卸载重装。
 
 ---
 

@@ -80,13 +80,11 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     /**
      * 绑定看门狗：进程活着但系统未绑定监听服务时自动自愈（心跳每 30s 触发一次）。
-     * 升级策略（2026-08 issue #2：HyperOS 上 requestRebind 被系统静默忽略）：
-     *   本实例前 2 次：requestRebind（低频尝试，官方 API）
-     *   之后：完整重连序列（stopService → 组件 disable/enable → 重启 → requestRebind，
-     *         90s 节流，等效系统级撤销+重授权；连续无效次数由 ListenerRecovery
-     *         进程级累计，跨服务实例不清零）
-     *   序列连续无效达上限：标记恢复失败（UI 显示"重新授权"引导），此后仅低频
-     *   requestRebind 兜底，不无限升级，避免在系统侧卡死态里空转耗电
+     * 2026-08 issue #2：HyperOS 上 requestRebind 被系统静默忽略，唯一可靠恢复是
+     * 系统级撤销+重新授权。为避免在系统侧卡死态里长时间空转（用户会以为卡死），
+     * 一旦发现未绑定且未标记失败，立即走 ListenerRecovery 的"快速自愈"：
+     * requestRebind → 短观察 → 一次完整重连序列 → 仍无效则立刻标记恢复失败，
+     * 让 UI 尽快显示"重新授权"逃生通道（不再用多档位 + 长节流的慢速升级）。
      */
     private fun watchdogListenerBinding() {
         if (listenerActuallyConnected) {
@@ -100,18 +98,15 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (!PermissionUtils.isNotificationListenerEnabled(applicationContext)) return
 
         rebindFailCount++
-        if (rebindFailCount <= WATCHDOG_SOFT_REBIND_ATTEMPTS) {
-            VigilLogger.w(applicationContext, TAG, "看门狗: 监听未绑定（第 $rebindFailCount 次），自动 requestRebind")
-            Log.w(TAG, "检测到监听服务未绑定（第 $rebindFailCount 次），自动 requestRebind。")
-            ListenerRecovery.requestRebind(applicationContext)
-        } else if (sharedPreferencesHelper.getListenerRecoveryFailed()) {
+        if (sharedPreferencesHelper.getListenerRecoveryFailed()) {
             // 已标记失败：不再升级折腾，保持低频请求兜底，等用户重新授权或系统自行恢复
             VigilLogger.w(applicationContext, TAG, "看门狗: 自动重连已失败，保持低频 requestRebind 兜底")
             ListenerRecovery.requestRebind(applicationContext)
         } else {
-            VigilLogger.w(applicationContext, TAG, "看门狗: requestRebind 未恢复（第 $rebindFailCount 次），升级为完整重连序列")
-            Log.w(TAG, "requestRebind 未恢复（第 $rebindFailCount 次），升级为完整重连序列。")
-            ListenerRecovery.forceReconnect(applicationContext)
+            // 未标记失败：立即触发快速自愈（防抖由 ListenerRecovery 保证），失败会尽快转交 UI 引导授权
+            VigilLogger.w(applicationContext, TAG, "看门狗: 监听未绑定（第 $rebindFailCount 次），触发快速自愈")
+            Log.w(TAG, "检测到监听服务未绑定（第 $rebindFailCount 次），触发快速自愈。")
+            ListenerRecovery.startFastRecovery(applicationContext)
         }
     }
 
@@ -126,9 +121,6 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
-        // 看门狗升级档位（见 watchdogListenerBinding 注释）：
-        // 本实例前 2 次 requestRebind；之后升级完整重连序列（ListenerRecovery 内 90s 节流）
-        private const val WATCHDOG_SOFT_REBIND_ATTEMPTS = 2
         const val ACTION_ALERT_CONFIRMED_FROM_UI = "com.example.vigil.ACTION_ALERT_CONFIRMED_FROM_UI"
 
         // 新增：用于从服务启动 MainActivity 并请求显示对话框的 Action 和 Extra
@@ -192,11 +184,19 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         Log.w(TAG, "通知监听器已断开连接！")
-        VigilLogger.w(applicationContext, TAG, "onListenerDisconnected: 系统监听绑定断开，心跳停止（看门狗随心跳暂停）")
+        VigilLogger.w(applicationContext, TAG, "onListenerDisconnected: 系统监听绑定断开，心跳停止（看门狗随心跳暂停，改由快速自愈接管）")
         listenerActuallyConnected = false
         sharedPreferencesHelper.saveListenerConnectedState(false)
         stopHeartbeat()
         sendServiceStatusUpdate(false)
+
+        // 断开是权限失效的最快信号：只要权限仍在(设置里没关)且服务开关开着，立即触发快速自愈，
+        // 不必等下一个 30s 心跳，让"重连失败 → 请重新授权"尽快出现（防抖由 ListenerRecovery 保证）。
+        if (SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)
+            && PermissionUtils.isNotificationListenerEnabled(applicationContext)
+        ) {
+            ListenerRecovery.startFastRecovery(applicationContext)
+        }
 
         // 确保更新通知以反映最新状态
         updateForegroundNotification()

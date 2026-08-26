@@ -29,8 +29,8 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 构建：`./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`
 - 版本号：`app/build.gradle.kts` 的 `versionCode`/`versionName`
 - 核心代码：
-  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连并自动 requestRebind → 组件 toggle 强刷）；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束（写记录 → 清 pending → 停铃 → emit alertAutoEnded 关弹窗）
-  - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（requestRebind / 组件 toggle），Service 与 MainActivity 共用
+  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连，触发 `ListenerRecovery` 快速自愈）；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束（写记录 → 清 pending → 停铃 → emit alertAutoEnded 关弹窗）
+  - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（快速自愈：requestRebind → 短观察 → 完整重连序列 → 无效即标记 `listener_recovery_failed`），Service 与 MainActivity 共用
   - `app/src/main/java/com/example/vigil/RingtoneLibrary.kt` — 铃声库（P2 自定义铃声来源）+ 内置预设（随 APK 打包）：导入 SAF 音频复制到 `filesDir/ringtones/`、录音（MediaRecorder m4a/AAC）、试听、删除；铃声值约定 `content://` = 系统铃声 / `android.resource://<pkg>/raw/<name>` = 内置预设（res/raw WAV，不可删除，owner 提供 TTS 语音，MP3 因质量未采用）/ 其他非空 = 库内文件绝对路径 / null = 系统默认闹钟；`resolve()` 解析播放数据源（预设经 AssetFileDescriptor 播放——见「已知平台坑」），文件缺失回落并写日志；试听状态变化经 `onPreviewStateChanged` 回调刷新 UI
   - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、默认铃声、关键词级铃声/循环次数映射 `keyword_ringtones`/`keyword_loop_counts`、全局默认循环次数 `default_loop_count`（0=直到确认）、未确认报警 pending（含铃声 URI/loopLimit/已播次数/来源应用）、报警历史 `alert_history`（JSON，上限 100 条）、listener_connected 绑定状态）
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
@@ -107,7 +107,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 ## 已知平台坑
 
 - 系统（国产 ROM 尤甚）可能在进程被杀重建后不再重新绑定 NotificationListenerService，但 `enabled_notification_listeners` 设置仍在——权限检查与"进程活着"都不能证明监听在工作，唯一可信信号是 `onListenerConnected` 回调（持久化为 `listener_connected`）。自愈手段：`NotificationListenerService.requestRebind()`，失败时组件 toggle 强刷（等效用户撤销再授予权限）。
-  - **[HyperOS 3.0.308 实机证据 2026-08（issue #2 日志）]**：应用开关关闭再打开后，`requestRebind()` 被系统静默忽略（连续多次调用、永不回调 onListenerConnected），唯一有效恢复是系统级撤销+重新授权（用户卸载重装/清数据重配即此效果）。因此看门狗升级为「完整重连序列」：stopService → 组件 disable → 1.5s → enable → 重启服务 → requestRebind（`ListenerRecovery.forceReconnect`，须在独立作用域执行——序列会 stopService 销毁服务，用服务自己的 scope 会在 onDestroy 时 cancel 中断）；序列连续 2 次无效 → 持久化 `listener_recovery_failed` 标记 → UI 显示「立即重试 / 重新授权」逃生通道（跳系统「通知使用权」设置页），用户无需再卸载重装。
+  - **[HyperOS 3.0.308 实机证据 2026-08（issue #2 日志）]**：应用开关关闭再打开后，`requestRebind()` 被系统静默忽略（连续多次调用、永不回调 onListenerConnected），唯一有效恢复是系统级撤销+重新授权（用户卸载重装/清数据重配即此效果）。因此检测到绑定断开（`onListenerDisconnected` 或看门狗）后走「快速自愈」：先无损 `requestRebind` → 短观察（2.5s）→ 完整重连序列（stopService → 组件 disable → 1.5s → enable → 重启服务 → requestRebind，`ListenerRecovery.runForceReconnectSequence`，须在独立作用域执行——序列会 stopService 销毁服务，用服务自己的 scope 会在 onDestroy 时 cancel 中断）→ 观察（4s）；序列仍无效则**立即**持久化 `listener_recovery_failed` 标记（从断开到标记失败约 10s，不做长时间重连，避免用户误以为卡死）→ UI 显示「立即重试 / 重新授权」逃生通道（跳系统「通知使用权」设置页），用户无需再卸载重装。恢复成功（`onListenerConnected`）即清除该标记。
 - Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。
 - 小米 HyperOS（真机实测）：应用内「电池白名单」（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）与「后台运行」（应用详情→省电策略）两个入口同质——电池优化请求被重定向到小米自家省电策略页；白名单设成功后后台相对稳定，但任务卡片（recents）不锁定 + 未开自启动时，用户划掉卡片进程仍会被杀。原生 Android 上两入口不同质（系统弹窗 vs 应用详情页），华为/OPPO/vivo 的 OEM 后台限制独立于标准白名单 → 跨 ROM 的权限引导设计必须同时保留两个入口，不因单一 ROM 观察而合并。来源：notes/inbox/2026-07-30.md，owner 2026-07-31 验收。
 - Android 10+ 后台 `startActivity` 静默失败（不抛异常，`try/catch` 兜底不触发）：报警弹窗靠持久化 + App 打开时补弹（`MonitoringViewModel.init`）。

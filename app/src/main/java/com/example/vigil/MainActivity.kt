@@ -127,6 +127,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        // 冷启动也消费报警通知 Intent；暖启动由 onNewIntent 处理。
+        // 不能只依赖进程内事件，服务/Activity 任一重建后事件都可能已经丢失。
+        handleIntentForAlert(intent)
         Log.d(TAG, "MainActivity onCreate 完成。")
     }
 

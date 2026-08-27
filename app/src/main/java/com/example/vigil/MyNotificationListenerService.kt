@@ -22,7 +22,6 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat as CoreNotificationManagerCompat
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -122,6 +121,8 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val WAKELOCK_TAG = "Vigil::KeywordAlertWakeLock"
         private const val FOREGROUND_NOTIFICATION_ID = 717
         private const val FOREGROUND_CHANNEL_ID = "vigil_foreground_channel"
+        private const val ALERT_CHANNEL_ID = "vigil_active_alert_channel"
+        private const val ALERT_PENDING_INTENT_REQUEST_CODE = 718
         private const val WAKELOCK_TIMEOUT_MS = 5 * 60 * 1000L  // 5 分钟，应对激进电池优化设备
         private const val PENDING_ALERT_TTL_MS = 30 * 60 * 1000L  // 未确认报警恢复窗口：30 分钟
         private const val UNKNOWN_DURATION_LOOP_TIMEOUT_MS = 60_000L
@@ -159,6 +160,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 stopRingtoneAndLock()
                 activeAlertKeyword = null
                 activeAlertSourceApp = null
+                updateForegroundNotification()
             }
         }
         createNotificationChannel()
@@ -324,6 +326,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             sharedPreferencesHelper.savePendingAlert(matchedKeyword, alertRingtoneValue, alertLoopLimit, sourceAppName)
             activeAlertKeyword = matchedKeyword
             activeAlertSourceApp = sourceAppName
+            updateForegroundNotification()
 
             val finalMatchedKeyword = matchedKeyword
             val snippet = "$title $text".trim().take(100).ifEmpty { null }
@@ -349,7 +352,6 @@ class MyNotificationListenerService : NotificationListenerService() {
                     Log.i(TAG, "已尝试启动 MainActivity 以显示提醒 (关键词: $finalMatchedKeyword)。")
                 } catch (e: Exception) {
                     Log.e(TAG, "启动 MainActivity 时发生错误: ", e)
-                    sendFallbackNotification(finalMatchedKeyword, "请打开应用查看详情")
                 }
             }
         }
@@ -390,6 +392,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         VigilLogger.w(applicationContext, TAG, "恢复未确认报警 (keyword=$keyword, 已播=${pending.playedLoops}/${pending.loopLimit})：进程重建后重新响铃")
         activeAlertKeyword = keyword
         activeAlertSourceApp = pending.sourceApp
+        updateForegroundNotification()
         handler.post {
             acquireWakeLock()
             playRingtoneLooping(pending.ringtoneUri, pending.loopLimit, pending.playedLoops)
@@ -407,53 +410,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 startActivity(activityIntent)
             } catch (e: Exception) {
                 Log.e(TAG, "恢复报警时启动 MainActivity 出错: ", e)
-                sendFallbackNotification(keyword, "请打开应用查看详情")
             }
-        }
-    }
-
-    private fun sendFallbackNotification(keyword: String, additionalInfo: String? = null) {
-        if (!PermissionUtils.canPostNotifications(this)) {
-            Log.w(TAG, "备选通知：无 POST_NOTIFICATIONS 权限，无法发送。")
-            return
-        }
-
-        val mainActivityIntent = Intent(this, MainActivity::class.java).apply {
-            action = ACTION_SHOW_ALERT_FROM_SERVICE // 点击通知也使用这个 Action
-            putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, keyword)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-        }
-
-        val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        val intentAction = PendingIntent.getActivity(this, System.currentTimeMillis().toInt() % 10001, mainActivityIntent, pendingIntentFlags)
-
-        val notificationTitle = getString(R.string.app_name) // 使用应用名称作为标题
-        val baseMessage = getString(R.string.alert_dialog_message_keyword_format, keyword) // "检测到关键词: '%1$s'"
-
-        val builder = NotificationCompat.Builder(this, FOREGROUND_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_icon)
-            .setContentTitle(notificationTitle)
-            .setContentText(baseMessage)
-            .setPriority(NotificationCompat.PRIORITY_HIGH) // 提高优先级
-            .setAutoCancel(true)
-            .setContentIntent(intentAction)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(intentAction, true) // 尝试使用全屏 Intent (需要 USE_FULL_SCREEN_INTENT 权限)
-
-        try {
-            // 使用随机ID以避免覆盖前台服务通知
-            val alertNotificationId = System.currentTimeMillis().toInt() % 10000
-            if (alertNotificationId == FOREGROUND_NOTIFICATION_ID) {
-                // 避免与前台服务通知ID冲突
-                CoreNotificationManagerCompat.from(this).notify(alertNotificationId + 1, builder.build())
-            } else {
-                CoreNotificationManagerCompat.from(this).notify(alertNotificationId, builder.build())
-            }
-            Log.i(TAG, "已发送备选通知 (关键词: $keyword)。")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "发送备选通知时捕获到 SecurityException", e)
-        } catch (e: Exception) {
-            Log.e(TAG, "发送备选通知时发生其他错误", e)
         }
     }
 
@@ -483,10 +440,11 @@ class MyNotificationListenerService : NotificationListenerService() {
     
     private fun updateForegroundNotification() {
         try {
-            // 使用简单明确的方式更新通知
-            val notification = createForegroundServiceNotification()
+            val notification = activeAlertKeyword?.let { keyword ->
+                createActiveAlertNotification(keyword, activeAlertSourceApp)
+            } ?: createForegroundServiceNotification()
             startForeground(FOREGROUND_NOTIFICATION_ID, notification)
-            Log.d(TAG, "已更新前台服务通知")
+            Log.d(TAG, "已更新前台服务通知 (activeAlert=${activeAlertKeyword != null})")
         } catch (e: Exception) {
             Log.e(TAG, "更新前台服务通知时出错", e)
         }
@@ -672,6 +630,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
         activeAlertKeyword = null
         activeAlertSourceApp = null
+        updateForegroundNotification()
     }
 
     /** 写一条报警历史记录；keyword/sourceApp 缺失时从持久化 pending 兜底。 */
@@ -747,7 +706,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // 只创建前台服务通知渠道
+            // 常规监听状态渠道：低打扰常驻。
             val foregroundChannelName = "监控服务状态"
             val foregroundChannelDesc = "Vigil服务运行状态通知"
             val foregroundChannel = NotificationChannel(
@@ -762,9 +721,61 @@ class MyNotificationListenerService : NotificationListenerService() {
             val notificationManager: NotificationManager =
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(foregroundChannel)
+
+            // 报警进行中渠道：通知栏明显可见，但不额外发声或振动，铃声由 MediaPlayer 负责。
+            val alertChannel = NotificationChannel(
+                ALERT_CHANNEL_ID,
+                "报警进行中",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "关键词报警触发时提供快速进入应用的处理入口"
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(true)
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            }
+            notificationManager.createNotificationChannel(alertChannel)
             
             Log.d(TAG,"前台服务通知渠道已创建/更新")
         }
+    }
+
+    private fun createActiveAlertNotification(keyword: String, sourceApp: String?): Notification {
+        val notificationIntent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_SHOW_ALERT_FROM_SERVICE
+            putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, keyword)
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            ALERT_PENDING_INTENT_REQUEST_CODE,
+            notificationIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val detail = sourceApp?.let { "检测到“$keyword”，来自 $it；点击进入处理" }
+            ?: "检测到“$keyword”；点击进入处理"
+        val publicVersion = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle("Vigil 报警进行中")
+            .setContentText("点击进入应用处理")
+            .setSmallIcon(R.drawable.ic_notification_icon)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        return NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            .setContentTitle("Vigil 报警进行中")
+            .setContentText(detail)
+            .setSmallIcon(R.drawable.ic_notification_icon)
+            .setContentIntent(pendingIntent)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .build()
     }
 
     private fun createForegroundServiceNotification(): Notification {

@@ -29,7 +29,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 构建：`./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`
 - 版本号：`app/build.gradle.kts` 的 `versionCode`/`versionName`
 - 核心代码：
-  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连，触发 `ListenerRecovery` 快速自愈）；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束（写记录 → 清 pending → 停铃 → emit alertAutoEnded 关弹窗）
+  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连，触发 `ListenerRecovery` 快速自愈）；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束（写记录 → 清 pending → 停铃 → emit alertAutoEnded 关弹窗）；响铃期间同一前台服务通知 ID 切换到高优先级报警渠道，点击携带持久化关键词进入处理，结束后切回普通监听通知
   - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（快速自愈：requestRebind → 短观察 → 完整重连序列 → 无效即标记 `listener_recovery_failed`），Service 与 MainActivity 共用
   - `app/src/main/java/com/example/vigil/RingtoneLibrary.kt` — 铃声库（P2 自定义铃声来源）+ 内置预设（随 APK 打包）：导入 SAF 音频复制到 `filesDir/ringtones/`、录音（MediaRecorder m4a/AAC）、试听、删除；铃声值约定 `content://` = 系统铃声 / `android.resource://<pkg>/raw/<name>` = 内置预设（res/raw WAV，不可删除，owner 提供 TTS 语音，MP3 因质量未采用）/ 其他非空 = 库内文件绝对路径 / null = 系统默认闹钟；`resolve()` 解析播放数据源（预设经 AssetFileDescriptor 播放——见「已知平台坑」），文件缺失回落并写日志；试听状态变化经 `onPreviewStateChanged` 回调刷新 UI
   - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、默认铃声、关键词级铃声/循环次数映射 `keyword_ringtones`/`keyword_loop_counts`、全局默认循环次数 `default_loop_count`（1–10；旧版无限/越界值迁移到范围内）、未确认报警 pending（含铃声 URI/loopLimit/已播次数/来源应用）、报警历史 `alert_history`（JSON，上限 100 条）、listener_connected 绑定状态）

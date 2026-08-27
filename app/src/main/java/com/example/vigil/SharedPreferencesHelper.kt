@@ -24,8 +24,8 @@ data class PendingAlert(
     val keyword: String,
     val timestamp: Long,
     val ringtoneUri: String?,
-    val loopLimit: Int,      // 0 = 直到用户确认（无限循环）
-    val playedLoops: Int,    // 已播放次数（有限档位下续播依据）
+    val loopLimit: Int,      // 1..10，达到次数后自动结束
+    val playedLoops: Int,    // 已播放次数（进程重建后的续播依据）
     val sourceApp: String?
 )
 
@@ -64,8 +64,17 @@ class SharedPreferencesHelper(context: Context) {
         // 关键词级铃声与循环次数映射（JSON：{keyword: 值}）
         private const val KEY_KEYWORD_RINGTONES = "keyword_ringtones"
         private const val KEY_KEYWORD_LOOP_COUNTS = "keyword_loop_counts"
-        // 全局默认循环次数：0 = 直到用户确认（无限）
+        // 全局默认循环次数：1..10；旧版 0（无限）迁移为 10
         private const val KEY_DEFAULT_LOOP_COUNT = "default_loop_count"
+
+        const val MIN_LOOP_COUNT = 1
+        const val MAX_LOOP_COUNT = 10
+        const val DEFAULT_LOOP_COUNT = MAX_LOOP_COUNT
+
+        internal fun normalizeLoopCount(count: Int): Int = when (count) {
+            0 -> DEFAULT_LOOP_COUNT
+            else -> count.coerceIn(MIN_LOOP_COUNT, MAX_LOOP_COUNT)
+        }
 
         // 报警历史记录（JSON array，新→旧，上限 MAX_ALERT_HISTORY 条）
         private const val KEY_ALERT_HISTORY = "alert_history"
@@ -293,15 +302,16 @@ class SharedPreferencesHelper(context: Context) {
      * ringtoneUri/loopLimit/sourceApp 一并持久化：进程重建恢复时用同一铃声续播剩余次数（铁律 3）。
      */
     fun savePendingAlert(keyword: String, ringtoneUri: String?, loopLimit: Int, sourceApp: String?) {
+        val normalizedLoopLimit = normalizeLoopCount(loopLimit)
         prefs.edit()
             .putString(KEY_PENDING_ALERT_KEYWORD, keyword)
             .putLong(KEY_PENDING_ALERT_TIMESTAMP, System.currentTimeMillis())
             .putString(KEY_PENDING_ALERT_RINGTONE_URI, ringtoneUri)
-            .putInt(KEY_PENDING_ALERT_LOOP_LIMIT, loopLimit)
+            .putInt(KEY_PENDING_ALERT_LOOP_LIMIT, normalizedLoopLimit)
             .putInt(KEY_PENDING_ALERT_PLAYED_LOOPS, 0)
             .putString(KEY_PENDING_ALERT_SOURCE_APP, sourceApp)
             .apply()
-        Log.i("SharedPreferencesHelper", "未确认报警已持久化: $keyword (loopLimit=$loopLimit)")
+        Log.i("SharedPreferencesHelper", "未确认报警已持久化: $keyword (loopLimit=$normalizedLoopLimit)")
     }
 
     /**
@@ -309,11 +319,16 @@ class SharedPreferencesHelper(context: Context) {
      */
     fun getPendingAlert(): PendingAlert? {
         val keyword = prefs.getString(KEY_PENDING_ALERT_KEYWORD, null) ?: return null
+        val storedLoopLimit = prefs.getInt(KEY_PENDING_ALERT_LOOP_LIMIT, DEFAULT_LOOP_COUNT)
+        val normalizedLoopLimit = normalizeLoopCount(storedLoopLimit)
+        if (storedLoopLimit != normalizedLoopLimit) {
+            prefs.edit().putInt(KEY_PENDING_ALERT_LOOP_LIMIT, normalizedLoopLimit).apply()
+        }
         return PendingAlert(
             keyword = keyword,
             timestamp = prefs.getLong(KEY_PENDING_ALERT_TIMESTAMP, 0L),
             ringtoneUri = prefs.getString(KEY_PENDING_ALERT_RINGTONE_URI, null),
-            loopLimit = prefs.getInt(KEY_PENDING_ALERT_LOOP_LIMIT, 0),
+            loopLimit = normalizedLoopLimit,
             playedLoops = prefs.getInt(KEY_PENDING_ALERT_PLAYED_LOOPS, 0),
             sourceApp = prefs.getString(KEY_PENDING_ALERT_SOURCE_APP, null)
         )
@@ -361,20 +376,32 @@ class SharedPreferencesHelper(context: Context) {
     /** 保存关键词 → 循环次数覆盖；count 为 null 表示移除覆盖（跟随全局默认）。 */
     fun saveKeywordLoopCount(keyword: String, count: Int?) {
         val obj = JSONObject(prefs.getString(KEY_KEYWORD_LOOP_COUNTS, null) ?: "{}")
-        if (count == null) obj.remove(keyword) else obj.put(keyword, count)
+        if (count == null) obj.remove(keyword) else obj.put(keyword, normalizeLoopCount(count))
         prefs.edit().putString(KEY_KEYWORD_LOOP_COUNTS, obj.toString()).apply()
         Log.i("SharedPreferencesHelper", "关键词循环次数覆盖已保存: $keyword -> $count")
     }
 
     /** 关键词的循环次数覆盖；未覆盖返回 null（调用方用全局默认）。 */
     fun getKeywordLoopCount(keyword: String): Int? {
-        val obj = JSONObject(prefs.getString(KEY_KEYWORD_LOOP_COUNTS, null) ?: "{}")
-        return if (obj.has(keyword)) obj.getInt(keyword) else null
+        return getKeywordLoopCountMap()[keyword]
     }
 
     fun getKeywordLoopCountMap(): Map<String, Int> {
         val obj = JSONObject(prefs.getString(KEY_KEYWORD_LOOP_COUNTS, null) ?: "{}")
-        return obj.keys().asSequence().associateWith { obj.getInt(it) }
+        var changed = false
+        val result = obj.keys().asSequence().associateWith { keyword ->
+            val stored = obj.getInt(keyword)
+            normalizeLoopCount(stored).also { normalized ->
+                if (stored != normalized) {
+                    obj.put(keyword, normalized)
+                    changed = true
+                }
+            }
+        }
+        if (changed) {
+            prefs.edit().putString(KEY_KEYWORD_LOOP_COUNTS, obj.toString()).apply()
+        }
+        return result
     }
 
     /** 移除某关键词的全部个性化配置（删除关键词时调用）。 */
@@ -383,14 +410,20 @@ class SharedPreferencesHelper(context: Context) {
         saveKeywordLoopCount(keyword, null)
     }
 
-    /** 全局默认循环次数：0 = 直到用户确认（无限）。 */
+    /** 全局默认循环次数：1..10；范围外旧值读取/保存时自动迁移。 */
     fun saveDefaultLoopCount(count: Int) {
-        prefs.edit().putInt(KEY_DEFAULT_LOOP_COUNT, count).apply()
-        Log.i("SharedPreferencesHelper", "默认循环次数已保存: $count")
+        val normalized = normalizeLoopCount(count)
+        prefs.edit().putInt(KEY_DEFAULT_LOOP_COUNT, normalized).apply()
+        Log.i("SharedPreferencesHelper", "默认循环次数已保存: $normalized")
     }
 
     fun getDefaultLoopCount(): Int {
-        return prefs.getInt(KEY_DEFAULT_LOOP_COUNT, 0)
+        val stored = prefs.getInt(KEY_DEFAULT_LOOP_COUNT, DEFAULT_LOOP_COUNT)
+        val normalized = normalizeLoopCount(stored)
+        if (stored != normalized) {
+            prefs.edit().putInt(KEY_DEFAULT_LOOP_COUNT, normalized).apply()
+        }
+        return normalized
     }
 
     private fun readJsonStringMap(key: String): Map<String, String> {

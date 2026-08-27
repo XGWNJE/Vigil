@@ -36,10 +36,10 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var currentRingtoneValue: String? = null
     @Volatile private var keywords: List<String> = emptyList()
 
-    // 关键词级铃声/循环次数映射与全局默认循环次数（0=直到确认）
+    // 关键词级铃声/循环次数映射与全局默认循环次数（1..10）
     @Volatile private var keywordRingtoneMap: Map<String, String> = emptyMap()
     @Volatile private var keywordLoopCountMap: Map<String, Int> = emptyMap()
-    @Volatile private var defaultLoopCount: Int = 0
+    @Volatile private var defaultLoopCount: Int = SharedPreferencesHelper.DEFAULT_LOOP_COUNT
 
     // 当前活动报警信息（写历史记录用；进程重建后为 null，恢复路径另行回填）
     private var activeAlertKeyword: String? = null
@@ -49,6 +49,12 @@ class MyNotificationListenerService : NotificationListenerService() {
     @Volatile private var filteredAppPackages: Set<String> = emptySet()
 
     private var mediaPlayer: MediaPlayer? = null
+    private var loopCompletionTimeout: Runnable? = null
+    private var activePlayedLoops: Int = 0
+    private var loopCycleId: Long = 0L
+    private var loopCycleStartedAtMs: Long = 0L
+    private var activeLoopDurationMs: Long = 0L
+    private var loopCycleSettled: Boolean = true
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -118,6 +124,8 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val FOREGROUND_CHANNEL_ID = "vigil_foreground_channel"
         private const val WAKELOCK_TIMEOUT_MS = 5 * 60 * 1000L  // 5 分钟，应对激进电池优化设备
         private const val PENDING_ALERT_TTL_MS = 30 * 60 * 1000L  // 未确认报警恢复窗口：30 分钟
+        private const val UNKNOWN_DURATION_LOOP_TIMEOUT_MS = 60_000L
+        private const val MIN_COMPLETION_PROGRESS_RATIO = 0.8
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
@@ -485,11 +493,14 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     /**
-     * 播放报警铃声。loopLimit=0 表示直到用户确认（isLooping 无限循环）；
-     * 有限档位下不用 isLooping，改用 OnCompletion 手动重启计数，到数自动结束。
+     * 播放报警铃声。loopLimit 限制为 1..10；使用 OnCompletion 手动重启计数，到数自动结束。
      * preferredValue 为铃声值（content:// URI 或铃声库文件路径），null/文件缺失时回落默认铃声，再回落系统默认闹钟铃声。
      */
-    private fun playRingtoneLooping(preferredValue: String?, loopLimit: Int = 0, alreadyPlayed: Int = 0) {
+    private fun playRingtoneLooping(
+        preferredValue: String?,
+        loopLimit: Int = SharedPreferencesHelper.DEFAULT_LOOP_COUNT,
+        alreadyPlayed: Int = 0
+    ) {
         // 防止并发触发：正在准备或播放中则忽略新请求
         if (playerState == PlayerState.PREPARING || playerState == PlayerState.PLAYING) {
             Log.d(TAG, "playRingtoneLooping: 已在播放中 ($playerState)，忽略重复请求。")
@@ -512,7 +523,11 @@ class MyNotificationListenerService : NotificationListenerService() {
             is RingtoneLibrary.DataSource.RawResource -> "preset:${dataSource.rawName}"
         }
         playerState = PlayerState.PREPARING
-        var playedCount = alreadyPlayed
+        val normalizedLoopLimit = loopLimit.coerceIn(
+            SharedPreferencesHelper.MIN_LOOP_COUNT,
+            SharedPreferencesHelper.MAX_LOOP_COUNT
+        )
+        activePlayedLoops = alreadyPlayed
         try {
             mediaPlayer = MediaPlayer().apply {
                 when (dataSource) {
@@ -534,15 +549,15 @@ class MyNotificationListenerService : NotificationListenerService() {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
                 setAudioAttributes(audioAttributes)
-                isLooping = (loopLimit == 0)
+                isLooping = false
                 prepareAsync()
                 setOnPreparedListener { mp ->
                     if (playerState == PlayerState.PREPARING) {
                         playerState = PlayerState.PLAYING
                         Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
-                        VigilLogger.i(applicationContext, TAG, "报警铃声开始播放 (source=$dataSourceDesc, loopLimit=${if (loopLimit == 0) "无限" else loopLimit}, 已播=$alreadyPlayed)")
+                        VigilLogger.i(applicationContext, TAG, "报警铃声开始播放 (source=$dataSourceDesc, loopLimit=$normalizedLoopLimit, 已播=$alreadyPlayed)")
                         try {
-                            mp.start()
+                            startPlaybackCycle(mp, normalizedLoopLimit, seekToStart = false)
                         } catch (startEx: IllegalStateException) {
                             Log.e(TAG, "MediaPlayer 调用 start() 时出错", startEx)
                             playerState = PlayerState.STOPPED
@@ -554,32 +569,8 @@ class MyNotificationListenerService : NotificationListenerService() {
                         mp.release()
                     }
                 }
-                if (loopLimit > 0) {
-                    setOnCompletionListener { mp ->
-                        if (playerState != PlayerState.PLAYING) {
-                            Log.d(TAG, "onCompletion: 播放已停止 ($playerState)，忽略。")
-                            return@setOnCompletionListener
-                        }
-                        playedCount++
-                        sharedPreferencesHelper.updatePendingAlertPlayedLoops(playedCount)
-                        // 续期唤醒锁：高档位（如 100 次 × 长铃声）总时长会超过单次 wakelock 超时
-                        releaseWakeLock()
-                        acquireWakeLock()
-                        if (playedCount >= loopLimit) {
-                            Log.i(TAG, "循环次数已用完 ($playedCount/$loopLimit)，自动结束报警。")
-                            autoEndAlert(activeAlertKeyword)
-                        } else {
-                            Log.d(TAG, "循环续播 ($playedCount/$loopLimit)")
-                            try {
-                                mp.seekTo(0)
-                                mp.start()
-                            } catch (e: IllegalStateException) {
-                                Log.e(TAG, "循环续播失败", e)
-                                playerState = PlayerState.STOPPED
-                                stopRingtoneAndLock()
-                            }
-                        }
-                    }
+                setOnCompletionListener { mp ->
+                    handleCompletedLoop(mp, normalizedLoopLimit, "onCompletion")
                 }
                 setOnErrorListener { _, what, extra ->
                     Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, source: $dataSourceDesc")
@@ -591,6 +582,80 @@ class MyNotificationListenerService : NotificationListenerService() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "设置 MediaPlayer 数据源或准备时出错", e)
+            playerState = PlayerState.STOPPED
+            stopRingtoneAndLock()
+        }
+    }
+
+    /**
+     * 部分系统闹钟文件带 autoLoop 元数据，即使 isLooping=false 也不会触发 OnCompletion。
+     * 按媒体时长设置兜底，保证 1..10 次限制最终一定生效。
+     */
+    private fun startPlaybackCycle(player: MediaPlayer, loopLimit: Int, seekToStart: Boolean) {
+        cancelLoopCompletionTimeout()
+        if (seekToStart) {
+            player.seekTo(0)
+        }
+        loopCycleId++
+        loopCycleSettled = false
+        loopCycleStartedAtMs = SystemClock.elapsedRealtime()
+        activeLoopDurationMs = player.duration.toLong().coerceAtLeast(0L)
+        player.start()
+        scheduleLoopCompletionTimeout(player, loopLimit, loopCycleId)
+    }
+
+    private fun scheduleLoopCompletionTimeout(player: MediaPlayer, loopLimit: Int, cycleId: Long) {
+        val timeoutMs = activeLoopDurationMs.takeIf { it > 0L }
+            ?: UNKNOWN_DURATION_LOOP_TIMEOUT_MS.also {
+                Log.w(TAG, "无法读取铃声时长，使用 ${it}ms 有界兜底。")
+            }
+        loopCompletionTimeout = Runnable {
+            if (mediaPlayer === player && playerState == PlayerState.PLAYING && loopCycleId == cycleId) {
+                Log.w(TAG, "铃声时长已到但未收到 OnCompletion，按一次播放完成处理 (duration=${activeLoopDurationMs}ms)")
+                handleCompletedLoop(player, loopLimit, "durationFallback", cycleId)
+            }
+        }.also { handler.postDelayed(it, timeoutMs) }
+    }
+
+    private fun cancelLoopCompletionTimeout() {
+        loopCompletionTimeout?.let(handler::removeCallbacks)
+        loopCompletionTimeout = null
+    }
+
+    private fun handleCompletedLoop(player: MediaPlayer, loopLimit: Int, source: String, cycleId: Long = loopCycleId) {
+        if (mediaPlayer !== player || playerState != PlayerState.PLAYING || loopCycleId != cycleId) {
+            Log.d(TAG, "$source: 播放已停止 ($playerState)，忽略。")
+            return
+        }
+        if (loopCycleSettled) {
+            Log.d(TAG, "$source: 当前播放轮次已结算，忽略重复回调。")
+            return
+        }
+        if (source == "onCompletion" && activeLoopDurationMs > 0L) {
+            val elapsedMs = SystemClock.elapsedRealtime() - loopCycleStartedAtMs
+            val minimumValidElapsedMs = (activeLoopDurationMs * MIN_COMPLETION_PROGRESS_RATIO).toLong()
+            if (elapsedMs < minimumValidElapsedMs) {
+                Log.w(TAG, "$source: 收到上一轮迟到回调，忽略 (elapsed=${elapsedMs}ms, duration=${activeLoopDurationMs}ms)")
+                return
+            }
+        }
+        loopCycleSettled = true
+        cancelLoopCompletionTimeout()
+        activePlayedLoops++
+        sharedPreferencesHelper.updatePendingAlertPlayedLoops(activePlayedLoops)
+        // 每次播完续期唤醒锁，保证长铃声和高档位期间 CPU 不休眠。
+        releaseWakeLock()
+        acquireWakeLock()
+        if (activePlayedLoops >= loopLimit) {
+            Log.i(TAG, "循环次数已用完 ($activePlayedLoops/$loopLimit)，自动结束报警。")
+            autoEndAlert(activeAlertKeyword)
+            return
+        }
+        Log.d(TAG, "循环续播 ($activePlayedLoops/$loopLimit, source=$source)")
+        try {
+            startPlaybackCycle(player, loopLimit, seekToStart = true)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "循环续播失败", e)
             playerState = PlayerState.STOPPED
             stopRingtoneAndLock()
         }
@@ -620,6 +685,9 @@ class MyNotificationListenerService : NotificationListenerService() {
     }
 
     private fun stopRingtone() {
+        cancelLoopCompletionTimeout()
+        loopCycleId++
+        loopCycleSettled = true
         playerState = PlayerState.STOPPED
         mediaPlayer?.let {
             try {

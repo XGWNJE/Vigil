@@ -56,6 +56,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -577,7 +578,7 @@ fun MainScreen(
                     RowValue(selectedRingtoneName, withArrow = true)
                 }
 
-                // 3. 循环次数：0=直到确认；关键词可在 chip 弹窗里逐条覆盖
+                // 3. 循环次数：1..10；关键词可在 chip 弹窗里逐条覆盖
                 LineRow(onClick = { loopCountDialogTarget = "" }) {
                     RowLabel("循环次数")
                     RowValue(formatLoopCount(defaultLoopCount), withArrow = true)
@@ -783,10 +784,11 @@ fun MainScreen(
         val isGlobal = target.isEmpty()
         LoopCountDialog(
             selected = if (isGlobal) defaultLoopCount else settingsViewModel.getKeywordLoopCount(target),
+            defaultValue = defaultLoopCount,
             showFollowDefault = !isGlobal,
             onSelect = { count ->
                 if (isGlobal) {
-                    settingsViewModel.onDefaultLoopCountSelected(count ?: 0)
+                    settingsViewModel.onDefaultLoopCountSelected(count ?: SharedPreferencesHelper.DEFAULT_LOOP_COUNT)
                 } else {
                     settingsViewModel.onKeywordLoopCountSelected(target, count)
                 }
@@ -1167,9 +1169,9 @@ private fun AddKeywordDialog(
     )
 }
 
-/** 循环次数档位的显示文案：0 = 直到确认（无限） */
+/** 循环次数显示文案。 */
 private fun formatLoopCount(count: Int): String {
-    return if (count == 0) "直到确认" else "$count 次"
+    return "$count 次"
 }
 
 /**
@@ -1402,25 +1404,21 @@ private fun RingtoneSelectDialog(
 }
 
 /**
- * 循环次数档位弹窗：直到确认 / 100 / 50 / 10 / 3 次。
- * 关键词覆盖场景多一档「跟随默认」（selected=null 时选中它）。
+ * 循环次数弹窗：以离散滑杆在 1..10 次之间逐次调节。
+ * 关键词覆盖场景可选择「跟随默认」（selected=null 时启用）。
  */
 @Composable
 private fun LoopCountDialog(
     selected: Int?,
+    defaultValue: Int,
     showFollowDefault: Boolean,
     onSelect: (Int?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // 选项：null = 跟随默认（仅关键词覆盖场景），0 = 直到确认，其余为次数
-    val options: List<Pair<Int?, String>> = buildList {
-        if (showFollowDefault) add(null to "跟随默认")
-        add(0 to "直到确认")
-        add(100 to "100 次自动结束")
-        add(50 to "50 次自动结束")
-        add(10 to "10 次自动结束")
-        add(3 to "3 次自动结束")
+    var pendingValue by remember(selected) {
+        mutableIntStateOf(selected ?: defaultValue)
     }
+    var followDefault by remember(selected) { mutableStateOf(showFollowDefault && selected == null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = VigilDirABg,
@@ -1437,22 +1435,21 @@ private fun LoopCountDialog(
         },
         text = {
             Column {
-                options.forEach { (value, label) ->
-                    val isSelected = value == selected
+                if (showFollowDefault) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(value) }
+                            .clickable { followDefault = true }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = label,
+                            text = "跟随默认",
                             fontSize = 13.sp,
-                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                            color = if (followDefault) VigilDirAAcid else VigilDirAInk
                         )
-                        if (isSelected) {
+                        if (followDefault) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
@@ -1461,9 +1458,40 @@ private fun LoopCountDialog(
                         }
                     }
                 }
+                Text(
+                    text = if (followDefault) "默认（$defaultValue 次）" else "$pendingValue 次",
+                    fontSize = 13.sp,
+                    color = if (followDefault) VigilDirADim else VigilDirAAcid,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Slider(
+                    value = pendingValue.toFloat(),
+                    onValueChange = {
+                        pendingValue = it.toInt().coerceIn(
+                            SharedPreferencesHelper.MIN_LOOP_COUNT,
+                            SharedPreferencesHelper.MAX_LOOP_COUNT
+                        )
+                        followDefault = false
+                    },
+                    valueRange = SharedPreferencesHelper.MIN_LOOP_COUNT.toFloat()..
+                        SharedPreferencesHelper.MAX_LOOP_COUNT.toFloat(),
+                    steps = SharedPreferencesHelper.MAX_LOOP_COUNT - SharedPreferencesHelper.MIN_LOOP_COUNT - 1
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("1 次", fontSize = 11.sp, color = VigilDirADim)
+                    Text("10 次", fontSize = 11.sp, color = VigilDirADim)
+                }
             }
         },
         confirmButton = {
+            TextButton(onClick = { onSelect(if (followDefault) null else pendingValue) }) {
+                Text(text = "确定", color = VigilDirAAcid)
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(text = "取消", color = VigilDirADim)
             }

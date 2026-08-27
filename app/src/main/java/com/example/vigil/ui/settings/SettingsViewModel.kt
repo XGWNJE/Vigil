@@ -62,7 +62,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _selectedRingtoneName = mutableStateOf(context.getString(R.string.no_ringtone_selected))
     val selectedRingtoneName: State<String> = _selectedRingtoneName
 
-    // --- 循环次数（0=直到确认）与报警记录 ---
+    // --- 循环次数（1..10）与报警记录 ---
     private val _defaultLoopCount = mutableStateOf(sharedPreferencesHelper.getDefaultLoopCount())
     val defaultLoopCount: State<Int> = _defaultLoopCount
 
@@ -309,10 +309,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     // --- 循环次数与关键词级铃声 ---
 
     fun onDefaultLoopCountSelected(count: Int) {
-        _defaultLoopCount.value = count
-        sharedPreferencesHelper.saveDefaultLoopCount(count)
+        val normalized = count.coerceIn(
+            SharedPreferencesHelper.MIN_LOOP_COUNT,
+            SharedPreferencesHelper.MAX_LOOP_COUNT
+        )
+        _defaultLoopCount.value = normalized
+        sharedPreferencesHelper.saveDefaultLoopCount(normalized)
         notifyServiceToUpdateSettingsCallback?.invoke()
-        Log.i(TAG, "Default loop count saved: $count")
+        Log.i(TAG, "Default loop count saved: $normalized")
     }
 
     /** 关键词的循环次数覆盖；null = 跟随默认。 */

@@ -93,6 +93,12 @@ class SharedPreferencesHelper(context: Context) {
         // 锁定任务卡片引导行被用户「不再提示」关闭
         private const val KEY_LOCK_TASK_TIP_DISMISSED = "lock_task_tip_dismissed"
 
+        // 自动更新：用户对某版本点了「稍后」后，冷启动不再重复提示该版本（手动检查仍可触发）
+        private const val KEY_LAST_DISMISSED_UPDATE = "last_dismissed_update_version"
+
+        // 调试专用（仅 debug 构建生效）：覆盖 GitHub API 基址，用于本地模拟更新返回，生产为空
+        private const val KEY_DEBUG_UPDATE_API_BASE = "debug_update_api_base"
+
         fun isServiceEnabledByUser(context: Context): Boolean {
             return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getBoolean(KEY_SERVICE_ENABLED, false)
@@ -512,5 +518,31 @@ class SharedPreferencesHelper(context: Context) {
             prefs.edit().putString(KEY_RINGTONE_LIBRARY, JSONObject(map as Map<*, *>).toString()).apply()
             Log.i("SharedPreferencesHelper", "铃声库条目已移除: $fileName")
         }
+    }
+
+    // --- 自动更新 ---
+
+    /** 用户上次对某版本点了「稍后」的版本号；冷启动检测到同版本更新时不再重复提示。 */
+    fun getLastDismissedUpdateVersion(): String? {
+        return prefs.getString(KEY_LAST_DISMISSED_UPDATE, null)
+    }
+
+    fun setLastDismissedUpdateVersion(version: String) {
+        prefs.edit().putString(KEY_LAST_DISMISSED_UPDATE, version).apply()
+        Log.i("SharedPreferencesHelper", "已记录稍后提示的更新版本: $version")
+    }
+
+    /** debug 专用：覆盖更新检查的 API 基址（仅 debug 构建读取，生产恒为空）。 */
+    fun getDebugUpdateApiBase(): String? {
+        return prefs.getString(KEY_DEBUG_UPDATE_API_BASE, null)
+    }
+
+    fun setDebugUpdateApiBase(base: String?) {
+        if (base.isNullOrBlank()) {
+            prefs.edit().remove(KEY_DEBUG_UPDATE_API_BASE).apply()
+        } else {
+            prefs.edit().putString(KEY_DEBUG_UPDATE_API_BASE, base).apply()
+        }
+        Log.i("SharedPreferencesHelper", "调试更新 API 基址已设置: $base")
     }
 }

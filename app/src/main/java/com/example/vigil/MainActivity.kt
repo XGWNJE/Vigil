@@ -5,11 +5,14 @@ import android.app.Application
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -25,6 +28,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +43,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.vigil.ui.AppDestinations
 import com.example.vigil.ui.dialogs.KeywordAlertDialog
+import com.example.vigil.ui.dialogs.UpdateDialog
 import com.example.vigil.ui.main.MainScreen
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.settings.AppFilterScreen
@@ -66,6 +71,7 @@ class MainActivity : AppCompatActivity() {
     private val settingsViewModel: SettingsViewModel by viewModels {
         SettingsViewModelFactory(application)
     }
+    private val updateViewModel: UpdateViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "MainActivity onCreate. Intent Action: ${intent?.action}")
@@ -99,7 +105,8 @@ class MainActivity : AppCompatActivity() {
             VigilTheme {
                 VigilApp(
                     monitoringViewModel = this.monitoringViewModel,
-                    settingsViewModel = this.settingsViewModel
+                    settingsViewModel = this.settingsViewModel,
+                    updateViewModel = this.updateViewModel
                 )
 
                 val showDialog by this.monitoringViewModel.showKeywordAlertDialog
@@ -125,11 +132,60 @@ class MainActivity : AppCompatActivity() {
                         eventTimeMillis = alertEventTime.takeIf { it > 0L }
                     )
                 }
+
+                // ---- 应用自动更新：冷启动提示 + 版本号手动检查 + 下载/安装 ----
+                val updateState by this.updateViewModel.state.collectAsState()
+                val appContext = this.applicationContext
+
+                val installPermissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) {
+                    // 用户从「安装未知应用」设置返回
+                    if (UpdateChecker.canInstallPackages(appContext)) {
+                        this.updateViewModel.completeInstall()
+                    } else {
+                        Toast.makeText(appContext, "未授予安装权限，无法自动更新", Toast.LENGTH_LONG).show()
+                        updateViewModel.clearInstallReady()
+                    }
+                }
+
+                // APK 下载完成后触发系统安装；无「安装未知应用」权限时先引导授权
+                LaunchedEffect(updateState.installReady) {
+                    val apk = updateState.installReady ?: return@LaunchedEffect
+                    if (UpdateChecker.canInstallPackages(appContext)) {
+                        updateViewModel.completeInstall()
+                    } else {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:${appContext.packageName}")
+                        )
+                        try {
+                            installPermissionLauncher.launch(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(appContext, "无法打开安装权限设置", Toast.LENGTH_SHORT).show()
+                            updateViewModel.clearInstallReady()
+                        }
+                    }
+                }
+
+                if (updateState.dialog != null || updateState.isDownloading) {
+                    UpdateDialog(
+                        state = updateState,
+                        currentVersionName = UpdateChecker.currentVersionName(this),
+                        onUpdate = { this.updateViewModel.updateNow() },
+                        onDismiss = { this.updateViewModel.dismissDialog() }
+                    )
+                }
             }
         }
         // 冷启动也消费报警通知 Intent；暖启动由 onNewIntent 处理。
         // 不能只依赖进程内事件，服务/Activity 任一重建后事件都可能已经丢失。
         handleIntentForAlert(intent)
+
+        // 冷启动自动检查更新：仅当发现新版本且用户未对同版本点过「稍后」才提示，
+        // 网络不可达/已最新时静默（详见 UpdateViewModel.checkForUpdate）。
+        updateViewModel.checkForUpdate(isColdStart = true)
+
         Log.d(TAG, "MainActivity onCreate 完成。")
     }
 
@@ -284,7 +340,8 @@ class MainActivity : AppCompatActivity() {
     @Composable
     fun VigilApp(
         monitoringViewModel: MonitoringViewModel,
-        settingsViewModel: SettingsViewModel
+        settingsViewModel: SettingsViewModel,
+        updateViewModel: UpdateViewModel
     ) {
         val navController = rememberNavController()
         NavHost(
@@ -309,6 +366,7 @@ class MainActivity : AppCompatActivity() {
                 MainScreen(
                     monitoringViewModel = monitoringViewModel,
                     settingsViewModel = settingsViewModel,
+                    updateViewModel = updateViewModel,
                     onNavigateToAppFilter = { navController.navigate(AppDestinations.AppFilter) },
                     onNavigateToAlertHistory = { navController.navigate(AppDestinations.AlertHistory) },
                     onNavigateToRingtoneLibrary = { navController.navigate(AppDestinations.RingtoneLibrary) }
@@ -343,7 +401,8 @@ class MainActivity : AppCompatActivity() {
             val app = context.applicationContext as Application
             VigilApp(
                 monitoringViewModel = MonitoringViewModel(app),
-                settingsViewModel = SettingsViewModel(app)
+                settingsViewModel = SettingsViewModel(app),
+                updateViewModel = UpdateViewModel(app)
             )
         }
     }

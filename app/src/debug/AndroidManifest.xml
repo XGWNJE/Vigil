@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅 debug 构建：允许 cleartext HTTP，用于本地模拟 GitHub 更新检查（自动化验证）。
+     生产包不合并本文件，保持 cleartext 禁用，仅通过 HTTPS 访问 api.github.com。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application android:usesCleartextTraffic="true"
+        tools:ignore="GoogleAppIndexingWarning" />
+
+</manifest>

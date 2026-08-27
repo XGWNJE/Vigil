@@ -38,8 +38,10 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
   - `app/src/main/java/com/example/vigil/VigilLogger.kt` — 持久化诊断日志（filesDir/logs/vigil.log，1MB 滚动双文件；每条立即 flush）+ 导出拼接（诊断头 + old + 当前），主屏设置 Sheet「导出日志」行经 FileProvider 分享；不写通知正文
   - `app/src/main/java/com/example/vigil/VigilEventBus.kt` — 进程内事件总线（SharedFlow，replay 语义与持久化兜底要求见铁律 5）
   - `app/src/main/java/com/example/vigil/ui/settings/SettingsViewModel.kt` — 关键词/铃声/应用过滤状态与持久化；过滤列表排序：已勾选 → 用户应用优先 → 名称（`appListComparator`，初始加载与勾选切换共用）
-  - `app/src/main/java/com/example/vigil/MainActivity.kt` — Compose 根宿主，生命周期管理，服务启停，报警弹窗承载
-- UI 页面：`MainScreen`（涟漪状态首页；设置 Sheet 双入口：顶栏齿轮 + 上滑手势（底部发丝线把手常驻，首次启动显示「上滑打开设置」，Sheet 打开过一次即收起）；Sheet 内容：关键词、铃声、应用过滤、权限三级分组（REQUIRED 通知使用权 / RECOMMENDED 电池白名单 + 锁定任务卡片引导（「不再提示」后整行隐藏，`lock_task_tip_dismissed`）/ OPTIONAL 自启动管理、后台运行）、导出日志、开源地址）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）
+  - `app/src/main/java/com/example/vigil/MainActivity.kt` — Compose 根宿主，生命周期管理，服务启停，报警弹窗承载；冷启动触发自动更新检查，并处理「安装未知应用」权限与安装调起
+  - `app/src/main/java/com/example/vigil/UpdateChecker.kt` — GitHub 渠道自动更新：`GET /releases/latest` 解析最新版（版本号/发版说明/APK 资产直链），耐用的版本号比较（`isNewer`），APK 下载到 cacheDir、FileProvider 授权调起系统安装。刻意用内置 `HttpURLConnection` + `org.json`，不引第三方库（保极致轻量）。debug 构建可用 `debug_update_api_base`（SharedPreferences）覆盖 API 基址给本地模拟（生产恒访问 GitHub 且仅 HTTPS）
+  - `app/src/main/java/com/example/vigil/UpdateViewModel.kt` — 自动更新状态机（冷启动/手动检查、更新弹窗、下载进度、安装就绪）；已点「稍后」的版本记入 `last_dismissed_update_version`，冷启动不再重复提示
+- UI 页面：`MainScreen`（涟漪状态首页；设置 Sheet 双入口：顶栏齿轮 + 上滑手势（底部发丝线把手常驻，首次启动显示「上滑打开设置」，Sheet 打开过一次即收起）；Sheet 内容：关键词、铃声、应用过滤、权限三级分组（REQUIRED 通知使用权 / RECOMMENDED 电池白名单 + 锁定任务卡片引导（「不再提示」后整行隐藏，`lock_task_tip_dismissed`）/ OPTIONAL 自启动管理、后台运行）、导出日志、开源地址、检查更新（版本号文本，点击触发手动检查）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）、`ui/dialogs/UpdateDialog.kt`（自动更新弹窗：发现新版本展示发版说明 + 更新/稍后；已最新 / 无法访问 GitHub / 异常 各有提示；下载进度）
 - 图标资产：launcher icon 内容不得顶边——缩放约 75% 居中、四边预留 ≥15% 安全边距，导出 mipmap 前做圆角 mask 预演（系统圆角 mask 会裁切顶边内容）。来源：notes/inbox/2026-07-27.md，owner 2026-07-30 验收
 - 设计主题「一线」：极简深色、发丝线分区、无卡片、单一强调色。背景 #0A0A0B / 文字 #EAEAE7 / 分割线 #1F1F23 / 主色 #E4FF54 酸橙绿 / 警示 #FFB020 琥珀
 
@@ -63,6 +65,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - `dumpsys media.player` 版本差异：API ~29 及以下**没有 packageName 归因行**，改用 `state(5)`（STARTED）+ `stream type(4)` 计数判断在播/已停。
 - 连续多次 `am crash` 会触发系统「屡次停止运行」对话框并阻止应用重启，需 uiautomator 点「关闭应用」后再拉起。
 - adb push 本地路径：开了 `MSYS_NO_PATHCONV=1` 后，Git Bash 风格 `/d/tmp/...` 传给 Windows 版 adb 会报 cannot stat；本地侧路径一律写 Windows 形式（如 `D:\tmp\vigil_prefs.xml`），设备侧路径写 Linux 形式，互不冲突。
+- 更新检查本地模拟：debug 构建用 `run-as` 写 `debug_update_api_base`（SharedPreferences）指向本地模拟 GitHub；debug 构建已允许 cleartext（`app/src/debug/AndroidManifest.xml` 的 `usesCleartextTraffic`，release 不合并）。坑：模拟器经 `10.0.2.2` 访问宿主的**大响应**（几百 KB 以上）会被截断（`unexpected end of stream`），改用 `adb reverse tcp:<port> tcp:<port>` + 基址写 `http://127.0.0.1:<port>` 走 adb 传输（实测可靠）；调起系统安装后 Play Protect 可能拦截 debug 包，属平台行为。
 
 ### 环境
 

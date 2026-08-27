@@ -94,6 +94,8 @@ import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.RingtoneLibrary
 import com.example.vigil.SharedPreferencesHelper
+import com.example.vigil.UpdateChecker
+import com.example.vigil.UpdateViewModel
 import com.example.vigil.VigilEventBus
 import com.example.vigil.VigilLogger
 import com.example.vigil.ui.dialogs.PermissionGuideDialog
@@ -121,12 +123,15 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     monitoringViewModel: MonitoringViewModel,
     settingsViewModel: SettingsViewModel,
+    updateViewModel: UpdateViewModel,
     onNavigateToAppFilter: () -> Unit,
     onNavigateToAlertHistory: () -> Unit,
     onNavigateToRingtoneLibrary: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    // 当前版本名（更新检查 / 版本号文本展示用）
+    val currentVersionName = remember { UpdateChecker.currentVersionName(context) }
 
     val serviceState by monitoringViewModel.serviceState
     val serviceEnabled by monitoringViewModel.serviceEnabled
@@ -699,6 +704,12 @@ fun MainScreen(
                 }) {
                     RowLabel("开源地址")
                     RowValue("GitHub", withArrow = true)
+                }
+
+                // 10. 检查更新 / 版本号文本：点击重新检查（冷启动已自动检查过，此处手动触发）
+                LineRow(onClick = { updateViewModel.checkForUpdate(isColdStart = false) }) {
+                    RowLabel("检查更新")
+                    RowValue("版本 v$currentVersionName", withArrow = true)
                 }
             }
         }

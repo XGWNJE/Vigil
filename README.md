@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.15.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.17.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -43,6 +43,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | **前台保活** | 前台服务常驻 + 心跳检测 + 断连自动重绑与快速自愈（`requestRebind` / 组件 toggle / 失效即引导重新授权） |
 | **权限引导** | 设置内按必需/推荐/可选分级展示权限状态，缺失时一键跳转授权 |
 | **诊断日志** | 本地滚动日志（不含通知正文），主屏一键导出分享，便于排查 |
+| **应用自更新** | 从 GitHub 检查新版本，冷启动自动提示（含发版说明，可一键下载安装）；版本号文本可点击手动复检；网络无法访问 GitHub 时给出明确提示 |
 | **极致轻量** | 安装包约 3.4MB，几乎不占空间，常驻后台资源占用低 |
 
 ---
@@ -90,8 +91,10 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | 忽略电池优化 | 防止厂商省电策略在报警时强杀进程 | 设置内一键引导 |
 | 全屏 Intent（USE_FULL_SCREEN_INTENT） | 后台无法弹窗时，以全屏通知在锁屏上报警 | 自动（Manifest 声明） |
 | 麦克风（RECORD_AUDIO） | 铃声库「录音」来源，录制内容仅存本地 | 录音时系统弹窗申请 |
+| 联网（INTERNET） | 「检查更新」时从 GitHub 读取最新版本信息与 APK 下载地址 | 自动（Manifest 声明） |
+| 安装应用（REQUEST_INSTALL_PACKAGES） | 一键更新时调起系统安装器安装新版本 APK | 更新时引导授权 |
 
-> 通知使用权需手动授予，应用内提供直达跳转入口。应用过滤无需任何权限（通过 launcher intent 查询，不申请 `QUERY_ALL_PACKAGES`）；应用未声明 `INTERNET` 权限，无联网能力，数据全部本地处理。详见 [隐私政策](PRIVACY.md)。
+> 通知使用权需手动授予，应用内提供直达跳转入口。应用过滤无需任何权限（通过 launcher intent 查询，不申请 `QUERY_ALL_PACKAGES`）；`INTERNET` 仅用于「检查更新」时访问 GitHub 读取版本信息，无其它联网行为，数据全部本地处理。详见 [隐私政策](PRIVACY.md)。
 
 > **国产 ROM 使用须知**：小米 / 华为 / OPPO / vivo 等系统有激进的省电与自启动管控，可能清理进程后不再重绑监听服务。请完成「自启动管理」与「后台运行」引导；应用内置断连自愈，断连时显示「重连中」而非误报「监听中」。建议让 Vigil 长期驻留后台以获得稳定监控——多数安卓系统如今对后台权限与自启动的管理都比较严格，若只是临时打开、用完即退出，之后系统会更频繁地要求重新授权，属正常现象。
 

@@ -161,7 +161,7 @@ printf '%s' "vigil" | gh secret set VIGIL_KEY_ALIAS --repo XGWNJE/Vigil
 - `store/README.md` — 商店上架文案与权限用途说明表。
 - `store/owner-checklist.md` — 上架执行清单（secrets / Play / 国内平台，需 owner 本人操作）。
 - `AGENTS.md` — 协作与真机测试规则（本文件）。
-- `ROADMAP.md` — 近期开发路线图（P1 关键词级铃声 / P2 自定义铃声来源）。
+- `ROADMAP.md` — 已确认的近期规划与已完成里程碑；未确认设想不进入路线图。
 - `release-notes/` — 各版本发行描述（`vX.Y.Z.md`，CI 创建 Release 时自动引用）。
 - `design/` — 图标与视觉素材（含生成脚本）；`design-backup/` — UI 设计稿存档（PDF/PEN），只读参考。
 - `screenshots/` — README 界面展示与商店共用素材（`main/alert/app-filter.png` + `demo.gif`，语义命名）；制作规范：裁掉状态栏/手势条等系统元素、聚焦主体，动效录屏转 GIF（裁剪 + ≤10s + ≤5MB）。

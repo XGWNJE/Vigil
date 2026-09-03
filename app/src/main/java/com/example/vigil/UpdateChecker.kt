@@ -41,7 +41,7 @@ object UpdateChecker {
     const val PROD_API_BASE = "https://api.github.com/repos/$REPO"
 
     /** FileProvider authority（与 manifest 中的 provider 一致） */
-    private const val FILE_PROVIDER_AUTHORITY = "com.example.vigil.fileprovider"
+    private fun fileProviderAuthority(context: Context) = "${context.packageName}.fileprovider"
 
     /** 一次更新检查结果 */
     sealed class CheckResult {
@@ -272,7 +272,7 @@ object UpdateChecker {
      */
     fun triggerInstall(context: Context, apkFile: File) {
         try {
-            val uri: Uri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, apkFile)
+            val uri: Uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), apkFile)
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

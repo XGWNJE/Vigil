@@ -224,15 +224,17 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "handleIntentForAlert called. Intent Action: ${intent?.action}")
         if (intent?.action == MyNotificationListenerService.ACTION_SHOW_ALERT_FROM_SERVICE) {
             val keyword = intent.getStringExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
-            if (!keyword.isNullOrEmpty()) {
-                Log.i(TAG, "MainActivity 从 Intent 中接收到显示提醒的指令，关键词: $keyword")
-                VigilLogger.i(this, TAG, "收到服务弹窗指令 (keyword=$keyword)")
-                monitoringViewModel.triggerShowKeywordAlert(keyword)
+            val alertId = intent.getStringExtra(MyNotificationListenerService.EXTRA_ALERT_ID_FROM_SERVICE)
+            if (!keyword.isNullOrEmpty() && !alertId.isNullOrEmpty()) {
+                Log.i(TAG, "MainActivity 收到报警指令: keyword=$keyword, alertId=$alertId")
+                VigilLogger.i(this, TAG, "收到服务弹窗指令 (keyword=$keyword, alertId=$alertId)")
+                monitoringViewModel.syncAlertDialogWithPersistentState(alertId)
                 intent.action = null
                 intent.removeExtra(MyNotificationListenerService.EXTRA_ALERT_KEYWORD_FROM_SERVICE)
+                intent.removeExtra(MyNotificationListenerService.EXTRA_ALERT_ID_FROM_SERVICE)
                 Log.d(TAG, "Intent action and extra cleared after processing in handleIntentForAlert.")
             } else {
-                Log.w(TAG, "MainActivity 收到 ACTION_SHOW_ALERT_FROM_SERVICE 但关键词为空。")
+                Log.w(TAG, "MainActivity 收到不完整的报警 Intent，忽略。")
             }
         }
     }
@@ -242,6 +244,8 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "MainActivity onResume。")
         VigilLogger.d(this, TAG, "MainActivity onResume")
         settingsViewModel.updatePermissionStates()
+        // 后台期间 EventBus 事件可能无人收集；每次回前台都以持久化队首纠正弹窗。
+        monitoringViewModel.syncAlertDialogWithPersistentState()
         // 用户从系统设置返回后，若通知权限被取消则再次申请
         requestPostNotificationsIfNeeded()
         // 打开 App 即自愈：服务开关开着、权限在、但系统监听绑定断开时，自动请求重绑。

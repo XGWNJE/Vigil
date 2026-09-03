@@ -66,6 +66,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _defaultLoopCount = mutableStateOf(sharedPreferencesHelper.getDefaultLoopCount())
     val defaultLoopCount: State<Int> = _defaultLoopCount
 
+    private val _keywordCooldownSeconds = mutableStateOf(sharedPreferencesHelper.getKeywordCooldownSeconds())
+    val keywordCooldownSeconds: State<Int> = _keywordCooldownSeconds
+
     // 关键词个性化配置版本号：配置变化时 +1 触发 Compose 重组（chip 弹窗按关键词即时查询）
     private val _keywordConfigVersion = mutableStateOf(0)
     val keywordConfigVersion: State<Int> = _keywordConfigVersion
@@ -317,6 +320,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         sharedPreferencesHelper.saveDefaultLoopCount(normalized)
         notifyServiceToUpdateSettingsCallback?.invoke()
         Log.i(TAG, "Default loop count saved: $normalized")
+    }
+
+    fun onKeywordCooldownSelected(seconds: Int) {
+        val normalized = seconds.takeIf { it in setOf(0, 30, 60, 180, 300, 600) } ?: 60
+        _keywordCooldownSeconds.value = normalized
+        sharedPreferencesHelper.saveKeywordCooldownSeconds(normalized)
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Keyword cooldown saved: $normalized seconds")
     }
 
     /** 关键词的循环次数覆盖；null = 跟随默认。 */

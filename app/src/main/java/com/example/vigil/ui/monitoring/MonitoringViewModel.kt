@@ -53,6 +53,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _matchedKeywordForDialog = mutableStateOf<String?>(null)
     val matchedKeywordForDialog: State<String?> = _matchedKeywordForDialog
+    private var activeAlertIdForDialog: String? = null
 
     // ---- 监听自动重连失败标记（UI 逃生通道：重新授权引导）----
     // 冷启动兜底读持久化（EventBus 无 replay）；服务侧变化经事件总线通知
@@ -101,11 +102,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
         // 若存在未确认报警（报警期间进程被杀、或报警在后台触发导致弹窗未能显示），
         // 用户打开应用时直接弹出确认对话框，避免铃声一直循环却无法停止
-        sharedPreferencesHelper.getPendingAlert()?.let { (keyword, _) ->
-            Log.w(TAG, "检测到未确认报警，启动时直接弹出确认对话框: $keyword")
-            _matchedKeywordForDialog.value = keyword
-            _showKeywordAlertDialog.value = true
-        }
+        syncAlertDialogWithPersistentState()
 
         // 收集心跳（payload 为服务发射时刻的时间戳；replay=1，冷启动立即拿到最近一次心跳）
         viewModelScope.launch {
@@ -140,6 +137,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             VigilEventBus.keywordAlert.collect { event ->
                 Log.i(TAG, "AlertEvent received: keyword=${event.keyword}")
+                activeAlertIdForDialog = event.alertId
                 _matchedKeywordForDialog.value = event.keyword
                 _showKeywordAlertDialog.value = true
             }
@@ -153,13 +151,10 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
 
-        // 收集自动结束事件：循环次数用完，服务已停铃清 pending，UI 关闭弹窗
+        // 队列变化后以持久化队首为真相，事件即使后台丢失也会在 onResume 再对账。
         viewModelScope.launch {
-            VigilEventBus.alertAutoEnded.collect { keyword ->
-                Log.i(TAG, "alertAutoEnded received: keyword=$keyword")
-                if (_showKeywordAlertDialog.value) {
-                    onKeywordAlertDialogDismiss()
-                }
+            VigilEventBus.alertStateChanged.collect {
+                syncAlertDialogWithPersistentState()
             }
         }
 
@@ -276,23 +271,30 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         restartServiceCallback()
     }
 
-    fun triggerShowKeywordAlert(keyword: String) {
-        Log.i(TAG, "triggerShowKeywordAlert: $keyword")
-        viewModelScope.launch {
-            _matchedKeywordForDialog.value = keyword
-            _showKeywordAlertDialog.value = true
+    fun syncAlertDialogWithPersistentState(expectedAlertId: String? = null) {
+        val active = sharedPreferencesHelper.getActiveAlert()
+        if (active == null || (expectedAlertId != null && active.id != expectedAlertId)) {
+            onKeywordAlertDialogDismiss()
+            return
         }
+        activeAlertIdForDialog = active.id
+        _matchedKeywordForDialog.value = active.keyword
+        _showKeywordAlertDialog.value = true
     }
 
     fun onKeywordAlertDialogConfirm() {
         Log.d(TAG, "Alert dialog confirmed.")
-        viewModelScope.launch { VigilEventBus.alertConfirmed.emit(Unit) }
+        val alertId = activeAlertIdForDialog
+        if (alertId != null) {
+            viewModelScope.launch { VigilEventBus.alertConfirmed.emit(alertId) }
+        }
         onKeywordAlertDialogDismiss()
     }
 
     fun onKeywordAlertDialogDismiss() {
         _showKeywordAlertDialog.value = false
         _matchedKeywordForDialog.value = null
+        activeAlertIdForDialog = null
     }
 
     // ---- 回调（由 Activity/Screen 注入）----

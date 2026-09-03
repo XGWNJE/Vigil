@@ -29,14 +29,18 @@ object VigilEventBus {
     val keywordAlert = MutableSharedFlow<AlertEvent>(extraBufferCapacity = 1)
 
     /** 用户确认报警：ViewModel → Service，触发停止铃声 */
-    val alertConfirmed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    /** UI 确认指定报警；alertId 防止迟到/重复点击误结束下一条。 */
+    val alertConfirmed = MutableSharedFlow<String>(extraBufferCapacity = 1)
 
-    /** 循环次数用完自动结束：Service → ViewModel（payload=关键词），UI 据此关闭弹窗 */
-    val alertAutoEnded = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    /** 报警队列发生变化；UI 收到后从持久化队首重新对账。 */
+    val alertStateChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 }
 
 data class AlertEvent(
+    val alertId: String,
     val keyword: String,
     val sourceApp: String?,   // 来源应用名称（非包名）
-    val snippet: String?      // 触发报警的通知文本片段
+    val snippet: String?,     // 触发报警的通知文本片段
+    val queueSize: Int = 1,
+    val occurrenceCount: Int = 1
 )

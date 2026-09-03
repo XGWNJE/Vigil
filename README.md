@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.17.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.18.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -34,12 +34,14 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 | **关键词级铃声** | 点按关键词 Chip 可单独绑定铃声与循环次数，未配置的跟随全局默认 |
 | **铃声库** | 内置预设语音（随 APK 打包，开箱可用）+ 自定义来源：导入音频文件（复制到应用内，防原文件失效）或现场录音，支持命名、删除、试听；文件缺失时自动回落默认闹钟铃声 |
 | **循环次数** | 1–10 次逐次调节；到数自动结束（停铃、关弹窗、写入记录），不再无限循环 |
+| **连续报警调度** | 不同关键词短时间连续命中时按先后顺序排队，当前铃声结束后自动处理下一条；同一关键词连续命中会聚合计数，避免重复轰炸 |
+| **重复提醒间隔** | 可配置不忽略、30 秒、1/3/5/10 分钟；同一来源的同一关键词在间隔内结束后再次出现会被忽略 |
 | **报警记录** | 每次报警结束（手动确认或自动结束）留痕：关键词、来源应用、时间、结束方式，可随时查看/清空 |
 | **报警快捷通知** | 响铃期间显示高优先级前台通知，点击可随时进入应用处理当前报警；结束后自动恢复普通监听通知 |
 | **状态首页** | 全屏涟漪动效随服务状态变化（颜色/节奏），中央核心圆点即服务开关；设置收进底部 Sheet |
 | **强制报警** | 闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立、静音模式照常响铃；应用内全屏弹窗展示命中关键词与摘要 |
 | **应用过滤** | 只监听指定应用或全部应用；已勾选应用置顶 |
-| **报警恢复** | 未确认状态持久化，进程被系统杀死后重建可在 30 分钟内自动恢复响铃与弹窗 |
+| **报警恢复** | 当前报警与等待队列均持久化，进程被系统杀死后重建可在 30 分钟内按原顺序恢复响铃与弹窗 |
 | **前台保活** | 前台服务常驻 + 心跳检测 + 断连自动重绑与快速自愈（`requestRebind` / 组件 toggle / 失效即引导重新授权） |
 | **权限引导** | 设置内按必需/推荐/可选分级展示权限状态，缺失时一键跳转授权 |
 | **诊断日志** | 本地滚动日志（不含通知正文），主屏一键导出分享，便于排查 |
@@ -111,7 +113,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 ## 🏗 技术架构
 
-Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 → 闹钟音频流循环响铃 + WakeLock → 应用内全屏弹窗确认停止，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
+Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 → 持久化调度队列 → 闹钟音频流循环响铃 + WakeLock → 应用内全屏弹窗确认停止 → 自动处理下一条，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
 
 ---
 

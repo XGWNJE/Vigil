@@ -237,9 +237,11 @@ fun MainScreen(
     var keywordPendingConfig by remember { mutableStateOf<String?>(null) }
     // 循环次数档位弹窗：null=不显示；""=全局默认档位；非空=该关键词的覆盖档位
     var loopCountDialogTarget by remember { mutableStateOf<String?>(null) }
+    var showKeywordCooldownDialog by remember { mutableStateOf(false) }
     // 铃声选择弹窗：null=不显示；""=默认铃声；非空=该关键词的铃声
     var ringtoneSelectTarget by remember { mutableStateOf<String?>(null) }
     val defaultLoopCount by settingsViewModel.defaultLoopCount
+    val keywordCooldownSeconds by settingsViewModel.keywordCooldownSeconds
     // 关键词配置变化信号（读取即订阅，chip 弹窗里的值随配置保存即时刷新）
     val keywordConfigVersion by settingsViewModel.keywordConfigVersion
 
@@ -589,7 +591,13 @@ fun MainScreen(
                     RowValue(formatLoopCount(defaultLoopCount), withArrow = true)
                 }
 
-                // 4. 铃声库（自定义铃声来源：导入音频 / 录音，支持命名、删除、试听）
+                // 4. 同一来源、同一关键词的重复提醒冷却时间
+                LineRow(onClick = { showKeywordCooldownDialog = true }) {
+                    RowLabel("重复提醒间隔")
+                    RowValue(formatKeywordCooldown(keywordCooldownSeconds), withArrow = true)
+                }
+
+                // 5. 铃声库（自定义铃声来源：导入音频 / 录音，支持命名、删除、试听）
                 LineRow(onClick = onNavigateToRingtoneLibrary) {
                     RowLabel("铃声库")
                     RowValue("导入 / 录音", withArrow = true)
@@ -673,7 +681,7 @@ fun MainScreen(
                     try {
                         val exportFile = VigilLogger.export(context)
                         val uri = FileProvider.getUriForFile(
-                            context, "com.example.vigil.fileprovider", exportFile
+                            context, "${context.packageName}.fileprovider", exportFile
                         )
                         val sendIntent = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
@@ -806,6 +814,17 @@ fun MainScreen(
                 loopCountDialogTarget = null
             },
             onDismiss = { loopCountDialogTarget = null }
+        )
+    }
+
+    if (showKeywordCooldownDialog) {
+        KeywordCooldownDialog(
+            selected = keywordCooldownSeconds,
+            onSelect = {
+                settingsViewModel.onKeywordCooldownSelected(it)
+                showKeywordCooldownDialog = false
+            },
+            onDismiss = { showKeywordCooldownDialog = false }
         )
     }
 
@@ -1503,6 +1522,80 @@ private fun LoopCountDialog(
             }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消", color = VigilDirADim)
+            }
+        }
+    )
+}
+
+private fun formatKeywordCooldown(seconds: Int): String = when (seconds) {
+    0 -> "不忽略"
+    30 -> "30 秒"
+    60 -> "1 分钟"
+    180 -> "3 分钟"
+    300 -> "5 分钟"
+    600 -> "10 分钟"
+    else -> "$seconds 秒"
+}
+
+/** 同一来源、同一关键词再次出现时的忽略间隔。 */
+@Composable
+private fun KeywordCooldownDialog(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(0, 30, 60, 180, 300, 600)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "重复提醒间隔",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "同一应用的同一关键词在间隔内再次出现时，不重复响铃。",
+                    fontSize = 12.sp,
+                    color = VigilDirADim,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                options.forEach { seconds ->
+                    val isSelected = selected == seconds
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(seconds) }
+                            .padding(vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatKeywordCooldown(seconds),
+                            fontSize = 13.sp,
+                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(VigilDirAAcid, CircleShape)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(text = "取消", color = VigilDirADim)
             }

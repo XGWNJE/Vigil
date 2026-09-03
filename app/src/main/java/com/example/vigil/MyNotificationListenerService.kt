@@ -43,6 +43,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     // 当前活动报警信息（写历史记录用；进程重建后为 null，恢复路径另行回填）
     private var activeAlertKeyword: String? = null
     private var activeAlertSourceApp: String? = null
+    private var activeAlertId: String? = null
 
     @Volatile private var filterAppsEnabled: Boolean = false
     @Volatile private var filteredAppPackages: Set<String> = emptySet()
@@ -135,6 +136,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         // 新增：用于从服务启动 MainActivity 并请求显示对话框的 Action 和 Extra
         const val ACTION_SHOW_ALERT_FROM_SERVICE = "com.example.vigil.ACTION_SHOW_ALERT_FROM_SERVICE"
         const val EXTRA_ALERT_KEYWORD_FROM_SERVICE = "com.example.vigil.EXTRA_ALERT_KEYWORD_FROM_SERVICE"
+        const val EXTRA_ALERT_ID_FROM_SERVICE = "com.example.vigil.EXTRA_ALERT_ID_FROM_SERVICE"
     }
 
     override fun onCreate() {
@@ -152,15 +154,9 @@ class MyNotificationListenerService : NotificationListenerService() {
         loadSettings()
         // 监听 UI 确认报警事件（替代 LocalBroadcastManager alertConfirmedReceiver）
         serviceScope.launch {
-            VigilEventBus.alertConfirmed.collect {
-                Log.i(TAG, "收到来自 UI 的确认事件，停止铃声和释放锁。")
-                VigilLogger.i(applicationContext, TAG, "用户确认报警，清除 pending 并停止响铃")
-                recordAlertEnd(AlertEndType.MANUAL)
-                sharedPreferencesHelper.clearPendingAlert()
-                stopRingtoneAndLock()
-                activeAlertKeyword = null
-                activeAlertSourceApp = null
-                updateForegroundNotification()
+            VigilEventBus.alertConfirmed.collect { alertId ->
+                Log.i(TAG, "收到来自 UI 的确认事件 (alertId=$alertId)。")
+                finishCurrentAlert(alertId, AlertEndType.MANUAL)
             }
         }
         createNotificationChannel()
@@ -322,37 +318,30 @@ class MyNotificationListenerService : NotificationListenerService() {
                 ).toString()
             } catch (e: Exception) { null }
 
-            // 持久化未确认报警：进程被省电策略杀死后，服务重建时可恢复响铃（含铃声/剩余次数，铁律 3）
-            sharedPreferencesHelper.savePendingAlert(matchedKeyword, alertRingtoneValue, alertLoopLimit, sourceAppName)
-            activeAlertKeyword = matchedKeyword
-            activeAlertSourceApp = sourceAppName
-            updateForegroundNotification()
-
-            val finalMatchedKeyword = matchedKeyword
             val snippet = "$title $text".trim().take(100).ifEmpty { null }
-
-            handler.post {
-                acquireWakeLock()
-                playRingtoneLooping(alertRingtoneValue, alertLoopLimit, alreadyPlayed = 0)
-
-                // 通过 VigilEventBus 通知 ViewModel 显示报警 Dialog（替代 LocalBroadcastManager）
-                serviceScope.launch {
-                    VigilEventBus.keywordAlert.emit(AlertEvent(finalMatchedKeyword, sourceAppName, snippet))
+            val result = sharedPreferencesHelper.enqueueOrAggregateAlert(
+                keyword = matchedKeyword,
+                sourcePackage = sbn.packageName,
+                sourceApp = sourceAppName,
+                ringtoneUri = alertRingtoneValue,
+                loopLimit = alertLoopLimit
+            )
+            when (result.status) {
+                AlertEnqueueStatus.STARTED -> result.active?.let { startActiveAlert(it, snippet) }
+                AlertEnqueueStatus.QUEUED -> {
+                    VigilLogger.i(applicationContext, TAG, "报警已排队: keyword=$matchedKeyword, queueSize=${result.queueSize}")
+                    emitAlertStateChanged()
                 }
-                Log.i(TAG, "已发送 AlertEvent (关键词: $finalMatchedKeyword, 来源: $sourceAppName)。")
-
-                // 启动 MainActivity 带到前台（应用不在前台时确保 Dialog 可见）
-                val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
-                    action = ACTION_SHOW_ALERT_FROM_SERVICE
-                    putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, finalMatchedKeyword)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                AlertEnqueueStatus.AGGREGATED -> {
+                    VigilLogger.i(applicationContext, TAG, "重复报警已聚合: keyword=$matchedKeyword, count=${result.affected?.occurrenceCount}")
+                    emitAlertStateChanged()
                 }
-                try {
-                    startActivity(activityIntent)
-                    Log.i(TAG, "已尝试启动 MainActivity 以显示提醒 (关键词: $finalMatchedKeyword)。")
-                } catch (e: Exception) {
-                    Log.e(TAG, "启动 MainActivity 时发生错误: ", e)
-                }
+                AlertEnqueueStatus.COOLDOWN_IGNORED ->
+                    VigilLogger.d(applicationContext, TAG, "忽略通知: keyword=$matchedKeyword, 原因=重复提醒间隔")
+                AlertEnqueueStatus.QUEUE_FULL ->
+                    VigilLogger.e(applicationContext, TAG, "报警队列已满，拒绝新报警: keyword=$matchedKeyword")
+                AlertEnqueueStatus.PERSIST_FAILED ->
+                    VigilLogger.e(applicationContext, TAG, "报警入队持久化失败: keyword=$matchedKeyword")
             }
         }
     }
@@ -373,45 +362,54 @@ class MyNotificationListenerService : NotificationListenerService() {
      * 避免报警被静默吞掉。
      */
     private fun recoverPendingAlertIfNeeded() {
-        val pending = sharedPreferencesHelper.getPendingAlert() ?: return
-        if (System.currentTimeMillis() - pending.timestamp > PENDING_ALERT_TTL_MS) {
-            Log.w(TAG, "未确认报警 (关键词: ${pending.keyword}) 已超过 ${PENDING_ALERT_TTL_MS / 60000} 分钟，按过期处理，清除。")
-            sharedPreferencesHelper.clearPendingAlert()
-            return
+        sharedPreferencesHelper.migratePendingAlertToQueueIfNeeded()
+        while (true) {
+            val active = sharedPreferencesHelper.getActiveAlert() ?: return
+            val expired = System.currentTimeMillis() - active.firstTriggeredAt > PENDING_ALERT_TTL_MS
+            val exhausted = active.playedLoops >= active.loopLimit
+            if (!expired && !exhausted) {
+                VigilLogger.w(applicationContext, TAG, "恢复报警队列 (keyword=${active.keyword}, 已播=${active.playedLoops}/${active.loopLimit}, queueSize=${sharedPreferencesHelper.getAlertQueue().size})")
+                startActiveAlert(active, null)
+                return
+            }
+            val reason = if (expired) "超过恢复窗口" else "循环次数已用完"
+            VigilLogger.w(applicationContext, TAG, "恢复时跳过队首报警: keyword=${active.keyword}, reason=$reason")
+            val transition = sharedPreferencesHelper.finishActiveAlert(active.id, AlertEndType.AUTO)
+            if (!transition.success) return
         }
-        val keyword = pending.keyword
-        // 有限档位剩余次数为 0（crash 前已到数但未来得及收尾）：直接走自动结束
-        if (pending.loopLimit > 0 && pending.playedLoops >= pending.loopLimit) {
-            Log.w(TAG, "未确认报警 (关键词: $keyword) 剩余次数为 0，按自动结束处理。")
-            activeAlertKeyword = keyword
-            activeAlertSourceApp = pending.sourceApp
-            autoEndAlert(keyword)
-            return
-        }
-        Log.w(TAG, "检测到未确认报警 (关键词: $keyword)，进程重建后恢复响铃与提醒。")
-        VigilLogger.w(applicationContext, TAG, "恢复未确认报警 (keyword=$keyword, 已播=${pending.playedLoops}/${pending.loopLimit})：进程重建后重新响铃")
-        activeAlertKeyword = keyword
-        activeAlertSourceApp = pending.sourceApp
+    }
+
+    private fun startActiveAlert(item: AlertQueueItem, snippet: String?) {
+        activeAlertId = item.id
+        activeAlertKeyword = item.keyword
+        activeAlertSourceApp = item.sourceApp
         updateForegroundNotification()
         handler.post {
             acquireWakeLock()
-            playRingtoneLooping(pending.ringtoneUri, pending.loopLimit, pending.playedLoops)
-
+            playRingtoneLooping(item.ringtoneUri, item.loopLimit, item.playedLoops)
+            val queueSize = sharedPreferencesHelper.getAlertQueue().size
             serviceScope.launch {
-                VigilEventBus.keywordAlert.emit(AlertEvent(keyword, null, null))
+                VigilEventBus.keywordAlert.emit(
+                    AlertEvent(item.id, item.keyword, item.sourceApp, snippet, queueSize, item.occurrenceCount)
+                )
+                VigilEventBus.alertStateChanged.emit(Unit)
             }
-
             val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
                 action = ACTION_SHOW_ALERT_FROM_SERVICE
-                putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, keyword)
+                putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, item.keyword)
+                putExtra(EXTRA_ALERT_ID_FROM_SERVICE, item.id)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             }
             try {
                 startActivity(activityIntent)
             } catch (e: Exception) {
-                Log.e(TAG, "恢复报警时启动 MainActivity 出错: ", e)
+                Log.e(TAG, "启动 MainActivity 时发生错误", e)
             }
         }
+    }
+
+    private fun emitAlertStateChanged() {
+        serviceScope.launch { VigilEventBus.alertStateChanged.emit(Unit) }
     }
 
     private fun loadSettings() {
@@ -600,13 +598,13 @@ class MyNotificationListenerService : NotificationListenerService() {
         loopCycleSettled = true
         cancelLoopCompletionTimeout()
         activePlayedLoops++
-        sharedPreferencesHelper.updatePendingAlertPlayedLoops(activePlayedLoops)
+        activeAlertId?.let { sharedPreferencesHelper.updateActiveAlertPlayedLoops(it, activePlayedLoops) }
         // 每次播完续期唤醒锁，保证长铃声和高档位期间 CPU 不休眠。
         releaseWakeLock()
         acquireWakeLock()
         if (activePlayedLoops >= loopLimit) {
             Log.i(TAG, "循环次数已用完 ($activePlayedLoops/$loopLimit)，自动结束报警。")
-            autoEndAlert(activeAlertKeyword)
+            activeAlertId?.let { finishCurrentAlert(it, AlertEndType.AUTO) }
             return
         }
         Log.d(TAG, "循环续播 ($activePlayedLoops/$loopLimit, source=$source)")
@@ -619,28 +617,25 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
     }
 
-    /** 循环次数用完自动结束：写记录、清 pending、停铃放锁、通知 UI 关弹窗。 */
-    private fun autoEndAlert(keyword: String?) {
-        VigilLogger.i(applicationContext, TAG, "报警自动结束 (keyword=$keyword)：循环次数用完")
-        recordAlertEnd(AlertEndType.AUTO)
-        sharedPreferencesHelper.clearPendingAlert()
-        stopRingtoneAndLock()
-        keyword?.let { kw ->
-            serviceScope.launch { VigilEventBus.alertAutoEnded.emit(kw) }
+    /** 当前报警结束、历史入库和队列推进共用同一入口。 */
+    private fun finishCurrentAlert(expectedId: String, endType: AlertEndType) {
+        val transition = sharedPreferencesHelper.finishActiveAlert(expectedId, endType)
+        if (!transition.success) {
+            VigilLogger.w(applicationContext, TAG, "忽略迟到或持久化失败的结束请求: alertId=$expectedId, type=$endType")
+            return
         }
+        VigilLogger.i(applicationContext, TAG, "报警结束: id=$expectedId, keyword=${transition.finished?.keyword}, type=$endType, remaining=${transition.remaining}")
+        stopRingtoneAndLock()
+        activeAlertId = null
         activeAlertKeyword = null
         activeAlertSourceApp = null
-        updateForegroundNotification()
-    }
-
-    /** 写一条报警历史记录；keyword/sourceApp 缺失时从持久化 pending 兜底。 */
-    private fun recordAlertEnd(endType: AlertEndType) {
-        val pending = sharedPreferencesHelper.getPendingAlert()
-        val keyword = activeAlertKeyword ?: pending?.keyword ?: return
-        val sourceApp = activeAlertSourceApp ?: pending?.sourceApp
-        val timestamp = pending?.timestamp ?: System.currentTimeMillis()
-        sharedPreferencesHelper.appendAlertRecord(AlertRecord(keyword, sourceApp, timestamp, endType))
-        VigilLogger.i(applicationContext, TAG, "报警记录已写入: $keyword ($endType, 来源=${sourceApp ?: "未知"})")
+        val next = transition.next
+        if (next != null) {
+            startActiveAlert(next, null)
+        } else {
+            updateForegroundNotification()
+            emitAlertStateChanged()
+        }
     }
 
     private fun stopRingtone() {
@@ -744,6 +739,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         val notificationIntent = Intent(this, MainActivity::class.java).apply {
             action = ACTION_SHOW_ALERT_FROM_SERVICE
             putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, keyword)
+            activeAlertId?.let { putExtra(EXTRA_ALERT_ID_FROM_SERVICE, it) }
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pendingIntent = PendingIntent.getActivity(

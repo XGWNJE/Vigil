@@ -1,4 +1,7 @@
 from PIL import Image, ImageDraw
+from pathlib import Path
+
+OUT_DIR = Path(__file__).resolve().parent
 
 BG = (10, 10, 11)      # #0A0A0B
 ACID = (228, 255, 84)  # #E4FF54
@@ -77,6 +80,6 @@ def icon_bell_solid(size=512):
     
     return img
 
-icon_bell2().save('D:/ObjectCode/Vigil/design/icons/icon_bell2.png')
-icon_bell_solid().save('D:/ObjectCode/Vigil/design/icons/icon_bell_solid.png')
+icon_bell2().save(str(OUT_DIR / 'icon_bell2.png'))
+icon_bell_solid().save(str(OUT_DIR / 'icon_bell_solid.png'))
 print('generated v2')

@@ -1,8 +1,11 @@
 from PIL import Image, ImageDraw, ImageFont
+from pathlib import Path
 
 BG = (10, 10, 11)
 ACID = (228, 255, 84)
-FONT_PATH = 'C:/Users/Administrator/.agents/skills/skill-creator/skills/canvas-design/canvas-fonts/GeistMono-Regular.ttf'
+FONT_PATH = 'C:/Users/xgwnj/.agents/skills/skill-creator/skills/canvas-design/canvas-fonts/GeistMono-Regular.ttf'
+
+OUT_DIR = Path(__file__).resolve().parent
 
 def draw_bell(draw, cx, cy, scale, color, width):
     """Draw a minimalist bell outline centered at cx,cy with given scale."""
@@ -62,7 +65,7 @@ def create_icon(size=1024, label=False):
     return img
 
 # Generate versions
-create_icon(1024, label=False).save('D:/ObjectCode/Vigil/design/icons/vigil_icon_final.png')
-create_icon(1024, label=True).save('D:/ObjectCode/Vigil/design/icons/vigil_icon_with_text.png')
-create_icon(512, label=False).save('D:/ObjectCode/Vigil/design/icons/vigil_icon_512.png')
+create_icon(1024, label=False).save(str(OUT_DIR / 'vigil_icon_final.png'))
+create_icon(1024, label=True).save(str(OUT_DIR / 'vigil_icon_with_text.png'))
+create_icon(512, label=False).save(str(OUT_DIR / 'vigil_icon_512.png'))
 print('final icons generated')

@@ -1,5 +1,8 @@
 from PIL import Image, ImageDraw, ImageFont
 import math
+from pathlib import Path
+
+OUT_DIR = Path(__file__).resolve().parent
 
 BG = (10, 10, 11)      # #0A0A0B
 ACID = (228, 255, 84)  # #E4FF54
@@ -70,7 +73,7 @@ def icon_eye(size=512):
     draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=ACID)
     return img
 
-icon_bell().save('D:/ObjectCode/Vigil/design/icons/icon_bell.png')
-icon_v().save('D:/ObjectCode/Vigil/design/icons/icon_v.png')
-icon_eye().save('D:/ObjectCode/Vigil/design/icons/icon_eye.png')
+icon_bell().save(str(OUT_DIR / 'icon_bell.png'))
+icon_v().save(str(OUT_DIR / 'icon_v.png'))
+icon_eye().save(str(OUT_DIR / 'icon_eye.png'))
 print('generated')

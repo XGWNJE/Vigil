@@ -40,6 +40,10 @@ class MyNotificationListenerService : NotificationListenerService() {
     @Volatile private var keywordLoopCountMap: Map<String, Int> = emptyMap()
     @Volatile private var defaultLoopCount: Int = SharedPreferencesHelper.DEFAULT_LOOP_COUNT
 
+    // 延时报警策略：关键词级覆盖优先，未覆盖回落全局默认（默认「立即」＝旧行为）
+    @Volatile private var defaultDelayPolicy: DelayPolicy = DelayPolicy.IMMEDIATE
+    @Volatile private var keywordDelayPolicyMap: Map<String, DelayPolicy> = emptyMap()
+
     // 当前活动报警信息（写历史记录用；进程重建后为 null，恢复路径另行回填）
     private var activeAlertKeyword: String? = null
     private var activeAlertSourceApp: String? = null
@@ -59,6 +63,9 @@ class MyNotificationListenerService : NotificationListenerService() {
     private val handler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val alertedNotificationKeys = mutableSetOf<String>()
+
+    // 进程存活时的延时报警精度补偿定时器（闹钟非精确/被拦截时的兜底，见 DelayedAlertScheduler 注释）
+    private val delayedCheckRunnable = Runnable { processDueDelayedAlerts() }
 
     // 系统绑定状态：只有它才代表 NotificationManagerService 正在向本服务投递通知。
     // 进程被杀后系统以 START_STICKY 重建服务时，onListenerConnected 可能永不被调用，
@@ -80,6 +87,10 @@ class MyNotificationListenerService : NotificationListenerService() {
                     "存活标记: 心跳#${heartbeatCount}, 绑定=$listenerActuallyConnected, 播放器=$playerState")
             }
             watchdogListenerBinding()
+            // 延时报警第三层兜底：闹钟与定时器都被 ROM 拦截时，心跳扫描仍能在到期后补触发
+            if (sharedPreferencesHelper.hasScheduledAlerts()) {
+                processDueDelayedAlerts()
+            }
             handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
         }
     }
@@ -128,6 +139,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val PENDING_ALERT_TTL_MS = 30 * 60 * 1000L  // 未确认报警恢复窗口：30 分钟
         private const val UNKNOWN_DURATION_LOOP_TIMEOUT_MS = 60_000L
         private const val MIN_COMPLETION_PROGRESS_RATIO = 0.8
+        // 延时报警：超过这个时长才补触发的陈旧项直接丢弃，避免开机后集中补响过期报警
+        private const val MAX_OVERDUE_FIRE_MS = 12 * 60 * 60 * 1000L
+        // 进程内定时器单次最长等待：休眠时 uptime 不计时，醒来后能较快重新对齐
+        private const val MAX_DELAYED_TIMER_MS = 5 * 60 * 1000L
 
         const val ACTION_HEARTBEAT = "com.example.vigil.ACTION_HEARTBEAT"
         private const val HEARTBEAT_INTERVAL_MS = 30 * 1000L
@@ -214,6 +229,12 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (intent?.action == ACTION_UPDATE_SETTINGS) {
             Log.i(TAG, "收到 ACTION_UPDATE_SETTINGS，重新加载设置。")
             loadSettings() // loadSettings内部会调用updateForegroundNotification
+        } else if (intent?.action == DelayedAlertScheduler.ACTION_DELAYED_ALERT_DUE) {
+            // 延时报警闹钟到期：可能是冷启动（进程刚被闹钟拉起），先把设置读进来再判到期项
+            val scheduledId = intent.getStringExtra(DelayedAlertScheduler.EXTRA_SCHEDULED_ALERT_ID)
+            Log.i(TAG, "收到延时报警到期通知 (id=$scheduledId)")
+            loadSettings()
+            processDueDelayedAlerts(scheduledId)
         } else if (intent?.action == null) {
             Log.i(TAG, "服务由系统或 START_STICKY 重启，重新加载设置并发送心跳。")
             VigilLogger.i(applicationContext, TAG, "onStartCommand: 系统重建服务 (action=null, START_STICKY)")
@@ -235,6 +256,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         sharedPreferencesHelper.saveListenerConnectedState(false)
         serviceScope.cancel()
         stopHeartbeat()
+        handler.removeCallbacks(delayedCheckRunnable)
         stopRingtoneAndLock()
         stopForeground(Service.STOP_FOREGROUND_REMOVE)
         Log.w(TAG, "服务已销毁，资源已释放。")
@@ -319,6 +341,23 @@ class MyNotificationListenerService : NotificationListenerService() {
             } catch (e: Exception) { null }
 
             val snippet = "$title $text".trim().take(100).ifEmpty { null }
+
+            // 延时报警：策略要求延时则先持久化成"待触发项"，到期后再走正常报警链路
+            val delayPolicy = keywordDelayPolicyMap[matchedKeyword] ?: defaultDelayPolicy
+            val triggerAtMs = DelayedAlertScheduler.resolveTriggerAt(delayPolicy)
+            if (triggerAtMs != null) {
+                scheduleDelayedAlert(
+                    keyword = matchedKeyword,
+                    sourcePackage = sbn.packageName,
+                    sourceApp = sourceAppName,
+                    ringtoneUri = alertRingtoneValue,
+                    loopLimit = alertLoopLimit,
+                    triggerAtMs = triggerAtMs,
+                    policyMode = delayPolicy.mode
+                )
+                return
+            }
+
             val result = sharedPreferencesHelper.enqueueOrAggregateAlert(
                 keyword = matchedKeyword,
                 sourcePackage = sbn.packageName,
@@ -412,16 +451,157 @@ class MyNotificationListenerService : NotificationListenerService() {
         serviceScope.launch { VigilEventBus.alertStateChanged.emit(Unit) }
     }
 
+    // ---- 延时报警：命中后先持久化待触发项，到期再走正常报警链路 ----
+
+    /**
+     * 按延时策略排定一条待触发报警。
+     * 重复提醒间隔在这里同样生效（与立即报警共用冷却数据），避免"延时"绕过防轰炸。
+     */
+    private fun scheduleDelayedAlert(
+        keyword: String,
+        sourcePackage: String?,
+        sourceApp: String?,
+        ringtoneUri: String?,
+        loopLimit: Int,
+        triggerAtMs: Long,
+        policyMode: DelayMode
+    ) {
+        if (!sharedPreferencesHelper.tryAcceptKeywordTrigger(keyword, sourcePackage)) {
+            VigilLogger.d(
+                applicationContext, TAG,
+                "忽略通知: keyword=$keyword, 原因=重复提醒间隔（延时报警路径）"
+            )
+            return
+        }
+        val item = sharedPreferencesHelper.addScheduledAlert(
+            keyword = keyword,
+            sourcePackage = sourcePackage,
+            sourceApp = sourceApp,
+            ringtoneUri = ringtoneUri,
+            loopLimit = loopLimit,
+            triggerAtMs = triggerAtMs
+        )
+        if (item == null) {
+            VigilLogger.e(applicationContext, TAG, "延时报警排定失败（已满或持久化失败）: keyword=$keyword")
+            return
+        }
+        DelayedAlertScheduler.schedule(applicationContext, item.id, item.triggerAtMs)
+        scheduleDelayedCheckTimer()
+        val delaySeconds = ((item.triggerAtMs - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
+        VigilLogger.i(
+            applicationContext, TAG,
+            "延时报警已排定: keyword=$keyword, mode=$policyMode, 距响铃=${delaySeconds}s, " +
+                "待触发数=${sharedPreferencesHelper.getScheduledAlerts().size}"
+        )
+        updateForegroundNotification()
+        emitAlertStateChanged()
+    }
+
+    /**
+     * 扫描并触发已到期的延时报警。onlyId 非空时只处理闹钟定向投递的那一条。
+     * 先入队成功再移除待触发项：入队失败（队列满/持久化失败）时保留，等下次扫描重试，避免报警丢失。
+     */
+    private fun processDueDelayedAlerts(onlyId: String? = null) {
+        val now = System.currentTimeMillis()
+        val pending = sharedPreferencesHelper.getScheduledAlerts()
+        var changed = false
+        for (item in pending) {
+            if (onlyId != null && item.id != onlyId) continue
+            if (item.triggerAtMs > now) continue
+
+            // 过期太久的陈旧项（设备长时间关机/闹钟被系统丢弃）不再补响，避免开机后集中炸响
+            if (now - item.triggerAtMs > MAX_OVERDUE_FIRE_MS) {
+                sharedPreferencesHelper.removeScheduledAlert(item.id)
+                DelayedAlertScheduler.cancel(applicationContext, item.id)
+                changed = true
+                VigilLogger.w(
+                    applicationContext, TAG,
+                    "延时报警已过期丢弃: keyword=${item.keyword}, 迟了=${(now - item.triggerAtMs) / 60_000}分钟"
+                )
+                continue
+            }
+
+            val result = sharedPreferencesHelper.enqueueOrAggregateAlert(
+                keyword = item.keyword,
+                sourcePackage = item.sourcePackage,
+                sourceApp = item.sourceApp,
+                ringtoneUri = item.ringtoneUri,
+                loopLimit = item.loopLimit,
+                now = now,
+                cooldownMs = 0L
+            )
+            if (result.status == AlertEnqueueStatus.QUEUE_FULL ||
+                result.status == AlertEnqueueStatus.PERSIST_FAILED
+            ) {
+                VigilLogger.e(
+                    applicationContext, TAG,
+                    "延时报警到期但入队失败(${result.status})，保留待重试: keyword=${item.keyword}"
+                )
+                continue
+            }
+            sharedPreferencesHelper.removeScheduledAlert(item.id)
+            DelayedAlertScheduler.cancel(applicationContext, item.id)
+            changed = true
+            VigilLogger.i(
+                applicationContext, TAG,
+                "延时报警到期响铃: keyword=${item.keyword}, 迟了=${(now - item.triggerAtMs) / 1000}s"
+            )
+            when (result.status) {
+                AlertEnqueueStatus.STARTED -> result.active?.let { startActiveAlert(it, null) }
+                else -> emitAlertStateChanged()
+            }
+        }
+        if (changed) {
+            scheduleDelayedCheckTimer()
+            updateForegroundNotification()
+            emitAlertStateChanged()
+        }
+    }
+
+    /** 进程存活时按最近到期时刻设一次性定时器：闹钟非精确/被 ROM 压制时的精度补偿。 */
+    private fun scheduleDelayedCheckTimer() {
+        handler.removeCallbacks(delayedCheckRunnable)
+        val next = sharedPreferencesHelper.getScheduledAlerts().minOfOrNull { it.triggerAtMs } ?: return
+        val delayMs = (next - System.currentTimeMillis()).coerceIn(0L, MAX_DELAYED_TIMER_MS)
+        handler.postDelayed(delayedCheckRunnable, delayMs)
+    }
+
+    /** 服务重建/进程重启后重新武装未到期项（AlarmManager 的闹钟不跨重启保留）。 */
+    private fun rearmScheduledAlerts() {
+        val now = System.currentTimeMillis()
+        val pending = sharedPreferencesHelper.getScheduledAlerts()
+        pending.filter { it.triggerAtMs > now }.forEach {
+            DelayedAlertScheduler.schedule(applicationContext, it.id, it.triggerAtMs)
+        }
+        scheduleDelayedCheckTimer()
+        if (pending.isNotEmpty()) {
+            VigilLogger.i(applicationContext, TAG, "延时报警重新武装: ${pending.size} 条待触发")
+        }
+    }
+
+    /** 用户关闭服务开关时取消全部待触发项，避免关掉功能后仍被闹钟拉起响铃。 */
+    private fun clearPendingDelayedAlerts(reason: String) {
+        val pending = sharedPreferencesHelper.getScheduledAlerts()
+        if (pending.isEmpty()) return
+        pending.forEach { DelayedAlertScheduler.cancel(applicationContext, it.id) }
+        sharedPreferencesHelper.clearScheduledAlerts()
+        handler.removeCallbacks(delayedCheckRunnable)
+        VigilLogger.w(applicationContext, TAG, "取消 ${pending.size} 条待触发延时报警: $reason")
+        emitAlertStateChanged()
+    }
+
     private fun loadSettings() {
         keywords = sharedPreferencesHelper.getKeywords()
         currentRingtoneValue = sharedPreferencesHelper.getRingtoneValue()
         keywordRingtoneMap = sharedPreferencesHelper.getKeywordRingtoneMap()
         keywordLoopCountMap = sharedPreferencesHelper.getKeywordLoopCountMap()
         defaultLoopCount = sharedPreferencesHelper.getDefaultLoopCount()
+        defaultDelayPolicy = sharedPreferencesHelper.getDefaultDelayPolicy()
+        keywordDelayPolicyMap = sharedPreferencesHelper.getKeywordDelayPolicyMap()
         filterAppsEnabled = sharedPreferencesHelper.getFilterAppsEnabledState()
         filteredAppPackages = sharedPreferencesHelper.getFilteredAppPackages()
         Log.i(TAG, "服务设置已加载/更新: ${keywords.size}个关键词, 铃声: '$currentRingtoneValue', 关键词铃声映射: ${keywordRingtoneMap.size}个, 默认循环次数: $defaultLoopCount, 应用过滤启用: $filterAppsEnabled, 过滤列表大小: ${filteredAppPackages.size}")
-        VigilLogger.i(applicationContext, TAG, "设置已加载: ${keywords.size}个关键词, 过滤启用=$filterAppsEnabled (${filteredAppPackages.size}个应用)")
+        VigilLogger.i(applicationContext, TAG, "设置已加载: ${keywords.size}个, 过滤启用=$filterAppsEnabled (${filteredAppPackages.size}个应用), 默认延时=${defaultDelayPolicy.mode}, 关键词延时覆盖=${keywordDelayPolicyMap.size}个")
         // 添加详细日志以便调试
         if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
             Log.d(TAG, "应用过滤已启用，包含的应用包名: ${filteredAppPackages.joinToString()}")
@@ -432,6 +612,14 @@ class MyNotificationListenerService : NotificationListenerService() {
             Log.d(TAG, "应用过滤未启用，将监听所有应用")
         }
         
+        // 延时报警兜底：服务/进程重建后重新武装未到期项，并补触发已到期项
+        if (SharedPreferencesHelper.isServiceEnabledByUser(applicationContext)) {
+            processDueDelayedAlerts()
+            rearmScheduledAlerts()
+        } else {
+            clearPendingDelayedAlerts("服务开关已关闭")
+        }
+
         // 设置更新后刷新前台服务通知
         updateForegroundNotification()
     }
@@ -795,14 +983,16 @@ class MyNotificationListenerService : NotificationListenerService() {
         }
         
         // 简化关键词显示
+        val pendingDelayedCount = sharedPreferencesHelper.getScheduledAlerts().size
         val keywordsText = if (keywords.isNotEmpty() && serviceEnabled) {
-            if (keywords.size <= 2) {
+            val base = if (keywords.size <= 2) {
                 // 关键词少时显示全部
                 "关键词:${keywords.joinToString(",")}"
             } else {
                 // 关键词多时只显示数量
                 "监听${keywords.size}个关键词"
             }
+            if (pendingDelayedCount > 0) "$base · ${pendingDelayedCount}条延时待触发" else base
         } else if (!serviceEnabled) {
             "点击进入应用设置"
         } else {

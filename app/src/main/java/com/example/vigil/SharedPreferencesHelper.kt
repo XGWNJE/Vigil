@@ -21,6 +21,40 @@ data class AlertRecord(
     val endType: AlertEndType
 )
 
+/** 延时报警模式：立即响铃 / 命中后固定时长再响 / 命中后最近的每日定点时间响 */
+enum class DelayMode { IMMEDIATE, FIXED, SCHEDULED }
+
+/**
+ * 延时报警策略。
+ * @property mode 生效模式
+ * @property fixedDelayMs 仅 FIXED 生效：命中后等待毫秒数
+ * @property timesOfDay 仅 SCHEDULED 生效：每日定点时间的「当日分钟数」（0..1439，升序去重）
+ */
+data class DelayPolicy(
+    val mode: DelayMode = DelayMode.IMMEDIATE,
+    val fixedDelayMs: Long = 0L,
+    val timesOfDay: List<Int> = emptyList()
+) {
+    companion object {
+        val IMMEDIATE = DelayPolicy()
+    }
+}
+
+/**
+ * 一条待触发的延时报警（命中关键词但还没到响铃时刻）。
+ * 与报警队列分开持久化：队列项一入队即响铃，延时项只在到期时才进入队列（铁律 3）。
+ */
+data class ScheduledAlert(
+    val id: String,
+    val keyword: String,
+    val sourcePackage: String?,
+    val sourceApp: String?,
+    val ringtoneUri: String?,
+    val loopLimit: Int,
+    val triggerAtMs: Long,   // 墙钟到期时刻（进程被杀后按它恢复）
+    val createdAtMs: Long    // 命中通知的时刻
+)
+
 /** 未确认报警的持久化状态（进程被杀后恢复响铃用，铁律 3） */
 data class PendingAlert(
     val keyword: String,
@@ -103,6 +137,18 @@ class SharedPreferencesHelper(context: Context) {
         const val DEFAULT_KEYWORD_REPEAT_INTERVAL_MS = 60_000L
         private const val MAX_KEYWORD_REPEAT_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
+        // 延时报警：全局默认策略、关键词级覆盖、待触发项
+        private const val KEY_DEFAULT_DELAY_POLICY = "default_delay_policy"
+        private const val KEY_KEYWORD_DELAY_POLICIES = "keyword_delay_policies"
+        private const val KEY_SCHEDULED_ALERTS = "scheduled_alerts"
+        private const val SCHEDULED_ALERTS_VERSION = 1
+
+        const val MIN_FIXED_DELAY_MS = 1_000L                        // 1 秒
+        const val MAX_FIXED_DELAY_MS = 24 * 60 * 60 * 1000L          // 24 小时
+        const val DEFAULT_FIXED_DELAY_MS = 5 * 60_000L               // 未配置时的固定延时默认档
+        const val MAX_SCHEDULED_TIMES_PER_POLICY = 12
+        const val MAX_SCHEDULED_ALERT_SIZE = 20
+
         // 关键词级铃声与循环次数映射（JSON：{keyword: 值}）
         private const val KEY_KEYWORD_RINGTONES = "keyword_ringtones"
         private const val KEY_KEYWORD_LOOP_COUNTS = "keyword_loop_counts"
@@ -117,6 +163,16 @@ class SharedPreferencesHelper(context: Context) {
             0 -> DEFAULT_LOOP_COUNT
             else -> count.coerceIn(MIN_LOOP_COUNT, MAX_LOOP_COUNT)
         }
+
+        /** 固定延时的归一化：未设置（<=0）回落 5 分钟默认档，其余夹在 1 分钟~24 小时。 */
+        internal fun normalizeFixedDelayMs(ms: Long): Long = when {
+            ms <= 0L -> DEFAULT_FIXED_DELAY_MS
+            else -> ms.coerceIn(MIN_FIXED_DELAY_MS, MAX_FIXED_DELAY_MS)
+        }
+
+        /** 每日定点时间归一化：过滤越界（0..1439）、去重、升序、限量。 */
+        internal fun normalizeTimesOfDay(times: List<Int>): List<Int> =
+            times.filter { it in 0..1439 }.distinct().sorted().take(MAX_SCHEDULED_TIMES_PER_POLICY)
 
         // 报警历史记录（JSON array，新→旧，上限 MAX_ALERT_HISTORY 条）
         private const val KEY_ALERT_HISTORY = "alert_history"
@@ -687,6 +743,7 @@ class SharedPreferencesHelper(context: Context) {
     fun clearKeywordConfig(keyword: String) {
         saveKeywordRingtone(keyword, null)
         saveKeywordLoopCount(keyword, null)
+        saveKeywordDelayPolicy(keyword, null)
     }
 
     /** 全局默认循环次数：1..10；范围外旧值读取/保存时自动迁移。 */
@@ -713,6 +770,224 @@ class SharedPreferencesHelper(context: Context) {
             Log.e("SharedPreferencesHelper", "读取 JSON 映射失败: $key", e)
             emptyMap()
         }
+    }
+
+    // --- 延时报警：策略（全局默认 + 关键词覆盖） ---
+
+    /** 全局默认延时策略；未配置为「立即报警」（保持旧行为）。 */
+    fun getDefaultDelayPolicy(): DelayPolicy {
+        return decodeDelayPolicy(prefs.getString(KEY_DEFAULT_DELAY_POLICY, null))
+    }
+
+    fun saveDefaultDelayPolicy(policy: DelayPolicy) {
+        prefs.edit().putString(KEY_DEFAULT_DELAY_POLICY, encodeDelayPolicy(policy)).apply()
+        Log.i("SharedPreferencesHelper", "默认延时策略已保存: ${policy.mode}")
+    }
+
+    /** 全部关键词级延时覆盖（JSON：{keyword: policy}）。 */
+    fun getKeywordDelayPolicyMap(): Map<String, DelayPolicy> {
+        return try {
+            val obj = JSONObject(prefs.getString(KEY_KEYWORD_DELAY_POLICIES, null) ?: "{}")
+            obj.keys().asSequence().associateWith { decodeDelayPolicy(obj.getJSONObject(it).toString()) }
+        } catch (e: Exception) {
+            Log.e("SharedPreferencesHelper", "读取关键词延时策略失败", e)
+            emptyMap()
+        }
+    }
+
+    /** 关键词的延时覆盖；未覆盖返回 null（调用方回落全局默认）。 */
+    fun getKeywordDelayPolicy(keyword: String): DelayPolicy? = getKeywordDelayPolicyMap()[keyword]
+
+    /** 保存关键词延时覆盖；null 表示移除覆盖（跟随全局默认），「立即」不落盘为空配置直接移除。 */
+    fun saveKeywordDelayPolicy(keyword: String, policy: DelayPolicy?) {
+        val obj = JSONObject(prefs.getString(KEY_KEYWORD_DELAY_POLICIES, null) ?: "{}")
+        if (policy == null || policy.mode == DelayMode.IMMEDIATE) {
+            obj.remove(keyword)
+        } else {
+            obj.put(keyword, JSONObject(encodeDelayPolicy(policy)))
+        }
+        prefs.edit().putString(KEY_KEYWORD_DELAY_POLICIES, obj.toString()).apply()
+        Log.i("SharedPreferencesHelper", "关键词延时策略已保存: $keyword -> ${policy?.mode}")
+    }
+
+    /** 实际生效的延时策略：关键词覆盖优先，未覆盖跟随全局默认。 */
+    fun resolveDelayPolicy(keyword: String): DelayPolicy {
+        return getKeywordDelayPolicy(keyword) ?: getDefaultDelayPolicy()
+    }
+
+    /** 是否存在任一非「立即」的延时策略（UI 判断要不要引导精确闹钟权限）。 */
+    fun hasAnyDelayedPolicy(): Boolean {
+        if (getDefaultDelayPolicy().mode != DelayMode.IMMEDIATE) return true
+        return getKeywordDelayPolicyMap().values.any { it.mode != DelayMode.IMMEDIATE }
+    }
+
+    private fun encodeDelayPolicy(policy: DelayPolicy): String = JSONObject().apply {
+        put("mode", policy.mode.name)
+        when (policy.mode) {
+            DelayMode.FIXED -> put("fixedDelayMs", normalizeFixedDelayMs(policy.fixedDelayMs))
+            DelayMode.SCHEDULED -> put(
+                "times",
+                JSONArray(normalizeTimesOfDay(policy.timesOfDay).toList())
+            )
+            DelayMode.IMMEDIATE -> Unit
+        }
+    }.toString()
+
+    private fun decodeDelayPolicy(raw: String?): DelayPolicy {
+        if (raw.isNullOrBlank()) return DelayPolicy.IMMEDIATE
+        return try {
+            val obj = JSONObject(raw)
+            when (obj.optString("mode", DelayMode.IMMEDIATE.name)) {
+                DelayMode.FIXED.name -> DelayPolicy(
+                    DelayMode.FIXED,
+                    normalizeFixedDelayMs(obj.optLong("fixedDelayMs", 0L))
+                )
+                DelayMode.SCHEDULED.name -> {
+                    val arr = obj.optJSONArray("times")
+                    val times = buildList {
+                        if (arr != null) for (i in 0 until arr.length()) add(arr.optInt(i))
+                    }
+                    val normalized = normalizeTimesOfDay(times)
+                    // 定点但没有任何合法时间点 → 退回立即，避免出现"永不可能触发"的策略
+                    if (normalized.isEmpty()) DelayPolicy.IMMEDIATE
+                    else DelayPolicy(DelayMode.SCHEDULED, 0L, normalized)
+                }
+                else -> DelayPolicy.IMMEDIATE
+            }
+        } catch (e: Exception) {
+            Log.e("SharedPreferencesHelper", "解析延时策略失败，按立即处理", e)
+            DelayPolicy.IMMEDIATE
+        }
+    }
+
+
+    // --- 延时报警：待触发项（进程被杀后按到期时刻恢复） ---
+
+    fun getScheduledAlerts(): List<ScheduledAlert> = synchronized(alertQueueLock) {
+        readScheduledAlertsLocked()
+    }
+
+    fun hasScheduledAlerts(): Boolean = synchronized(alertQueueLock) {
+        readScheduledAlertsLocked().isNotEmpty()
+    }
+
+    /** 新增一条待触发延时报警；队列满（MAX_SCHEDULED_ALERT_SIZE）返回 null。 */
+    fun addScheduledAlert(
+        keyword: String,
+        sourcePackage: String?,
+        sourceApp: String?,
+        ringtoneUri: String?,
+        loopLimit: Int,
+        triggerAtMs: Long,
+        now: Long = System.currentTimeMillis()
+    ): ScheduledAlert? = synchronized(alertQueueLock) {
+        val items = readScheduledAlertsLocked().toMutableList()
+        if (items.size >= MAX_SCHEDULED_ALERT_SIZE) {
+            Log.e("SharedPreferencesHelper", "延时报警已满，拒绝新项: $keyword")
+            return@synchronized null
+        }
+        val item = ScheduledAlert(
+            id = UUID.randomUUID().toString(),
+            keyword = keyword,
+            sourcePackage = sourcePackage,
+            sourceApp = sourceApp,
+            ringtoneUri = ringtoneUri,
+            loopLimit = normalizeLoopCount(loopLimit),
+            triggerAtMs = triggerAtMs,
+            createdAtMs = now
+        )
+        items += item
+        val committed = prefs.edit()
+            .putString(KEY_SCHEDULED_ALERTS, encodeScheduledAlerts(items))
+            .commit()
+        if (!committed) {
+            Log.e("SharedPreferencesHelper", "延时报警持久化失败: $keyword")
+            return@synchronized null
+        }
+        item
+    }
+
+    fun removeScheduledAlert(id: String): Boolean = synchronized(alertQueueLock) {
+        val items = readScheduledAlertsLocked()
+        if (items.none { it.id == id }) return@synchronized false
+        val remaining = items.filterNot { it.id == id }
+        prefs.edit().putString(KEY_SCHEDULED_ALERTS, encodeScheduledAlerts(remaining)).commit()
+    }
+
+    /** 清空全部待触发延时报警；返回被清掉的条数。 */
+    fun clearScheduledAlerts(): Int = synchronized(alertQueueLock) {
+        val count = readScheduledAlertsLocked().size
+        if (count > 0) {
+            prefs.edit().remove(KEY_SCHEDULED_ALERTS).commit()
+            Log.i("SharedPreferencesHelper", "已清空 $count 条待触发延时报警")
+        }
+        count
+    }
+
+    /**
+     * 冷却判定并记录关键词触发（延时报警路径专用，与立即报警共用同一份"最近触发"数据）。
+     * @return true = 允许这次触发且已记录；false = 落在重复提醒间隔内，应忽略。
+     */
+    fun tryAcceptKeywordTrigger(
+        keyword: String,
+        sourcePackage: String?,
+        now: Long = System.currentTimeMillis()
+    ): Boolean = synchronized(alertQueueLock) {
+        val cooldown = getKeywordRepeatIntervalMs().coerceIn(0L, MAX_KEYWORD_REPEAT_INTERVAL_MS)
+        val identity = alertIdentity(sourcePackage, keyword)
+        val recent = readLastTriggerMapLocked()
+        val last = recent[identity]
+        if (cooldown > 0L && last != null && now - last in 0..cooldown) return@synchronized false
+        recent[identity] = now
+        prefs.edit().putString(KEY_LAST_KEYWORD_TRIGGERS, JSONObject(recent as Map<*, *>).toString()).commit()
+        true
+    }
+
+    private fun readScheduledAlertsLocked(): List<ScheduledAlert> {
+        return try {
+            val root = JSONObject(prefs.getString(KEY_SCHEDULED_ALERTS, null) ?: return emptyList())
+            val items = root.optJSONArray("items") ?: JSONArray()
+            buildList {
+                for (i in 0 until minOf(items.length(), MAX_SCHEDULED_ALERT_SIZE)) {
+                    val obj = items.getJSONObject(i)
+                    val triggerAtMs = obj.optLong("triggerAtMs", 0L)
+                    // 缺到期时刻的脏数据无法恢复，直接丢弃
+                    if (triggerAtMs <= 0L) continue
+                    add(
+                        ScheduledAlert(
+                            id = obj.optString("id").ifBlank { UUID.randomUUID().toString() },
+                            keyword = obj.getString("keyword"),
+                            sourcePackage = obj.nullableString("sourcePackage"),
+                            sourceApp = obj.nullableString("sourceApp"),
+                            ringtoneUri = obj.nullableString("ringtoneUri"),
+                            loopLimit = normalizeLoopCount(obj.optInt("loopLimit", DEFAULT_LOOP_COUNT)),
+                            triggerAtMs = triggerAtMs,
+                            createdAtMs = obj.optLong("createdAtMs", triggerAtMs)
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SharedPreferencesHelper", "读取待触发延时报警失败，按空处理", e)
+            emptyList()
+        }
+    }
+
+    private fun encodeScheduledAlerts(items: List<ScheduledAlert>): String {
+        val arr = JSONArray()
+        items.take(MAX_SCHEDULED_ALERT_SIZE).forEach { item ->
+            arr.put(JSONObject().apply {
+                put("id", item.id)
+                put("keyword", item.keyword)
+                put("sourcePackage", item.sourcePackage ?: JSONObject.NULL)
+                put("sourceApp", item.sourceApp ?: JSONObject.NULL)
+                put("ringtoneUri", item.ringtoneUri ?: JSONObject.NULL)
+                put("loopLimit", normalizeLoopCount(item.loopLimit))
+                put("triggerAtMs", item.triggerAtMs)
+                put("createdAtMs", item.createdAtMs)
+            })
+        }
+        return JSONObject().put("version", SCHEDULED_ALERTS_VERSION).put("items", arr).toString()
     }
 
     // --- 报警历史记录 ---

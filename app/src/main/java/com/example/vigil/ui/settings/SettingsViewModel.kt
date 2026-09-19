@@ -18,9 +18,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.vigil.MainActivity
+import com.example.vigil.DelayedAlertScheduler
+import com.example.vigil.DelayPolicy
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.RingtoneLibrary
+import com.example.vigil.ScheduledAlert
 import com.example.vigil.SharedPreferencesHelper
 import com.example.vigil.AlertRecord
 import com.example.vigil.VigilLogger
@@ -68,6 +71,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _keywordCooldownSeconds = mutableStateOf(sharedPreferencesHelper.getKeywordCooldownSeconds())
     val keywordCooldownSeconds: State<Int> = _keywordCooldownSeconds
+
+    // --- 延时报警（全局默认策略 + 关键词级覆盖） ---
+    private val _defaultDelayPolicy =
+        mutableStateOf(sharedPreferencesHelper.getDefaultDelayPolicy())
+    val defaultDelayPolicy: State<DelayPolicy> = _defaultDelayPolicy
+
+    // 精确闹钟授权（Android 12+）：有非立即延时策略但未授权时，UI 给出引导入口
+    private val _exactAlarmAllowed = mutableStateOf(DelayedAlertScheduler.canScheduleExactAlarms(application))
+    val exactAlarmAllowed: State<Boolean> = _exactAlarmAllowed
+
+    private val _hasDelayedPolicy = mutableStateOf(sharedPreferencesHelper.hasAnyDelayedPolicy())
+    val hasDelayedPolicy: State<Boolean> = _hasDelayedPolicy
 
     // 关键词个性化配置版本号：配置变化时 +1 触发 Compose 重组（chip 弹窗按关键词即时查询）
     private val _keywordConfigVersion = mutableStateOf(0)
@@ -125,8 +140,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updatePermissionStates() {
         _hasNotificationAccess.value = PermissionUtils.isNotificationListenerEnabled(context)
         _isIgnoringBatteryOptimizations.value = PermissionUtils.isIgnoringBatteryOptimizations(context)
+        _exactAlarmAllowed.value = DelayedAlertScheduler.canScheduleExactAlarms(context)
+        _hasDelayedPolicy.value = sharedPreferencesHelper.hasAnyDelayedPolicy()
 
-        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}")
+        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}, ExactAlarm=${_exactAlarmAllowed.value}")
     }
 
     // --- 应用过滤 ---
@@ -333,6 +350,50 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /** 关键词的循环次数覆盖；null = 跟随默认。 */
     fun getKeywordLoopCount(keyword: String): Int? {
         return sharedPreferencesHelper.getKeywordLoopCount(keyword)
+    }
+
+    // --- 延时报警 ---
+
+    /** 全局默认延时策略。 */
+    fun onDefaultDelayPolicySelected(policy: DelayPolicy) {
+        _defaultDelayPolicy.value = policy
+        sharedPreferencesHelper.saveDefaultDelayPolicy(policy)
+        _hasDelayedPolicy.value = sharedPreferencesHelper.hasAnyDelayedPolicy()
+        _exactAlarmAllowed.value = DelayedAlertScheduler.canScheduleExactAlarms(context)
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Default delay policy saved: ${policy.mode}")
+    }
+
+    /** 关键词的延时覆盖；null = 跟随默认（UI 传 null 表示「跟随默认」）。 */
+    fun getKeywordDelayPolicy(keyword: String): DelayPolicy? {
+        return sharedPreferencesHelper.getKeywordDelayPolicy(keyword)
+    }
+
+    fun onKeywordDelayPolicySelected(keyword: String, policy: DelayPolicy?) {
+        sharedPreferencesHelper.saveKeywordDelayPolicy(keyword, policy)
+        _keywordConfigVersion.value++
+        _hasDelayedPolicy.value = sharedPreferencesHelper.hasAnyDelayedPolicy()
+        _exactAlarmAllowed.value = DelayedAlertScheduler.canScheduleExactAlarms(context)
+        notifyServiceToUpdateSettingsCallback?.invoke()
+        Log.i(TAG, "Keyword delay policy saved: $keyword -> ${policy?.mode}")
+    }
+
+    /** 待触发的延时报警（新→旧按到期时刻展示）。 */
+    fun getScheduledAlerts(): List<ScheduledAlert> =
+        sharedPreferencesHelper.getScheduledAlerts().sortedBy { it.triggerAtMs }
+
+    fun cancelScheduledAlert(id: String) {
+        sharedPreferencesHelper.removeScheduledAlert(id)
+        DelayedAlertScheduler.cancel(context, id)
+        notifyServiceToUpdateSettingsCallback?.invoke()
+    }
+
+    fun cancelAllScheduledAlerts() {
+        sharedPreferencesHelper.getScheduledAlerts().forEach {
+            DelayedAlertScheduler.cancel(context, it.id)
+        }
+        sharedPreferencesHelper.clearScheduledAlerts()
+        notifyServiceToUpdateSettingsCallback?.invoke()
     }
 
     fun onKeywordLoopCountSelected(keyword: String, count: Int?) {

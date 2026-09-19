@@ -3,13 +3,6 @@
 Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 核心链路：通知命中关键词 → 循环播放闹钟铃声 + 唤醒锁 + 应用内全屏弹窗 → 用户确认后停止。
 
-## 静默观察（harness-observer，常驻职责）
-
-- 若你的系统提示已注入全局协作规则（Claude Code / Codex / OpenCode 会自动注入），其中已含本职责，跳过本节。
-- 否则（如 Kimi Code）：干活全程留意四类信号——owner 重复纠正、owner 明确表达的偏好、可复用踩坑、你自身的语义失败（假设/目标/路径/范围错误）。
-- 命中即静默追加到 `D:\ObjectCode\HarnessOS\notes\inbox\YYYY-MM-DD.md`（先查重，同主题重复计数 +1，脱敏）；记录格式与验收标准以 harness-observer skill 为准，需要时加载它。
-- 静默 = 不打断当前任务、不在对话中提及、不改动当前项目任何文件；只追加 inbox，归并提炼留给 owner 评审。
-
 ## 中转站真机验证（常驻职责）
 
 - 若你的系统提示已注入全局协作规则（Claude Code / Codex / OpenCode 会自动注入），其中已含本职责，跳过本节。
@@ -29,19 +22,21 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 构建：`./gradlew assembleDebug` → `app/build/outputs/apk/debug/app-debug.apk`
 - 版本号：`app/build.gradle.kts` 的 `versionCode`/`versionName`
 - 核心代码：
-  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/FIFO 调度/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连，触发 `ListenerRecovery` 快速自愈）；不同关键词排队、同来源同关键词聚合，结束当前项时原子写记录并推进队首；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束并广播状态变化；响铃期间同一前台服务通知 ID 切换到高优先级报警渠道，点击携带持久化 alertId/关键词进入处理，结束后切回普通监听通知
+  - `app/src/main/java/com/example/vigil/MyNotificationListenerService.kt` — 监听/匹配/FIFO 调度/播放/唤醒锁/报警恢复/绑定看门狗（心跳中检测断连，触发 `ListenerRecovery` 快速自愈）；不同关键词排队、同来源同关键词聚合，结束当前项时原子写记录并推进队首；循环次数有限档位不用 isLooping，改 OnCompletion 手动续播计数（每次续播重新 acquire wakelock 续期），到数自动结束并广播状态变化；响铃期间同一前台服务通知 ID 切换到高优先级报警渠道，点击携带持久化 alertId/关键词进入处理，结束后切回普通监听通知；命中后按延时策略决定「立即入队」还是「落一条待触发项」（`scheduled_alerts`），到期判定的三层兜底 = AlarmManager 闹钟 / 服务内 Handler 定时器 / 心跳每 30s 扫描，均以「待触发项是否已被移除」做幂等判据
+  - `app/src/main/java/com/example/vigil/DelayedAlertScheduler.kt` — 延时报警到期时刻计算（固定延时按墙钟相加；每日定点取严格晚于命中时刻的最近时间点，当天全过则取次日第一个）与 AlarmManager 调度：有精确闹钟权限用 `setExactAndAllowWhileIdle`，否则回落 `setAndAllowWhileIdle`（见「已知平台坑」）；并负责跳系统「闹钟和提醒」授权页
+  - `app/src/main/java/com/example/vigil/DelayedAlertReceiver.kt` — 延时报警到期闹钟的接收方：收到系统闹钟后 `startForegroundService` 拉起服务并把到期 id 交给服务处理（服务不在时由心跳扫描补触发）
   - `app/src/main/java/com/example/vigil/ListenerRecovery.kt` — 监听绑定自愈（快速自愈：requestRebind → 短观察 → 完整重连序列 → 无效即标记 `listener_recovery_failed`），Service 与 MainActivity 共用
   - `app/src/main/java/com/example/vigil/RingtoneLibrary.kt` — 铃声库（P2 自定义铃声来源）+ 内置预设（随 APK 打包）：导入 SAF 音频复制到 `filesDir/ringtones/`、录音（MediaRecorder m4a/AAC）、试听、删除；铃声值约定 `content://` = 系统铃声 / `android.resource://<pkg>/raw/<name>` = 内置预设（res/raw WAV，不可删除，owner 提供 TTS 语音，MP3 因质量未采用）/ 其他非空 = 库内文件绝对路径 / null = 系统默认闹钟；`resolve()` 解析播放数据源（预设经 AssetFileDescriptor 播放——见「已知平台坑」），文件缺失回落并写日志；试听状态变化经 `onPreviewStateChanged` 回调刷新 UI
-  - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、默认铃声、关键词级铃声/循环次数映射 `keyword_ringtones`/`keyword_loop_counts`、全局默认循环次数 `default_loop_count`（1–10；旧版无限/越界值迁移到范围内）、报警 FIFO 队列 `alert_queue`（上限 20，含铃声 URI/loopLimit/已播次数/来源应用/聚合次数，兼容迁移旧 pending）、重复提醒间隔 `keyword_repeat_interval_ms` 与最近触发记录、报警历史 `alert_history`（JSON，上限 100 条）、listener_connected 绑定状态）
+  - `app/src/main/java/com/example/vigil/SharedPreferencesHelper.kt` — 全部持久化（关键词、默认铃声、关键词级铃声/循环次数映射 `keyword_ringtones`/`keyword_loop_counts`、全局默认循环次数 `default_loop_count`（1–10；旧版无限/越界值迁移到范围内）、报警 FIFO 队列 `alert_queue`（上限 20，含铃声 URI/loopLimit/已播次数/来源应用/聚合次数，兼容迁移旧 pending）、重复提醒间隔 `keyword_repeat_interval_ms` 与最近触发记录、报警历史 `alert_history`（JSON，上限 100 条）、listener_connected 绑定状态、延时报警默认策略 `default_delay_policy` 与关键词覆盖 `keyword_delay_policies`（JSON：mode=IMMEDIATE/FIXED/SCHEDULED + fixedDelayMs（1 秒 ~ 24 小时，UI 用时/分/秒三格精确输入）+ times 当日分钟数）、待触发延时项 `scheduled_alerts`（上限 20，含到期墙钟时刻；与 `alert_queue` 分开存，因为队列项一入队就响铃））
   - `app/src/main/java/com/example/vigil/PermissionUtils.kt` — 权限检查与引导
   - `app/src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt` — 服务状态/心跳/报警弹窗状态
   - `app/src/main/java/com/example/vigil/VigilLogger.kt` — 持久化诊断日志（filesDir/logs/vigil.log，1MB 滚动双文件；每条立即 flush）+ 导出拼接（诊断头 + old + 当前），主屏设置 Sheet「导出日志」行经 FileProvider 分享；不写通知正文
   - `app/src/main/java/com/example/vigil/VigilEventBus.kt` — 进程内事件总线（SharedFlow，报警确认携带 alertId，状态变化后 UI 必须以持久化队首为准；replay 语义与持久化兜底要求见铁律 5）
-  - `app/src/main/java/com/example/vigil/ui/settings/SettingsViewModel.kt` — 关键词/铃声/应用过滤状态与持久化；过滤列表排序：已勾选 → 用户应用优先 → 名称（`appListComparator`，初始加载与勾选切换共用）
+  - `app/src/main/java/com/example/vigil/ui/settings/SettingsViewModel.kt` — 关键词/铃声/应用过滤/延时策略状态与持久化；过滤列表排序：已勾选 → 用户应用优先 → 名称（`appListComparator`，初始加载与勾选切换共用）；延时策略区分「全局默认」与「关键词覆盖」（覆盖为 null 即跟随默认），并暴露精确闹钟授权状态与待触发延时项清单（查看/取消）
   - `app/src/main/java/com/example/vigil/MainActivity.kt` — Compose 根宿主，生命周期管理，服务启停，报警弹窗承载；冷启动触发自动更新检查，并处理「安装未知应用」权限与安装调起
   - `app/src/main/java/com/example/vigil/UpdateChecker.kt` — GitHub 渠道自动更新：`GET /releases/latest` 解析最新版（版本号/发版说明/APK 资产直链），耐用的版本号比较（`isNewer`），APK 下载到 cacheDir、FileProvider 授权调起系统安装。刻意用内置 `HttpURLConnection` + `org.json`，不引第三方库（保极致轻量）。debug 构建可用 `debug_update_api_base`（SharedPreferences）覆盖 API 基址给本地模拟（生产恒访问 GitHub 且仅 HTTPS）
   - `app/src/main/java/com/example/vigil/UpdateViewModel.kt` — 自动更新状态机（冷启动/手动检查、更新弹窗、下载进度、安装就绪）；已点「稍后」的版本记入 `last_dismissed_update_version`，冷启动不再重复提示
-- UI 页面：`MainScreen`（涟漪状态首页；设置 Sheet 双入口：顶栏齿轮 + 上滑手势（底部发丝线把手常驻，首次启动显示「上滑打开设置」，Sheet 打开过一次即收起）；Sheet 内容：关键词、铃声、循环次数、重复提醒间隔、应用过滤、权限三级分组（REQUIRED 通知使用权 / RECOMMENDED 电池白名单 + 锁定任务卡片引导（「不再提示」后整行隐藏，`lock_task_tip_dismissed`）/ OPTIONAL 自启动管理、后台运行）、导出日志、开源地址、检查更新（版本号文本，点击触发手动检查）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）、`ui/dialogs/UpdateDialog.kt`（自动更新弹窗：发现新版本展示发版说明 + 更新/稍后；已最新 / 无法访问 GitHub / 异常 各有提示；下载进度）
+- UI 页面：`MainScreen`（涟漪状态首页；设置 Sheet 双入口：顶栏齿轮 + 上滑手势（底部发丝线把手常驻，首次启动显示「上滑打开设置」，Sheet 打开过一次即收起）；Sheet 内容：关键词、铃声、循环次数、重复提醒间隔、延时报警（+ 有排定项时才出现的「待触发延时报警」行）、应用过滤、权限三级分组（REQUIRED 通知使用权 / RECOMMENDED 电池白名单 + 锁定任务卡片引导（「不再提示」后整行隐藏，`lock_task_tip_dismissed`）+ 精确闹钟（仅「有延时策略且未授权」时出现）/ OPTIONAL 自启动管理、后台运行）、导出日志、开源地址、检查更新（版本号文本，点击触发手动检查）、`AppFilterScreen`（应用过滤全屏页：搜索、SYS 标记、多选、勾选置顶）、`KeywordAlertDialog`（命中全屏弹窗，确认停铃，内容居中避开导航栏）、`KeywordConfigDialog` 内可逐关键词覆盖延时策略、`DelayPolicyDialog`/`ScheduledAlertsDialog`（延时策略选择与待触发清单取消）、`PermissionGuideDialog`（权限引导确认弹窗，确认后跳系统设置）、`ui/dialogs/UpdateDialog.kt`（自动更新弹窗：发现新版本展示发版说明 + 更新/稍后；已最新 / 无法访问 GitHub / 异常 各有提示；下载进度）
 - 图标资产：launcher icon 内容不得顶边——缩放约 75% 居中、四边预留 ≥15% 安全边距，导出 mipmap 前做圆角 mask 预演（系统圆角 mask 会裁切顶边内容）。来源：notes/inbox/2026-07-27.md，owner 2026-07-30 验收
 - 设计主题「一线」：极简深色、发丝线分区、无卡片、单一强调色。背景 #0A0A0B / 文字 #EAEAE7 / 分割线 #1F1F23 / 主色 #E4FF54 酸橙绿 / 警示 #FFB020 琥珀
 
@@ -51,7 +46,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 1. **有真机设备**（`adb devices` 有真机在线）→ 一律用真机。
 2. **没有真机** → 退到模拟器，并**优先使用高版本 AVD**；需要验证老版本兼容行为时再开低版本。
-3. 本机已有 AVD（模拟器二进制：`<sdk.dir>/emulator/emulator`，`sdk.dir` 见 `local.properties`，当前为 `C:\Users\Administrator\AppData\Local\Android\Sdk`；列表命令 `emulator -list-avds`）：
+3. 本机已有 AVD（模拟器二进制：`<sdk.dir>/emulator/emulator`，`sdk.dir` 见 `local.properties`；列表命令 `emulator -list-avds`）：
    - `VisionGuard_API36` — Android 16（API 36），x86_64，google_apis_playstore（默认首选）
    - `Pixel_3a_XL` — Android 9（API 28），x86，google_apis（老版本兼容验证）
 4. 启动（后台进程）：`emulator -avd <名字> -no-boot-anim -no-snapshot-save`；等开机完成：`adb wait-for-device` 后轮询 `adb shell getprop sys.boot_completed` 直到输出 1；关闭：`adb -s <serial> emu kill`。
@@ -64,13 +59,13 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 勿扰控制（验证"勿扰下按系统策略响铃"用）：API 36 用 `cmd notification set_dnd on|none|priority|alarms|all|off`；`settings put global zen_mode` 在 API 28/36 实测均被静默忽略；API 28 无 `set_dnd`，走 UI 自动化：`am start -a android.settings.ZEN_MODE_SETTINGS` → uiautomator 点「立即开启」，进「Sound & vibration」行为页可关「闹钟」例外构造压制场景。闹钟流是否被压看 `dumpsys audio` 的 `STREAM_ALARM: Muted: true/false`。
 - `dumpsys media.player` 版本差异：API ~29 及以下**没有 packageName 归因行**，改用 `state(5)`（STARTED）+ `stream type(4)` 计数判断在播/已停。
 - 连续多次 `am crash` 会触发系统「屡次停止运行」对话框并阻止应用重启，需 uiautomator 点「关闭应用」后再拉起。
-- adb push 本地路径：开了 `MSYS_NO_PATHCONV=1` 后，Git Bash 风格 `/d/tmp/...` 传给 Windows 版 adb 会报 cannot stat；本地侧路径一律写 Windows 形式（如 `D:\tmp\vigil_prefs.xml`），设备侧路径写 Linux 形式，互不冲突。
+- adb push 本地路径：开了 `MSYS_NO_PATHCONV=1` 后，Git Bash 风格 `/c/Users/...` 传给 Windows 版 adb 会报 cannot stat；本地侧路径一律写 Windows 形式（如 `C:\Users\xgwnj\AppData\Local\Temp\vigil_prefs.xml`），设备侧路径写 Linux 形式，互不冲突。
 - 更新检查本地模拟：debug 构建用 `run-as` 写 `debug_update_api_base`（SharedPreferences）指向本地模拟 GitHub；debug 构建已允许 cleartext（`app/src/debug/AndroidManifest.xml` 的 `usesCleartextTraffic`，release 不合并）。坑：模拟器经 `10.0.2.2` 访问宿主的**大响应**（几百 KB 以上）会被截断（`unexpected end of stream`），改用 `adb reverse tcp:<port> tcp:<port>` + 基址写 `http://127.0.0.1:<port>` 走 adb 传输（实测可靠）；调起系统安装后 Play Protect 可能拦截 debug 包，属平台行为。
 
 ### 环境
 
 - Windows Git Bash：adb 命令含设备侧路径前先 `export MSYS_NO_PATHCONV=1`。
-- Write 工具的 `/tmp` = Git Bash 的 `D:/tmp`，勿混用。
+- Write 工具的 `/tmp` 就是 Git Bash 的 `/tmp`（本机映射到 `C:/Users/xgwnj/AppData/Local/Temp`），勿混用。
 
 ### 安装与权限
 
@@ -104,6 +99,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 | 监听/匹配/播放逻辑 | 构建 + 闭环（真机优先，无真机用高版本模拟器：触发 → `media.player` 验证响铃 → 弹窗 → 确认 → 验证停止） |
 | 报警恢复/进程重启逻辑 | 闭环 + `am crash` 后验证服务重建恢复队首响铃、确认后队首清除并推进下一项 |
 | 报警队列/重复触发调度 | 构建 + `scripts/run-alert-stress.ps1`；核对 FIFO、同词聚合、冷却边界、崩溃后 ID/顺序、最终 MediaPlayer 释放 |
+| 延时报警（策略/调度/恢复） | 构建 + 模拟器闭环：注入 `default_delay_policy`（FIXED 1 分钟或 SCHEDULED 取本地时间 +2 分钟）→ 发通知 → `run-as` 读 `scheduled_alerts` 核对到期时刻且**立即不响铃**（`dumpsys media.player` 无条目）→ `dumpsys alarm` 见本应用闹钟 → 到点后 `media.player` 响铃 → 弹窗确认停铃；再补验 `am crash` 后服务重建仍按时触发、关服务开关取消待触发项、以及精确/非精确两条路径（切换方法见「已知平台坑」） |
 | 设置项/持久化 | 构建 + `run-as` 读 `vigil_prefs.xml` 核对写入 |
 | 纯 UI | 构建 + 截图核对 |
 | Manifest/权限 | 构建 + 真机（或模拟器）对应权限流程走一遍 |
@@ -121,6 +117,8 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - **TTS 工具产出的 WAV 常带"未最终化"头**：RIFF/data 块长度字段为 0xFFFFFFFF 占位（v1.14.0 内置预设 6 条全中招），MediaPlayer 直接解析报 what=1 播放失败；修复 = 补写两个块长（`DataChunkSize = fileSize - dataChunkOffset - 8`）。入库前用十六进制/块遍历验证块长，不要只看 RIFF/WAVE 魔数。
 - **`android.resource://` URI 播放在部分平台不可靠**：实测 API 36 模拟器 `MediaPlayer.setDataSource(context, "android.resource://pkg/raw/x")` 报 what=1 失败；统一改用 `resources.openRawResourceFd(resId)` → `setDataSource(fd, offset, length)`（先 `getIdentifier` 兜底资源缺失回落默认闹钟），raw 资源用 R.raw 引用防 shrinkResources 剥离。
 - **系统闹钟文件可能自带 `autoLoop` 元数据**：API 36 模拟器的默认闹钟即使命令设置 `MediaPlayer.isLooping=false`，`dumpsys media.player` 仍显示 `autoLoop(1)` 且不触发 `OnCompletion`。有限次数播放必须同时按 `MediaPlayer.duration` 安排完成兜底；正常 `OnCompletion` 与时长兜底共用同一计数入口并互相取消，停止播放时清理延迟回调。
+- **延时报警的精确闹钟权限**：`SCHEDULE_EXACT_ALARM` 在 Android 12 需用户授权、Android 14+ 对新装应用默认不预授权（targetSdk 33+）。未授权时 `setExactAndAllowWhileIdle`/`setAlarmClock` 抛 `SecurityException`，必须显式判 `AlarmManager.canScheduleExactAlarms()` 并回落 `setAndAllowWhileIdle`（Doze 下按维护窗口投递，可能晚几分钟）。应用刻意不申请 `USE_EXACT_ALARM`（Play 仅限闹钟/日历类应用，审核有被拒风险）。另外 `Handler.postDelayed` 走 uptimeMillis，深睡时不计时，不能作为唯一到期依据；闹钟到期后拉起服务受 Android 12+ 后台启动前台服务限制（未加电池白名单时会被拒），所以第三层「心跳扫描到期项」是兜底必需。
+- **验证精确闹钟两条路径（2026-09-20 API 36 模拟器实测）**：应用在电池白名单里时系统会无视 `appops deny` 直接放行精确闹钟（`canScheduleExactAlarms()=true`、日志 `exact=true`）——这是平台的「允许清单」例外。要覆盖非精确兜底路径，必须**同时**移除电池白名单（`dumpsys deviceidle whitelist -com.example.vigil`）并 `appops set --uid com.example.vigil SCHEDULE_EXACT_ALARM deny`，此时日志出现 `exact=false`，实测仍按计划时刻响铃（迟约 0.3s）。注意 PowerShell 会把未加引号的 `-com.example.vigil` 当参数吞掉，须写成 `"-com.example.vigil"`。
 
 ## 发布
 

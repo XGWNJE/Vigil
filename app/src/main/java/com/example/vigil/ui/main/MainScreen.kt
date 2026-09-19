@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -86,13 +87,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.MainActivity
+import com.example.vigil.DelayMode
+import com.example.vigil.DelayPolicy
+import com.example.vigil.DelayedAlertScheduler
 import com.example.vigil.ListenerRecovery
 import com.example.vigil.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.RingtoneLibrary
+import com.example.vigil.ScheduledAlert
 import com.example.vigil.SharedPreferencesHelper
 import com.example.vigil.UpdateChecker
 import com.example.vigil.UpdateViewModel
@@ -238,10 +244,18 @@ fun MainScreen(
     // 循环次数档位弹窗：null=不显示；""=全局默认档位；非空=该关键词的覆盖档位
     var loopCountDialogTarget by remember { mutableStateOf<String?>(null) }
     var showKeywordCooldownDialog by remember { mutableStateOf(false) }
+    // 延时报警弹窗：null=不显示；""=全局默认策略；非空=该关键词的覆盖策略
+    var delayDialogTarget by remember { mutableStateOf<String?>(null) }
+    // 待触发延时报警清单弹窗
+    var showPendingDelayedDialog by remember { mutableStateOf(false) }
     // 铃声选择弹窗：null=不显示；""=默认铃声；非空=该关键词的铃声
     var ringtoneSelectTarget by remember { mutableStateOf<String?>(null) }
     val defaultLoopCount by settingsViewModel.defaultLoopCount
     val keywordCooldownSeconds by settingsViewModel.keywordCooldownSeconds
+    val defaultDelayPolicy by settingsViewModel.defaultDelayPolicy
+    val exactAlarmAllowed by settingsViewModel.exactAlarmAllowed
+    val hasDelayedPolicy by settingsViewModel.hasDelayedPolicy
+    val pendingDelayedCount by monitoringViewModel.pendingDelayedCount
     // 关键词配置变化信号（读取即订阅，chip 弹窗里的值随配置保存即时刷新）
     val keywordConfigVersion by settingsViewModel.keywordConfigVersion
 
@@ -597,19 +611,33 @@ fun MainScreen(
                     RowValue(formatKeywordCooldown(keywordCooldownSeconds), withArrow = true)
                 }
 
-                // 5. 铃声库（自定义铃声来源：导入音频 / 录音，支持命名、删除、试听）
+                // 5. 延时报警：命中后不立即响铃，改为固定时长后或每日定点时间响；关键词可逐条覆盖
+                LineRow(onClick = { delayDialogTarget = "" }) {
+                    RowLabel("延时报警")
+                    RowValue(formatDelayPolicy(defaultDelayPolicy), withArrow = true)
+                }
+
+                // 6. 待触发延时报警：有排定项时才出现，可查看/取消
+                if (pendingDelayedCount > 0) {
+                    LineRow(onClick = { showPendingDelayedDialog = true }) {
+                        RowLabel("待触发延时报警")
+                        RowValue("$pendingDelayedCount 条", withArrow = true)
+                    }
+                }
+
+                // 7. 铃声库（自定义铃声来源：导入音频 / 录音，支持命名、删除、试听）
                 LineRow(onClick = onNavigateToRingtoneLibrary) {
                     RowLabel("铃声库")
                     RowValue("导入 / 录音", withArrow = true)
                 }
 
-                // 5. 报警记录
+                // 8. 报警记录
                 LineRow(onClick = onNavigateToAlertHistory) {
                     RowLabel("报警记录")
                     RowValue("查看历史", withArrow = true)
                 }
 
-                // 6. 应用过滤
+                // 9. 应用过滤
                 LineRow(onClick = onNavigateToAppFilter) {
                     RowLabel("应用过滤")
                     RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
@@ -655,6 +683,18 @@ fun MainScreen(
                     }) {
                         RowLabel("锁定任务卡片")
                         RowValue("如何锁定", withArrow = true)
+                    }
+                }
+
+                // 精确闹钟（Android 12+）：只在使用延时报警且未授权时提示，否则纯噪音
+                if (hasDelayedPolicy && !exactAlarmAllowed) {
+                    LineRow(onClick = {
+                        if (!DelayedAlertScheduler.openExactAlarmSettings(context)) {
+                            Toast.makeText(context, "无法打开闹钟和提醒设置", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        RowLabel("精确闹钟")
+                        WarnCapsule()
                     }
                 }
 
@@ -753,9 +793,12 @@ fun MainScreen(
             ringtoneName = settingsViewModel.getKeywordRingtoneName(keyword),
             loopCountOverride = settingsViewModel.getKeywordLoopCount(keyword),
             defaultLoopCount = defaultLoopCount,
+            delayPolicyOverride = settingsViewModel.getKeywordDelayPolicy(keyword),
+            defaultDelayPolicy = defaultDelayPolicy,
             onPickRingtone = { ringtoneSelectTarget = keyword },
             onClearRingtone = { settingsViewModel.onKeywordRingtoneSelected(keyword, null) },
             onPickLoopCount = { loopCountDialogTarget = keyword },
+            onPickDelay = { delayDialogTarget = keyword },
             onDismiss = { keywordPendingConfig = null }
         )
     }
@@ -825,6 +868,49 @@ fun MainScreen(
                 showKeywordCooldownDialog = false
             },
             onDismiss = { showKeywordCooldownDialog = false }
+        )
+    }
+
+    // 延时报警策略弹窗（全局默认与关键词覆盖共用；关键词多一档「跟随默认」）
+    delayDialogTarget?.let { target ->
+        val isGlobal = target.isEmpty()
+        val overridePolicy = if (isGlobal) null else settingsViewModel.getKeywordDelayPolicy(target)
+        DelayPolicyDialog(
+            isGlobal = isGlobal,
+            overridePolicy = overridePolicy,
+            defaultPolicy = defaultDelayPolicy,
+            pendingCount = pendingDelayedCount,
+            exactAlarmAllowed = exactAlarmAllowed,
+            onSelect = { policy ->
+                if (isGlobal) {
+                    settingsViewModel.onDefaultDelayPolicySelected(policy ?: DelayPolicy.IMMEDIATE)
+                } else {
+                    settingsViewModel.onKeywordDelayPolicySelected(target, policy)
+                }
+                delayDialogTarget = null
+            },
+            onCancelAllPending = {
+                settingsViewModel.cancelAllScheduledAlerts()
+                monitoringViewModel.refreshPendingDelayedCount()
+            },
+            onDismiss = { delayDialogTarget = null }
+        )
+    }
+
+    // 待触发延时报警清单（查看计划时刻 / 单条或全部取消）
+    if (showPendingDelayedDialog) {
+        ScheduledAlertsDialog(
+            items = settingsViewModel.getScheduledAlerts(),
+            onCancelOne = { id ->
+                settingsViewModel.cancelScheduledAlert(id)
+                monitoringViewModel.refreshPendingDelayedCount()
+            },
+            onCancelAll = {
+                settingsViewModel.cancelAllScheduledAlerts()
+                monitoringViewModel.refreshPendingDelayedCount()
+                showPendingDelayedDialog = false
+            },
+            onDismiss = { showPendingDelayedDialog = false }
         )
     }
 
@@ -1214,9 +1300,12 @@ private fun KeywordConfigDialog(
     ringtoneName: String?,
     loopCountOverride: Int?,
     defaultLoopCount: Int,
+    delayPolicyOverride: DelayPolicy?,
+    defaultDelayPolicy: DelayPolicy,
     onPickRingtone: () -> Unit,
     onClearRingtone: () -> Unit,
     onPickLoopCount: () -> Unit,
+    onPickDelay: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -1285,6 +1374,29 @@ private fun KeywordConfigDialog(
                         Text(
                             text = loopCountOverride?.let { formatLoopCount(it) }
                                 ?: "默认（${formatLoopCount(defaultLoopCount)}）",
+                            fontSize = 13.sp,
+                            color = VigilDirAInk
+                        )
+                        Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                    }
+                }
+                // 延时报警行（未覆盖则跟随默认策略）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onPickDelay)
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "延时报警", fontSize = 13.sp, color = VigilDirADim)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = delayPolicyOverride?.let { formatDelayPolicy(it) }
+                                ?: "默认（${formatDelayPolicy(defaultDelayPolicy)}）",
                             fontSize = 13.sp,
                             color = VigilDirAInk
                         )
@@ -1598,6 +1710,476 @@ private fun KeywordCooldownDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(text = "取消", color = VigilDirADim)
+            }
+        }
+    )
+}
+
+// ---- 延时报警：文案格式化 ----
+
+/** 延时策略显示文案：立即 / 延时 N 分钟 / 定点 08:00·18:00。 */
+private fun formatDelayPolicy(policy: DelayPolicy): String = when (policy.mode) {
+    DelayMode.IMMEDIATE -> "立即"
+    DelayMode.FIXED -> "延时 ${formatDelayDuration(policy.fixedDelayMs)}"
+    DelayMode.SCHEDULED -> {
+        val times = policy.timesOfDay
+        val shown = times.take(2).joinToString("·") { formatTimeOfDay(it) }
+        if (times.size > 2) "定点 $shown 等${times.size}个" else "定点 $shown"
+    }
+}
+
+/** 延时长度文案：非零单位依次拼出（如「1 小时 2 分 3 秒」「45 秒」）。 */
+private fun formatDelayDuration(ms: Long): String {
+    val totalSeconds = (ms / 1_000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    val parts = buildList {
+        if (hours > 0L) add("$hours 小时")
+        if (minutes > 0L) add("$minutes 分")
+        if (seconds > 0L) add("$seconds 秒")
+    }
+    return if (parts.isEmpty()) "0 秒" else parts.joinToString(" ")
+}
+
+/** 当日分钟数（0..1439）→ HH:mm。 */
+private fun formatTimeOfDay(minutesOfDay: Int): String =
+    "%02d:%02d".format(minutesOfDay / 60, minutesOfDay % 60)
+
+/** 待触发项的绝对计划时刻（跨天也能一眼看清）。 */
+private fun formatScheduledAt(triggerAtMs: Long): String =
+    java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date(triggerAtMs))
+
+/**
+ * 延时报警策略弹窗（DirA 风格）。
+ * 全局场景：立即 / 固定延时 / 每日定点三选一；
+ * 关键词场景：多一档「跟随默认」。定点支持增删时间点，添加时间用同弹窗内的滑杆，
+ * 不叠系统选择器。
+ */
+@Composable
+private fun DelayPolicyDialog(
+    isGlobal: Boolean,
+    overridePolicy: DelayPolicy?,
+    defaultPolicy: DelayPolicy,
+    pendingCount: Int,
+    exactAlarmAllowed: Boolean,
+    onSelect: (DelayPolicy?) -> Unit,
+    onCancelAllPending: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val effective = overridePolicy ?: defaultPolicy
+    var followDefault by remember { mutableStateOf(!isGlobal && overridePolicy == null) }
+    var mode by remember { mutableStateOf(effective.mode) }
+    // 固定延时：精确到秒的可编辑时/分/秒（三格合计即延时长度）
+    val effectiveFixedDelayMs = remember {
+        SharedPreferencesHelper.normalizeFixedDelayMs(effective.fixedDelayMs)
+    }
+    var hoursText by remember { mutableStateOf((effectiveFixedDelayMs / 3_600_000L).toString()) }
+    var minutesText by remember {
+        mutableStateOf(((effectiveFixedDelayMs / 60_000L) % 60L).toString())
+    }
+    var secondsText by remember { mutableStateOf(((effectiveFixedDelayMs / 1_000L) % 60L).toString()) }
+    val fixedDelayMs = (hoursText.toIntOrNull() ?: 0) * 3_600_000L +
+        (minutesText.toIntOrNull() ?: 0) * 60_000L +
+        (secondsText.toIntOrNull() ?: 0) * 1_000L
+    var times by remember { mutableStateOf(effective.timesOfDay) }
+    // 添加时间点的内联编辑态（避免叠加第二个对话框）
+    var addingTime by remember { mutableStateOf(false) }
+    var draftHour by remember { mutableIntStateOf(8) }
+    var draftMinute by remember { mutableIntStateOf(0) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "延时报警",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (addingTime) {
+                    Text(text = "添加时间点", fontSize = 13.sp, color = VigilDirADim)
+                    Text(
+                        text = formatTimeOfDay(draftHour * 60 + draftMinute),
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = VigilDirAAcid,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    Text(
+                        text = "时",
+                        fontSize = 11.sp,
+                        color = VigilDirADim,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Slider(
+                        value = draftHour.toFloat(),
+                        onValueChange = { draftHour = it.toInt().coerceIn(0, 23) },
+                        valueRange = 0f..23f,
+                        steps = 22
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("00", fontSize = 11.sp, color = VigilDirADim)
+                        Text("23", fontSize = 11.sp, color = VigilDirADim)
+                    }
+                    Text(text = "分", fontSize = 11.sp, color = VigilDirADim)
+                    Slider(
+                        value = draftMinute.toFloat(),
+                        onValueChange = { draftMinute = it.toInt().coerceIn(0, 55) },
+                        valueRange = 0f..55f,
+                        steps = 10
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("00", fontSize = 11.sp, color = VigilDirADim)
+                        Text("55", fontSize = 11.sp, color = VigilDirADim)
+                    }
+                } else {
+                    // 关键词场景：可回到「跟随默认」
+                    if (!isGlobal) {
+                        SelectableRow(
+                            label = "跟随默认",
+                            detail = formatDelayPolicy(defaultPolicy),
+                            selected = followDefault
+                        ) {
+                            followDefault = true
+                        }
+                    }
+                    SelectableRow(
+                        label = "立即报警",
+                        detail = "命中即响",
+                        selected = !followDefault && mode == DelayMode.IMMEDIATE
+                    ) {
+                        followDefault = false
+                        mode = DelayMode.IMMEDIATE
+                    }
+                    SelectableRow(
+                        label = "固定延时",
+                        detail = "命中后等待设定时长",
+                        selected = !followDefault && mode == DelayMode.FIXED
+                    ) {
+                        followDefault = false
+                        mode = DelayMode.FIXED
+                    }
+                    if (!followDefault && mode == DelayMode.FIXED) {
+                        // 精确到秒的延时编辑：三格分别填时/分/秒，合计即延时长度
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            DelayTimeField("时", hoursText, 23) { hoursText = it }
+                            DelayTimeField("分", minutesText, 59) { minutesText = it }
+                            DelayTimeField("秒", secondsText, 59) { secondsText = it }
+                        }
+                        Text(
+                            text = if (fixedDelayMs < SharedPreferencesHelper.MIN_FIXED_DELAY_MS) {
+                                "至少 1 秒"
+                            } else {
+                                "命中后等 ${formatDelayDuration(fixedDelayMs)}再响铃"
+                            },
+                            fontSize = 12.sp,
+                            color = if (fixedDelayMs < SharedPreferencesHelper.MIN_FIXED_DELAY_MS) {
+                                VigilDirAAmber
+                            } else {
+                                VigilDirADim
+                            },
+                            modifier = Modifier.padding(start = 12.dp, top = 8.dp)
+                        )
+                    }
+                    SelectableRow(
+                        label = "每日定点",
+                        detail = "命中后最近的每日时间点",
+                        selected = !followDefault && mode == DelayMode.SCHEDULED
+                    ) {
+                        followDefault = false
+                        mode = DelayMode.SCHEDULED
+                    }
+                    if (!followDefault && mode == DelayMode.SCHEDULED) {
+                        if (times.isEmpty()) {
+                            Text(
+                                text = "还没有时间点，先添加一个",
+                                fontSize = 12.sp,
+                                color = VigilDirAAmber,
+                                modifier = Modifier.padding(top = 6.dp, start = 12.dp)
+                            )
+                        }
+                        times.forEach { minutes ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 12.dp)
+                                    .padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = formatTimeOfDay(minutes),
+                                    fontSize = 14.sp,
+                                    color = VigilDirAInk
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "删除时间点",
+                                    tint = VigilDirADim,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable { times = times - minutes }
+                                )
+                            }
+                        }
+                        Text(
+                            text = "+ 添加时间点",
+                            fontSize = 13.sp,
+                            color = VigilDirAAcid,
+                            modifier = Modifier
+                                .padding(start = 12.dp, top = 6.dp, bottom = 6.dp)
+                                .clickable {
+                                    draftHour = 8
+                                    draftMinute = 0
+                                    addingTime = true
+                                }
+                        )
+                    }
+                    if (pendingCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                                .height(1.dp)
+                                .background(VigilDirALine)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "已排定 $pendingCount 条待触发",
+                                fontSize = 12.sp,
+                                color = VigilDirADim
+                            )
+                            Text(
+                                text = "全部取消",
+                                fontSize = 12.sp,
+                                color = VigilDirAAmber,
+                                modifier = Modifier.clickable(onClick = onCancelAllPending)
+                            )
+                        }
+                    }
+                    if (mode != DelayMode.IMMEDIATE && !exactAlarmAllowed) {
+                        Text(
+                            text = "系统未授权「闹钟和提醒」，到点可能延迟几分钟；请在设置里授予精确闹钟。",
+                            fontSize = 11.sp,
+                            color = VigilDirAAmber,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (addingTime) {
+                TextButton(onClick = {
+                    times = SharedPreferencesHelper.normalizeTimesOfDay(
+                        times + (draftHour * 60 + draftMinute)
+                    )
+                    addingTime = false
+                }) {
+                    Text(text = "添加", color = VigilDirAAcid)
+                }
+            } else {
+                val fixedDelayValid = followDefault || mode != DelayMode.FIXED ||
+                    fixedDelayMs >= SharedPreferencesHelper.MIN_FIXED_DELAY_MS
+                TextButton(
+                    onClick = {
+                        val policy = when {
+                            followDefault -> null
+                            mode == DelayMode.IMMEDIATE -> DelayPolicy.IMMEDIATE
+                            mode == DelayMode.FIXED -> DelayPolicy(DelayMode.FIXED, fixedDelayMs)
+                            else -> DelayPolicy(DelayMode.SCHEDULED, 0L, times)
+                        }
+                        onSelect(policy)
+                    },
+                    enabled = fixedDelayValid
+                ) {
+                    Text(
+                        text = "确定",
+                        color = if (fixedDelayValid) VigilDirAAcid else VigilDirADim
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { if (addingTime) addingTime = false else onDismiss() }) {
+                Text(text = if (addingTime) "返回" else "取消", color = VigilDirADim)
+            }
+        }
+    )
+}
+
+/**
+ * 固定延时的时/分/秒输入格：只收数字、两位上限、超上限自动夹到 max（时 23 / 分秒 59）。
+ * 空串按 0 处理，便于用户清空后重新输入。
+ */
+@Composable
+private fun DelayTimeField(
+    label: String,
+    value: String,
+    max: Int,
+    onValueChange: (String) -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { raw ->
+                val digits = raw.filter { it.isDigit() }.take(2)
+                val normalized = if (digits.isEmpty()) {
+                    ""
+                } else {
+                    minOf(digits.trimStart('0').ifEmpty { "0" }.toInt(), max).toString()
+                }
+                onValueChange(normalized)
+            },
+            singleLine = true,
+            label = { Text(label, fontSize = 11.sp, color = VigilDirADim) },
+            textStyle = TextStyle(fontSize = 14.sp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = VigilDirAAcid,
+                unfocusedBorderColor = VigilDirAFaint,
+                focusedTextColor = VigilDirAInk,
+                unfocusedTextColor = VigilDirAInk,
+                cursorColor = VigilDirAAcid
+            ),
+            shape = RoundedCornerShape(4.dp),
+            modifier = Modifier.width(74.dp)
+        )
+    }
+}
+
+/** 弹窗内的单选项行（左侧标题 + 可选说明，右侧选中圆点）。 */@Composable
+private fun SelectableRow(
+    label: String,
+    detail: String?,
+    selected: Boolean,
+    indent: Boolean = false,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = if (indent) 12.dp else 0.dp)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                color = if (selected) VigilDirAAcid else VigilDirAInk
+            )
+            if (detail != null) {
+                Text(text = detail, fontSize = 11.sp, color = VigilDirADim)
+            }
+        }
+        if (selected) {
+            Box(modifier = Modifier.size(8.dp).background(VigilDirAAcid, CircleShape))
+        }
+    }
+}
+
+/** 待触发延时报警清单：逐条显示计划时刻，可单条或全部取消。 */
+@Composable
+private fun ScheduledAlertsDialog(
+    items: List<ScheduledAlert>,
+    onCancelOne: (String) -> Unit,
+    onCancelAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = VigilDirABg,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
+        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        title = {
+            Text(
+                text = "待触发延时报警",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = VigilDirAInk
+            )
+        },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (items.isEmpty()) {
+                    Text(text = "暂无待触发报警", fontSize = 13.sp, color = VigilDirADim)
+                }
+                items.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = item.keyword, fontSize = 13.sp, color = VigilDirAInk)
+                            Text(
+                                text = buildString {
+                                    append(formatScheduledAt(item.triggerAtMs))
+                                    item.sourceApp?.let { append(" · $it") }
+                                },
+                                fontSize = 11.sp,
+                                color = VigilDirADim
+                            )
+                        }
+                        Text(
+                            text = "取消",
+                            fontSize = 12.sp,
+                            color = VigilDirAAmber,
+                            modifier = Modifier.clickable { onCancelOne(item.id) }
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(VigilDirALine)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "关闭", color = VigilDirAAcid)
+            }
+        },
+        dismissButton = {
+            if (items.isNotEmpty()) {
+                TextButton(onClick = onCancelAll) {
+                    Text(text = "全部取消", color = VigilDirADim)
+                }
             }
         }
     )

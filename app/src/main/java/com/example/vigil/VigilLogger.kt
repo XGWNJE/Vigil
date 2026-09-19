@@ -120,6 +120,8 @@ object VigilLogger {
             append("服务开关: ").append(prefs.getServiceEnabledState()).append('\n')
             append("listener_connected(持久化): ").append(prefs.getListenerConnectedState()).append('\n')
             append("未确认报警: ").append(prefs.getPendingAlert()?.keyword ?: "无").append('\n')
+            append("待触发延时报警: ").append(prefs.getScheduledAlerts().size).append('\n')
+            append("延时策略(默认): ").append(prefs.getDefaultDelayPolicy().mode).append('\n')
             append("关键词数: ").append(prefs.getKeywords().size).append('\n')
             append("==========================\n\n")
         }

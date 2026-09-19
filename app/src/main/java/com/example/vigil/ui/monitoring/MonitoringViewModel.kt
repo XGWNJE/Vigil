@@ -55,6 +55,10 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     val matchedKeywordForDialog: State<String?> = _matchedKeywordForDialog
     private var activeAlertIdForDialog: String? = null
 
+    // ---- 待触发延时报警数量（持久化兜底：冷启动直接读 prefs，服务侧变化经事件总线刷新）----
+    private val _pendingDelayedCount = mutableStateOf(sharedPreferencesHelper.getScheduledAlerts().size)
+    val pendingDelayedCount: State<Int> = _pendingDelayedCount
+
     // ---- 监听自动重连失败标记（UI 逃生通道：重新授权引导）----
     // 冷启动兜底读持久化（EventBus 无 replay）；服务侧变化经事件总线通知
     private val _listenerRecoveryFailed = mutableStateOf(
@@ -157,7 +161,6 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
                 syncAlertDialogWithPersistentState()
             }
         }
-
         // 启动心跳检查定时器
         mainHandler.post(heartbeatCheckRunnable)
 
@@ -272,6 +275,8 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun syncAlertDialogWithPersistentState(expectedAlertId: String? = null) {
+        // 回到前台时一并刷新待触发延时报警数量（服务侧事件可能无人收集）
+        refreshPendingDelayedCount()
         val active = sharedPreferencesHelper.getActiveAlert()
         if (active == null || (expectedAlertId != null && active.id != expectedAlertId)) {
             onKeywordAlertDialogDismiss()
@@ -280,6 +285,11 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         activeAlertIdForDialog = active.id
         _matchedKeywordForDialog.value = active.keyword
         _showKeywordAlertDialog.value = true
+    }
+
+    /** 以持久化数据为准刷新待触发延时报警数量。 */
+    fun refreshPendingDelayedCount() {
+        _pendingDelayedCount.value = sharedPreferencesHelper.getScheduledAlerts().size
     }
 
     fun onKeywordAlertDialogConfirm() {

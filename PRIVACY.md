@@ -37,6 +37,7 @@ Vigil（以下简称"本应用"）是一款开源的关键词通知报警工具�
 | 全屏通知（USE_FULL_SCREEN_INTENT） | 报警时展示全屏提醒 |
 | 请求忽略电池优化 | 防止系统省电策略强杀报警服务，由你自愿开启 |
 | 麦克风（RECORD_AUDIO） | 仅用于铃声库「录音」功能，录音文件保存在应用私有目录，仅本地使用 |
+| 闹钟和提醒（SCHEDULE_EXACT_ALARM，Android 12+） | 仅用于「延时报警」：让设定的延时/每日定点报警到点准时响铃；未授权时回落系统非精确闹钟。不涉及任何数据收集或传输 |
 
 ### 数据安全
 
@@ -88,6 +89,7 @@ The App does **not** collect, store (outside your device), or transmit any perso
 | WAKE_LOCK | Keeps the device awake during an alarm so you can see it |
 | USE_FULL_SCREEN_INTENT | Shows the full-screen alarm alert |
 | Request ignore battery optimizations | Prevents the system from killing the alarm service; enabled voluntarily by you |
+| SCHEDULE_EXACT_ALARM (Alarms & reminders, Android 12+) | Used only for the delayed-alarm feature so a scheduled alarm rings on time; falls back to inexact alarms if not granted. No data is collected or transmitted |
 
 ### Data Security
 

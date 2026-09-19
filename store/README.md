@@ -24,7 +24,7 @@
 
 ### English (70 chars)
 ```
-Keyword notification alarm: looping ringtone + in-app alert, 2.5MB APK
+Keyword notification alarm: looping ringtone + in-app alert, 3.4MB APK
 ```
 
 ---
@@ -38,13 +38,14 @@ Vigil — 关键词通知报警器
 
 重要消息淹没在通知海洋里？Vigil 帮你盯住它们。
 
-设置关键词后，Vigil 会在后台监控指定应用的通知。一旦通知内容命中关键词，立即触发强提醒：按设定次数播放闹钟铃声 + 应用内全屏弹窗，并在响铃期间显示可点击进入处理的前台通知。你可以手动确认停止；无人处理时到达设定次数会自动结束并留下报警记录。进程重建后，仍在有效期内的未确认报警会恢复提醒。
+设置关键词后，Vigil 会在后台监控指定应用的通知。一旦通知内容命中关键词，立即触发强提醒：按设定次数播放闹钟铃声 + 应用内全屏弹窗，并在响铃期间显示可点击进入处理的前台通知。你可以手动确认停止；无人处理时到达设定次数会自动结束并留下报警记录。进程重建后，仍在有效期内的未确认报警会恢复提醒。若不想被立即打断，可以把报警设为延时：命中后等一段自定义时长（精确到秒）或等到每日指定时间点再响。
 
 【核心功能】
 • 关键词监控：自定义多个关键词，命中即报警
 • 应用过滤：只监控你关心的应用，避免误报
 • 强提醒：循环响铃 + 应用内全屏弹窗，想忽略都难
-• 极致轻量：安装包仅 2.5MB，几乎不占空间
+• 极致轻量：安装包仅 3.4MB，几乎不占空间
+• 延时报警：命中后可选固定时长（精确到秒）或每日定点时间再响铃，待触发项可查看、可取消
 • 报警恢复：即使进程被系统强杀，重启后自动恢复响铃，报警绝不丢失
 • 自定义铃声：使用系统闹钟铃声，音量独立控制
 • 诊断日志：可选导出，便于排查问题（不含通知内容）
@@ -63,6 +64,7 @@ Vigil — 关键词通知报警器
 • 前台服务/唤醒锁：报警期间保持服务运行，确保循环响铃不被中断
 • 忽略电池优化（可选）：防止系统省电策略中断报警
 • 麦克风（可选）：仅用于铃声库录制自定义铃声，录音仅存本地
+• 闹钟和提醒（可选，Android 12+）：仅用于延时报警到点准时响铃，未授权则回落系统非精确闹钟
 
 开源地址：https://github.com/XGWNJE/Vigil
 ```
@@ -80,8 +82,9 @@ Set your keywords, and Vigil monitors notifications from the apps you choose. Wh
 • Keyword monitoring: define multiple keywords, alarm on match
 • App filter: watch only the apps you care about
 • Hard-to-miss alarm: looping sound + in-app full-screen alert
-• Ultra-lightweight: only a 2.5MB APK, negligible storage footprint
+• Ultra-lightweight: only a 3.4MB APK, negligible storage footprint
 • Alarm recovery: even if the process is killed, the alarm resumes automatically after restart
+• Delayed alarm: optionally ring after a custom delay (accurate to the second) or at the nearest daily time point; pending alarms can be reviewed and cancelled
 • Custom ringtone: uses system alarm sounds with independent volume
 • Diagnostic logs: optional export for troubleshooting (never contains notification content)
 
@@ -98,6 +101,7 @@ All processing happens entirely on your device. The app doesn't even declare the
 • Notification Listener: core feature, reads notifications for local keyword matching
 • Foreground service / wake lock: keeps the alarm service alive and ringing until you acknowledge it
 • Ignore battery optimizations (optional): prevents the system from killing the alarm
+• Alarms & reminders / SCHEDULE_EXACT_ALARM (optional, Android 12+): used only so delayed alarms ring on time; falls back to inexact alarms if not granted
 
 Source code: https://github.com/XGWNJE/Vigil
 ```
@@ -134,5 +138,7 @@ Source code: https://github.com/XGWNJE/Vigil
   > Vigil 的核心功能是关键词通知报警。用户主动设置关键词后，应用需监听系统通知并在本地进行关键词匹配，命中时触发循环响铃与全屏报警。通知内容仅在设备本地处理，不存储、不传输。此为本应用的唯一核心用途，无替代实现方式。
 - **FOREGROUND_SERVICE_SPECIAL_USE 声明**（Android 14+ 要求）：
   > The app is a keyword-based notification alarm. When a watched notification matches a user-defined keyword, the app must keep running a foreground service to loop an alarm sound and keep the screen awake until the user acknowledges it. This cannot be deferred or interrupted without breaking the app's core function.
+- **Alarms & reminders（SCHEDULE_EXACT_ALARM）声明**（v1.19.0 起，Android 12+ 要求）：
+  > Vigil is a keyword notification alarm. Users can optionally have an alarm ring after a custom delay or at a chosen daily time point when a monitored notification matches a keyword. SCHEDULE_EXACT_ALARM is required to deliver those user-configured alarms on time; if the permission is not granted, the app falls back to inexact alarms (which may be delayed by a few minutes). The permission is never used for advertising, analytics, or any other purpose.
 - **广告**：无广告。
 - **目标受众**：非儿童向应用（建议选 18+ 或 "Not designed for children"，避免家庭政策审核）。

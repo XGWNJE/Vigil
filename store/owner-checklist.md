@@ -53,6 +53,7 @@
 3. **敏感权限声明**（本项目会触发，照抄 `store/README.md` 第五节模板）：
    - 通知监听（Notification Listener）用途说明
    - 前台服务 specialUse（FOREGROUND_SERVICE_SPECIAL_USE）用途说明（英文）
+   - 闹钟和提醒（SCHEDULE_EXACT_ALARM，v1.19.0 新增）用途说明（英文）
 4. **商店资料（商品详情）**：
    - 简短说明：抄 `store/README.md` 中文短描述
    - 完整说明：抄 `store/README.md` 中文完整描述
@@ -131,7 +132,7 @@
 
 | 事项 | 状态 | 完成日期 | 备注 |
 |---|---|---|---|
-| GitHub secrets 配置 | ☐ | | |
+| GitHub secrets 配置 | ✅ | 2026-07-30 | 4 个 secret 齐全；v1.19.0 由 CI 签名发版验证通过 |
 | Play 开发者账号注册 | ☐ | | $25 |
 | Play 应用资料填写 | ☐ | | |
 | Play 封闭测试（12 人 × 14 天） | ☐ | | 开始日：____ 结束日：____ |

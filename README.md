@@ -10,7 +10,7 @@
 
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 
-[![Version](https://img.shields.io/badge/version-1.18.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.19.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
 
@@ -20,7 +20,7 @@
 
 ## 简介
 
-Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送的通知内容命中预设关键词时，Vigil 会**在应用内弹出全屏报警提醒，并强制触发报警铃声**（后台运行时铃声同样生效）。报警铃声走闹钟音频流，音量独立于铃声/媒体音量，设备静音或震动模式下照常响铃。
+Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送的通知内容命中预设关键词时，Vigil 会**在应用内弹出全屏报警提醒，并强制触发报警铃声**（默认命中即响，也可设为延时一段固定时长、或等到最近的每日时间点再响；后台运行时同样生效）。报警铃声走闹钟音频流，音量独立于铃声/媒体音量，设备静音或震动模式下照常响铃。
 
 适用场景：服务器宕机告警、银行到账提醒、特定消息监控等对通知实时性要求极高的场景。
 
@@ -116,7 +116,7 @@ Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送�
 
 ## 🏗 技术架构
 
-Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 → 持久化调度队列 → 闹钟音频流循环响铃 + WakeLock → 应用内全屏弹窗确认停止 → 自动处理下一条，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
+Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 →（可选）延时排定 → 持久化调度队列 → 闹钟音频流循环响铃 + WakeLock → 应用内全屏弹窗确认停止 → 自动处理下一条，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
 
 ---
 

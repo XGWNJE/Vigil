@@ -59,6 +59,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 - 勿扰控制（验证"勿扰下按系统策略响铃"用）：API 36 用 `cmd notification set_dnd on|none|priority|alarms|all|off`；`settings put global zen_mode` 在 API 28/36 实测均被静默忽略；API 28 无 `set_dnd`，走 UI 自动化：`am start -a android.settings.ZEN_MODE_SETTINGS` → uiautomator 点「立即开启」，进「Sound & vibration」行为页可关「闹钟」例外构造压制场景。闹钟流是否被压看 `dumpsys audio` 的 `STREAM_ALARM: Muted: true/false`。
 - `dumpsys media.player` 版本差异：API ~29 及以下**没有 packageName 归因行**，改用 `state(5)`（STARTED）+ `stream type(4)` 计数判断在播/已停。
 - 连续多次 `am crash` 会触发系统「屡次停止运行」对话框并阻止应用重启，需 uiautomator 点「关闭应用」后再拉起。
+- **`adb root` 之后 `cmd notification post` 会静默失效**（2026-09-20 实测）：adbd 切到 root 后 shell 命令以 root 身份执行，NotificationService 报 `PackageManager$NameNotFoundException: root` → 「Cannot fix notification」，通知被直接丢弃、`dumpsys notification` 里连记录都没有，表现为"监听已连接但收不到任何通知"的假故障。测通知前先 `adb unroot`（`adb shell id` 应为 `uid=2000(shell)`）；需要 root 读写应用私有目录时，把 root 操作与发通知分开做。
 - adb push 本地路径：开了 `MSYS_NO_PATHCONV=1` 后，Git Bash 风格 `/c/Users/...` 传给 Windows 版 adb 会报 cannot stat；本地侧路径一律写 Windows 形式（如 `C:\Users\xgwnj\AppData\Local\Temp\vigil_prefs.xml`），设备侧路径写 Linux 形式，互不冲突。
 - 更新检查本地模拟：debug 构建用 `run-as` 写 `debug_update_api_base`（SharedPreferences）指向本地模拟 GitHub；debug 构建已允许 cleartext（`app/src/debug/AndroidManifest.xml` 的 `usesCleartextTraffic`，release 不合并）。坑：模拟器经 `10.0.2.2` 访问宿主的**大响应**（几百 KB 以上）会被截断（`unexpected end of stream`），改用 `adb reverse tcp:<port> tcp:<port>` + 基址写 `http://127.0.0.1:<port>` 走 adb 传输（实测可靠）；调起系统安装后 Play Protect 可能拦截 debug 包，属平台行为。
 

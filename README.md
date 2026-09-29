@@ -1,10 +1,17 @@
-# <img src="app/src/main/ic_launcher-playstore.png" alt="Vigil 图标" width="96" height="96"> Vigil
+# <img src="app/src/main/ic_launcher-playstore.png" alt="Vigil 图标" height="32"> Vigil
 
 Android 通知关键词报警应用。设置关键词和监听范围后，匹配的通知会触发闹钟铃声；你可以在应用内确认停铃，也可以让铃声按设定次数自动结束。
 
-[使用场景](#使用场景) · [界面预览](#界面预览) · [快速开始](#快速开始) · [常用设置](#常用设置) · [使用前注意](#使用前注意) · [源码构建](#从源码构建)
+[快速开始](#快速开始) · [使用场景](#使用场景) · [界面预览](#界面预览) · [常用设置](#常用设置) · [使用前注意](#使用前注意) · [源码构建](#从源码构建)
 
 [![最新发行版](https://img.shields.io/github/v/release/XGWNJE/Vigil?label=version&color=E4FF54)](https://github.com/XGWNJE/Vigil/releases/latest) [![Android 8.0 及以上](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](#快速开始) [![MIT 许可证](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+
+## 快速开始
+
+1. 在[最新发行版](https://github.com/XGWNJE/Vigil/releases/latest)的 **Assets** 中下载 `.apk` 文件，安装到 Android 8.0 或更高版本的设备。
+2. 打开 Vigil，点右上角齿轮或从首页底部上滑进入设置，添加关键词，并按引导授予**通知使用权**；Android 13 及以上还应允许**发送通知**，以显示监听和报警通知。
+3. 按应用内引导关闭针对 Vigil 的电池优化，按需配置铃声、播放次数、应用过滤和延时策略；返回首页，点中央圆点开启监听，并确认显示「监听中」。
+4. 报警时，在应用内点「已知晓，停止报警」；若应用在后台，可点报警通知进入，也可手动打开 Vigil 处理。
 
 ## 使用场景
 
@@ -21,13 +28,6 @@ Android 通知关键词报警应用。设置关键词和监听范围后，匹配
 | 监听首页 | 报警弹窗 | 应用过滤 |
 | :---: | :---: | :---: |
 | <img src="screenshots/main.png" alt="Vigil 监听首页" width="220"> | <img src="screenshots/alert.png" alt="关键词报警弹窗" width="220"> | <img src="screenshots/app-filter.png" alt="应用过滤页" width="220"> |
-
-## 快速开始
-
-1. 在[最新发行版](https://github.com/XGWNJE/Vigil/releases/latest)的 **Assets** 中下载 `.apk` 文件，安装到 Android 8.0 或更高版本的设备。
-2. 打开 Vigil，点右上角齿轮或从首页底部上滑进入设置，添加关键词，并按引导授予**通知使用权**；Android 13 及以上还应允许**发送通知**，以显示监听和报警通知。
-3. 按应用内引导关闭针对 Vigil 的电池优化，按需配置铃声、播放次数、应用过滤和延时策略；返回首页，点中央圆点开启监听，并确认显示「监听中」。
-4. 报警时，在应用内点「已知晓，停止报警」；若应用在后台，可点报警通知进入，也可手动打开 Vigil 处理。
 
 ## 常用设置
 

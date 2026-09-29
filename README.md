@@ -1,10 +1,16 @@
-# <img src="app/src/main/ic_launcher-playstore.png" alt="Vigil 图标" height="32"> Vigil
+<div align="center">
+
+<img src="app/src/main/ic_launcher-playstore.png" alt="Vigil 图标" height="96">
+
+# Vigil
 
 Android 通知关键词报警应用。设置关键词和监听范围后，匹配的通知会触发闹钟铃声；你可以在应用内确认停铃，也可以让铃声按设定次数自动结束。
 
 [快速开始](#快速开始) · [使用场景](#使用场景) · [界面预览](#界面预览) · [常用设置](#常用设置) · [使用前注意](#使用前注意) · [源码构建](#从源码构建)
 
 [![最新发行版](https://img.shields.io/github/v/release/XGWNJE/Vigil?label=version&color=E4FF54)](https://github.com/XGWNJE/Vigil/releases/latest) [![Android 8.0 及以上](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](#快速开始) [![MIT 许可证](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+
+</div>
 
 ## 快速开始
 

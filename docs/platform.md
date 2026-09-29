@@ -1,0 +1,20 @@
+# Android 平台兼容经验
+
+本页记录已验证的平台行为和排查线索；新结论应附设备与验证日期。
+
+## 已知平台坑
+
+- **设备重启后的延时报警未保证准点触发**：`scheduled_alerts` 会持久化，服务重建时会重排或补触发，但当前 Manifest 没有 `BOOT_COMPLETED` 接收器；Android 关机后会取消 AlarmManager 闹钟。不要把“进程被杀后恢复”写成“设备重启后按原计划响铃”；v1.19.0 发行说明已追加更正。
+- 系统（国产 ROM 尤甚）可能在进程被杀重建后不再重新绑定 NotificationListenerService，但 `enabled_notification_listeners` 设置仍在——权限检查与"进程活着"都不能证明监听在工作，唯一可信信号是 `onListenerConnected` 回调（持久化为 `listener_connected`）。自愈手段：`NotificationListenerService.requestRebind()`，失败时组件 toggle 强刷（等效用户撤销再授予权限）。
+  - **[HyperOS 3.0.308 实机证据 2026-08（issue #2 日志）]**：应用开关关闭再打开后，`requestRebind()` 被系统静默忽略（连续多次调用、永不回调 onListenerConnected），唯一有效恢复是系统级撤销+重新授权（用户卸载重装/清数据重配即此效果）。因此检测到绑定断开（`onListenerDisconnected` 或看门狗）后走「快速自愈」：先无损 `requestRebind` → 短观察（2.5s）→ 完整重连序列（stopService → 组件 disable → 1.5s → enable → 重启服务 → requestRebind，`ListenerRecovery.runForceReconnectSequence`，须在独立作用域执行——序列会 stopService 销毁服务，用服务自己的 scope 会在 onDestroy 时 cancel 中断）→ 观察（4s）；序列仍无效则**立即**持久化 `listener_recovery_failed` 标记（从断开到标记失败约 10s，不做长时间重连，避免用户误以为卡死）→ UI 显示「立即重试 / 重新授权」逃生通道（跳系统「通知使用权」设置页），用户无需再卸载重装。恢复成功（`onListenerConnected`）即清除该标记。
+- Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。
+- 小米 HyperOS（真机实测）：应用内「电池白名单」（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`）与「后台运行」（应用详情→省电策略）两个入口同质——电池优化请求被重定向到小米自家省电策略页；白名单设成功后后台相对稳定，但任务卡片（recents）不锁定 + 未开自启动时，用户划掉卡片进程仍会被杀。原生 Android 上两入口不同质（系统弹窗 vs 应用详情页），华为/OPPO/vivo 的 OEM 后台限制独立于标准白名单 → 跨 ROM 的权限引导设计必须同时保留两个入口，不因单一 ROM 观察而合并。此约束由 owner 于 2026-07-31 验收。
+- Android 10+ 后台 `startActivity` 静默失败（不抛异常，`try/catch` 兜底不触发）：报警弹窗靠持久化 + App 打开时补弹（`MonitoringViewModel.init`）。
+- `cmd notification`、`cmd media_session` 等 cmd 子命令各厂商可用性不同，用前先 `cmd <name> --help` 探明。
+- Compose `rememberInfiniteTransition`/`animate*AsState` 会被「开发者选项 → 动画程序时长缩放 = 关闭」挂起（Compose 把 animator_duration_scale 读进 MotionDurationScale）。实测案例（v1.8.0 小米真机）：首页涟漪单机静止，模拟器与另一台平板正常；装帧驱动修复包（v1.8.1）后立即恢复，坐实根因是该设置。关键状态动效（首页涟漪/核心呼吸）因此改用 `withFrameNanos` 帧驱动（`RippleBackground.kt` 的 `rememberFrameDrivenProgress`），不受该设置影响。真机"单机异常"先做对照（模拟器/另一台真机/构建变体）再升级假设。
+- Android 15+（targetSdk 35+）禁止应用修改全局勿扰状态：`setInterruptionFilter`/`setNotificationPolicy` 只会创建/更新应用名下的隐式 AutomaticZenRule，按"最严格策略胜出"合并——既突破不了用户手动开启的勿扰，且隐式规则可能在用户手动关闭勿扰后继续强加全局静默（实测 API 36 模拟器：调用 setInterruptionFilter(NONE) 后，用户手动关勿扰设备仍完全静音）。项目因此移除了勿扰穿透功能：不申请勿扰访问权限、不干预用户勿扰设置，勿扰下按系统当前策略响铃（官方说明：https://developer.android.com/about/versions/15/behavior-changes-15#dnd-changes ）。
+- **TTS 工具产出的 WAV 常带"未最终化"头**：RIFF/data 块长度字段为 0xFFFFFFFF 占位（v1.14.0 内置预设 6 条全中招），MediaPlayer 直接解析报 what=1 播放失败；修复 = 补写两个块长（`DataChunkSize = fileSize - dataChunkOffset - 8`）。入库前用十六进制/块遍历验证块长，不要只看 RIFF/WAVE 魔数。
+- **`android.resource://` URI 播放在部分平台不可靠**：实测 API 36 模拟器 `MediaPlayer.setDataSource(context, "android.resource://pkg/raw/x")` 报 what=1 失败；统一改用 `resources.openRawResourceFd(resId)` → `setDataSource(fd, offset, length)`（先 `getIdentifier` 兜底资源缺失回落默认闹钟），raw 资源用 R.raw 引用防 shrinkResources 剥离。
+- **系统闹钟文件可能自带 `autoLoop` 元数据**：API 36 模拟器的默认闹钟即使命令设置 `MediaPlayer.isLooping=false`，`dumpsys media.player` 仍显示 `autoLoop(1)` 且不触发 `OnCompletion`。有限次数播放必须同时按 `MediaPlayer.duration` 安排完成兜底；正常 `OnCompletion` 与时长兜底共用同一计数入口并互相取消，停止播放时清理延迟回调。
+- **延时报警的精确闹钟权限**：`SCHEDULE_EXACT_ALARM` 在 Android 12 需用户授权、Android 14+ 对新装应用默认不预授权（targetSdk 33+）。未授权时 `setExactAndAllowWhileIdle`/`setAlarmClock` 抛 `SecurityException`，必须显式判 `AlarmManager.canScheduleExactAlarms()` 并回落 `setAndAllowWhileIdle`（Doze 下按维护窗口投递，可能晚几分钟）。应用刻意不申请 `USE_EXACT_ALARM`（Play 仅限闹钟/日历类应用，审核有被拒风险）。另外 `Handler.postDelayed` 走 uptimeMillis，深睡时不计时，不能作为唯一到期依据；闹钟到期后拉起服务受 Android 12+ 后台启动前台服务限制（未加电池白名单时会被拒），所以第三层「心跳扫描到期项」是兜底必需。
+- **验证精确闹钟两条路径（2026-09-20 API 36 模拟器实测）**：应用在电池白名单里时系统会无视 `appops deny` 直接放行精确闹钟（`canScheduleExactAlarms()=true`、日志 `exact=true`）——这是平台的「允许清单」例外。要覆盖非精确兜底路径，必须**同时**移除电池白名单（`dumpsys deviceidle whitelist -com.example.vigil`）并 `appops set --uid com.example.vigil SCHEDULE_EXACT_ALARM deny`，此时日志出现 `exact=false`，实测仍按计划时刻响铃（迟约 0.3s）。注意 PowerShell 会把未加引号的 `-com.example.vigil` 当参数吞掉，须写成 `"-com.example.vigil"`。

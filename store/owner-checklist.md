@@ -7,14 +7,14 @@
 ## 一、GitHub 自动发版
 
 - 在仓库的 [Actions secrets 页面](https://github.com/XGWNJE/Vigil/settings/secrets/actions)核对 `VIGIL_KEYSTORE_BASE64`、`VIGIL_STORE_PASSWORD`、`VIGIL_KEY_ALIAS` 和 `VIGIL_KEY_PASSWORD`；密钥文件和密码不得提交。
-- 发版操作与签名验收以 [AGENTS.md 的发布流程](../AGENTS.md)为准。GitHub Release 由 CI 在推送版本 tag 后创建。
+- 发版操作与签名验收以[构建与发布手册](../docs/release.md)为准。GitHub Release 由 CI 在推送版本 tag 后创建。
 
 ## 二、Google Play
 
 1. 在 [Play Console](https://play.google.com/console)注册并验证开发者账号，查看当前账号费用和身份验证要求。
 2. 创建应用，按 [store/README.md](README.md) 填写中英文介绍、权限用途、截图和 Feature Graphic；隐私政策链接使用 `https://github.com/XGWNJE/Vigil/blob/main/PRIVACY.md`。
 3. 逐项填写数据安全问卷。关键词匹配在设备本地，但更新检查会请求 GitHub，不能直接照抄“完全离线／不联网”。数据收集与共享的判定以 [Google Play 的 Data safety 指南](https://support.google.com/googleplay/android-developer/answer/10787469) 和待提交 APK 的实际行为为准。
-4. 构建用于 Play 的 AAB：`./gradlew bundleRelease`（Windows PowerShell 用 `./gradlew.bat bundleRelease`）；成功后文件位于 `app/build/outputs/bundle/release/app-release.aab`。发布签名配置见 [AGENTS.md](../AGENTS.md#发布)。
+4. 如需用于 Play 的 AAB，维护者先从安全备份提供签名密钥，再运行 `./gradlew bundleRelease`（Windows PowerShell 用 `./gradlew.bat bundleRelease`）；成功后文件位于 `app/build/outputs/bundle/release/app-release.aab`。普通本地检出没有密钥是正常的，签名配置见[构建与发布手册](../docs/release.md)。
 5. 若使用 **2023 年 11 月 13 日之后创建的个人账号**，当前 [Google Play 测试要求](https://support.google.com/googleplay/android-developer/answer/14151465) 是至少 12 名测试者连续加入封闭测试 14 天，之后才能申请正式发布权限；以账号内提示为准。
 6. 根据 Play Console 的审核结果修订资料和构建产物，提交正式发布。
 

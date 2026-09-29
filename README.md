@@ -1,133 +1,61 @@
-<div align="center">
+# <img src="app/src/main/ic_launcher-playstore.png" alt="" width="32" height="32"> Vigil
 
-<img src="app/src/main/ic_launcher-playstore.png" alt="Vigil Logo" width="120" />
+Android 通知关键词报警应用。设置要关注的词和应用后，通知命中时播放闹钟铃声，并在应用内显示报警弹窗；你可以确认停铃，也可以让它按设定次数自动结束。
 
-# Vigil
+[下载 APK](https://github.com/XGWNJE/Vigil/releases) · [使用步骤](#快速开始) · [反馈问题](https://github.com/XGWNJE/Vigil/issues)
 
-**Android 通知关键词监控应用**
+当前版本 `v1.19.0` · Android 8.0 及以上 · [MIT 许可证](LICENSE)
 
-以闹钟音频流强制响铃穿透静音，让关键通知尽可能不被错过
+适合需要盯住值班告警、交易提醒或特定消息通知的人。报警依赖系统允许 Vigil 持续监听通知；各品牌的后台限制和勿扰设置会影响提醒效果。
 
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com) [![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org) [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
+## 你会在哪儿用到它
 
-[![Version](https://img.shields.io/badge/version-1.19.0-E4FF54)](https://github.com/XGWNJE/Vigil/releases) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+| 场景 | 你设置什么 | 命中后会发生什么 |
+| --- | --- | --- |
+| 值班告警 | 告警关键词，必要时只选工作应用 | 按设定次数播放铃声，打开 Vigil 可确认停铃 |
+| 不想立即打断 | 固定延时或每日指定时刻 | 到期后报警；设置页可查看和取消待触发项 |
+| 多条通知接连到来 | 重复提醒间隔 | 不同关键词按顺序处理，同来源同关键词合并提醒 |
 
-[功能特性](#-功能特性) · [截图](#-截图) · [快速开始](#-快速开始) · [权限说明](#-权限说明) · [已知限制](#-已知限制) · [文档地图](#-文档地图)
+## 界面预览
 
-</div>
+| 监听首页 | 报警弹窗 | 应用过滤 |
+| :---: | :---: | :---: |
+| <img src="screenshots/main.png" alt="Vigil 监听首页" width="220"> | <img src="screenshots/alert.png" alt="关键词报警弹窗" width="220"> | <img src="screenshots/app-filter.png" alt="应用过滤页" width="220"> |
 
----
+## 快速开始
 
-## 简介
+1. 在 [GitHub Releases](https://github.com/XGWNJE/Vigil/releases) 下载 APK，安装到 Android 8.0 或更高版本的设备。
+2. 打开 Vigil，在设置中添加关键词，并授予系统的**通知使用权**；建议按应用内引导关闭针对 Vigil 的电池优化。
+3. 按需选择铃声、播放次数、应用过滤和延时策略；返回首页，点中央圆点开启监听。
+4. 通知命中后，打开报警弹窗点「已知晓，停止报警」；若应用没有前置，可点报警通知进入处理。
 
-Vigil 是一款运行于 Android 的通知监控工具。当任意应用推送的通知内容命中预设关键词时，Vigil 会**在应用内弹出全屏报警提醒，并强制触发报警铃声**（默认命中即响，也可设为延时一段固定时长、或等到最近的每日时间点再响；后台运行时同样生效）。报警铃声走闹钟音频流，音量独立于铃声/媒体音量，设备静音或震动模式下照常响铃。
+默认命中即报警。铃声使用独立的闹钟音量，播放次数可设为 1–10 次；可以选系统铃声、内置预设，也可以导入音频或录音。报警结束后可在应用内查看记录。应用会在启动时检查 GitHub 更新，设置页也可手动检查。
 
-适用场景：服务器宕机告警、银行到账提醒、特定消息监控等对通知实时性要求极高的场景。
+## 使用前注意
 
----
+- **后台与锁屏**：Android 10 及以上可能阻止应用从后台直接弹出窗口；此时点报警通知进入应用。厂商省电策略可能中断监听，请检查应用内的连接状态和电池设置。
+- **勿扰模式**：铃声走闹钟音频流，但仍受设备的闹钟音量和勿扰规则控制；Vigil 不会修改系统勿扰设置。
+- **延时精度**：Android 12 及以上若未授予「闹钟和提醒」，延时报警使用非精确系统闹钟，可能晚于设定时间。设备关机期间不能响铃，重启后的触发时间不作保证。
+- **报警恢复**：当前报警和等待队列保存在本机；进程意外结束后，服务重建时会尝试恢复有效期内的报警。恢复依赖系统重新启动并连接通知监听服务。
 
-## ✨ 功能特性
+通知内容只在设备上用于关键词匹配；诊断日志不写通知正文。更新检查和 APK 下载会访问 GitHub，完整数据说明见[隐私政策](PRIVACY.md)。
 
-| 功能 | 描述 |
-|------|------|
-| **关键词匹配** | 多关键词 Chip 管理，添加即保存；删除需二次确认 |
-| **关键词级铃声** | 点按关键词 Chip 可单独绑定铃声与循环次数，未配置的跟随全局默认 |
-| **铃声库** | 内置预设语音（随 APK 打包，开箱可用）+ 自定义来源：导入音频文件（复制到应用内，防原文件失效）或现场录音，支持命名、删除、试听；文件缺失时自动回落默认闹钟铃声 |
-| **循环次数** | 1–10 次逐次调节；到数自动结束（停铃、关弹窗、写入记录），不再无限循环 |
-| **连续报警调度** | 不同关键词短时间连续命中时按先后顺序排队，当前铃声结束后自动处理下一条；同一关键词连续命中会聚合计数，避免重复轰炸 |
-| **重复提醒间隔** | 可配置不忽略、30 秒、1/3/5/10 分钟；同一来源的同一关键词在间隔内结束后再次出现会被忽略 |
-| **延时报警** | 命中后不立即响铃：可选固定延时（时/分/秒可直接编辑，精确到秒，最长 24 小时）或每日定点（如 08:00、18:30，取命中后最近的时间点）；关键词可逐条覆盖全局默认；待触发项持久化，进程被杀或设备重启后仍按时响铃 |
-| **报警记录** | 每次报警结束（手动确认或自动结束）留痕：关键词、来源应用、时间、结束方式，可随时查看/清空 |
-| **报警快捷通知** | 响铃期间显示高优先级前台通知，点击可随时进入应用处理当前报警；结束后自动恢复普通监听通知 |
-| **状态首页** | 全屏涟漪动效随服务状态变化（颜色/节奏），中央核心圆点即服务开关；设置收进底部 Sheet |
-| **强制报警** | 闹钟音频流（`USAGE_ALARM`）循环播放铃声，音量独立、静音模式照常响铃；应用内全屏弹窗展示命中关键词与摘要 |
-| **应用过滤** | 只监听指定应用或全部应用；已勾选应用置顶 |
-| **报警恢复** | 当前报警与等待队列均持久化，进程被系统杀死后重建可在 30 分钟内按原顺序恢复响铃与弹窗 |
-| **前台保活** | 前台服务常驻 + 心跳检测 + 断连自动重绑与快速自愈（`requestRebind` / 组件 toggle / 失效即引导重新授权） |
-| **权限引导** | 设置内按必需/推荐/可选分级展示权限状态，缺失时一键跳转授权 |
-| **诊断日志** | 本地滚动日志（不含通知正文），主屏一键导出分享，便于排查 |
-| **应用自更新** | 从 GitHub 检查新版本，冷启动自动提示（含发版说明，可一键下载安装）；版本号文本可点击手动复检；网络无法访问 GitHub 时给出明确提示 |
-| **极致轻量** | 安装包约 3.4MB，几乎不占空间，常驻后台资源占用低 |
+## 从源码构建
 
----
+准备 JDK 17 和 Android SDK 35，然后在仓库根目录运行：
 
-## 📸 截图
+```bash
+./gradlew assembleDebug
+```
 
-<div align="center">
+Windows PowerShell 可运行 `./gradlew.bat assembleDebug`。成功后 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`；构建失败时先检查 JDK、Android SDK 与 Gradle 的错误输出。发布包需要仓库维护者的签名配置，构建与设备验证细节见 [AGENTS.md](AGENTS.md)。
 
-| 主界面 | 关键词报警 | 应用过滤 |
-|:------:|:---------:|:--------:|
-| <img src="./screenshots/main.png" alt="主界面" width="240" /> | <img src="./screenshots/alert.png" alt="关键词报警弹窗" width="240" /> | <img src="./screenshots/app-filter.png" alt="应用过滤" width="240" /> |
+## 更多文档
 
-| 报警闭环演示（命中关键词 → 弹窗脉冲 → 确认停铃） |
-|:----------------------------------------------:|
-| <img src="./screenshots/demo.gif" alt="报警闭环演示动画" width="280" /> |
+- [ROADMAP.md](ROADMAP.md)：已确认的规划与已交付里程碑。
+- [PRIVACY.md](PRIVACY.md)：中英双语隐私政策。
+- [store/README.md](store/README.md)：商店上架文案和权限用途。
+- [release-notes/](release-notes/)：各版本的发行说明。
+- [AGENTS.md](AGENTS.md)：项目开发、验证和发布操作规则。
 
-*点击图片可查看大图*
-
-</div>
-
----
-
-## 🚀 快速开始
-
-1. 从 [Releases](https://github.com/XGWNJE/Vigil/releases) 下载 APK 直接安装；或自行构建：
-
-   ```bash
-   git clone https://github.com/XGWNJE/Vigil.git && cd Vigil && ./gradlew assembleDebug
-   ```
-
-   环境要求：Android Studio Hedgehog+ / JDK 17+；最低 Android 8.0（API 26），目标 SDK 35。构建与真机测试完整细节见 `AGENTS.md`。
-
-2. 首次使用：授予**通知使用权**与**电池白名单**（可选：自启动/后台运行）→ 添加关键词 → 选择铃声 → 回到首页点按中央核心圆点开启服务。
-
----
-
-## 🔒 权限说明
-
-| 权限 | 用途 | 授权方式 |
-|------|------|----------|
-| 通知使用权（NotificationListenerService） | 读取通知内容，核心功能依赖 | 系统设置手动授予 |
-| 发送通知（POST_NOTIFICATIONS，Android 13+） | 前台服务常驻通知，以及响铃时可点击进入处理的报警通知 | 首次启动自动弹窗 |
-| 前台服务（FOREGROUND_SERVICE_SPECIAL_USE） | 维持后台监听服务持续运行 | 自动（Manifest 声明） |
-| 唤醒锁（WAKE_LOCK） | 报警时保持 CPU 唤醒，确保铃声持续播放 | 自动（Manifest 声明） |
-| 忽略电池优化 | 防止厂商省电策略在报警时强杀进程 | 设置内一键引导 |
-| 闹钟和提醒（SCHEDULE_EXACT_ALARM，Android 12+） | 延时报警到点准时响铃 | 使用延时报警时提示跳转系统设置；未授权则回落非精确闹钟（可能延迟几分钟，不会漏报） |
-| 全屏 Intent（USE_FULL_SCREEN_INTENT） | 后台无法弹窗时，以全屏通知在锁屏上报警 | 自动（Manifest 声明） |
-| 麦克风（RECORD_AUDIO） | 铃声库「录音」来源，录制内容仅存本地 | 录音时系统弹窗申请 |
-| 联网（INTERNET） | 「检查更新」时从 GitHub 读取最新版本信息与 APK 下载地址 | 自动（Manifest 声明） |
-| 安装应用（REQUEST_INSTALL_PACKAGES） | 一键更新时调起系统安装器安装新版本 APK | 更新时引导授权 |
-
-> 通知使用权需手动授予，应用内提供直达跳转入口。应用过滤无需任何权限（通过 launcher intent 查询，不申请 `QUERY_ALL_PACKAGES`）；`INTERNET` 仅用于「检查更新」时访问 GitHub 读取版本信息，无其它联网行为，数据全部本地处理。详见 [隐私政策](PRIVACY.md)。
-
-> **国产 ROM 使用须知**：小米 / 华为 / OPPO / vivo 等系统有激进的省电与自启动管控，可能清理进程后不再重绑监听服务。请完成「自启动管理」与「后台运行」引导；应用内置断连自愈，断连时显示「重连中」而非误报「监听中」。建议让 Vigil 长期驻留后台以获得稳定监控——多数安卓系统如今对后台权限与自启动的管理都比较严格，若只是临时打开、用完即退出，之后系统会更频繁地要求重新授权，属正常现象。
-
----
-
-## ⚠️ 已知限制
-
-- **勿扰模式**：闹钟音频流默认被勿扰策略放行（闹钟例外），正常响铃；若用户在勿扰设置中关闭闹钟例外或设为完全静音，铃声会被压制。应用不申请勿扰访问权限、不干预勿扰设置（Android 15+ 已[禁止应用修改全局勿扰状态](https://developer.android.com/about/versions/15/behavior-changes-15)）。
-- **后台弹窗**：Android 10+ 限制后台启动 Activity，应用内全屏弹窗不一定能立即前置；自动回退为全屏 Intent 通知，响铃不受影响。
-- **进程存活**：响铃依赖服务进程存活；前台服务 + 电池白名单大幅降低被回收概率但无法根除；未确认报警已持久化，进程重建后 30 分钟内自动恢复。
-- **监听绑定**：部分国产 ROM 清理进程后可能不再重绑监听；内置看门狗自愈，仍无效时会在主屏尽快给出「重新授权」引导，无需卸载重装。
-- **延时报警精度**：Android 12+ 未授予「闹钟和提醒」时回落非精确闹钟，到点可能晚几分钟；设备关机或长时间深度休眠期间错过的延时报警会在恢复运行后补响，迟于 12 小时的过期项不再补响。
-
----
-
-## 🏗 技术架构
-
-Kotlin + Jetpack Compose（Material 3），MVVM，单 Activity。核心链路：监听匹配 →（可选）延时排定 → 持久化调度队列 → 闹钟音频流循环响铃 + WakeLock → 应用内全屏弹窗确认停止 → 自动处理下一条，关键状态全程持久化。组件职责与设计主题详见 `AGENTS.md`。
-
----
-
-## 📚 文档地图
-
-- `README.md` — 本文件（面向人：项目是什么、怎么开始）
-- `AGENTS.md` — 面向 Agent 的完整操作规则（铁律、构建命令、真机测试流程、验证矩阵）
-- `ROADMAP.md`（路线图）· `PRIVACY.md`（隐私政策）· `store/`（商店素材）· `release-notes/`（发行描述）· `design-backup/`（设计稿存档）
-
----
-
-## 📄 许可证
-
-本项目基于 [MIT License](LICENSE) 开源。
+欢迎通过 [GitHub Issues](https://github.com/XGWNJE/Vigil/issues) 反馈问题。本项目采用 [MIT License](LICENSE)。

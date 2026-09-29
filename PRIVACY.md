@@ -1,108 +1,65 @@
 # 隐私政策 / Privacy Policy
 
-**生效日期 / Effective Date: 2026-07-29**
-
----
+生效日期 / Effective date: 2026-09-29
 
 ## 中文
 
-Vigil（以下简称"本应用"）是一款开源的关键词通知报警工具。我们高度重视你的隐私。本隐私政策说明本应用如何处理你的信息。
+Vigil 是一款开源的 Android 通知关键词报警应用。本政策说明它在设备本地处理哪些数据，以及更新功能何时访问网络。
 
-### 核心结论
+### 本地数据
 
-**本应用的一切数据处理均在你的设备本地完成，不会将任何信息传输到任何服务器。**
+- **通知内容**：获得通知使用权后，Vigil 在设备上读取通知并与设置的关键词比对。通知正文不会上传，也不会写入诊断日志。
+- **设置与报警**：关键词、应用过滤、铃声配置、待触发报警、报警队列和报警记录保存在应用私有存储中。报警记录包含关键词、来源应用、时间和结束方式；导入或录制的铃声文件也保存在设备上。
+- **诊断日志**：日志保存在应用私有目录。只有你主动使用「导出日志」并选择分享目标时，日志才会离开应用。
 
-### 本应用收集的信息
+### 网络访问
 
-本应用**不收集、不存储（在设备之外）、不传输**任何个人信息。具体来说：
+应用声明了 `INTERNET` 权限。启动时会向 GitHub 查询最新版本；你也可以在设置页手动检查更新。选择下载更新后，应用会从 GitHub 下载 APK，再交给 Android 系统安装器。应用不会把通知正文、关键词、报警记录或铃声文件作为更新请求内容发送。访问 GitHub 时，GitHub 可能按其政策处理连接信息，例如 IP 地址；详见 [GitHub 隐私声明](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)。
 
-- **通知内容**：本应用通过 Android 通知监听服务读取系统通知，仅用于在你的设备本地进行关键词匹配。通知内容不会被上传到任何服务器，也不会写入诊断日志。
-- **关键词与设置**：你设置的关键词、铃声选择、应用过滤等配置，仅保存在你设备的应用私有存储（SharedPreferences）中。
-- **诊断日志**：日志文件保存在应用私有目录，仅供你自行导出用于故障排查，不包含通知正文，应用不会自动发送。
+Vigil 不要求注册账号，也没有集成广告或分析 SDK。报警与关键词匹配无需联网；无法连接 GitHub 时，更新检查或下载不能完成。
 
-### 本应用不做的事
+### 权限用途
 
-- 不注册账号，无需登录
-- 不集成任何统计、分析或广告 SDK
-- 不进行任何网络请求（应用未声明 INTERNET 权限，不具备联网能力，所有功能离线运行）
-- 不读取通讯录、位置、相册等无关数据
+| 权限或系统授权 | 用途 |
+| --- | --- |
+| 通知使用权 | 读取系统通知，在本机匹配关键词 |
+| 发送通知、前台服务、唤醒锁 | 展示监听或报警通知，并在报警期间保持服务与铃声运行 |
+| 忽略电池优化 | 减少系统省电策略中断监听的概率，由你在系统设置中选择 |
+| 闹钟和提醒 | 安排延时报警；未授权时使用非精确闹钟 |
+| 麦克风 | 仅在你选择录制自定义铃声时申请 |
+| 安装未知应用 | 仅在你选择安装下载的更新包时由系统引导授权 |
 
-### 权限说明
+卸载应用通常会删除其私有数据；设备备份和恢复行为由 Android 及设备设置决定。你可以在设置中清空报警记录，也可以通过系统设置清除应用数据。
 
-| 权限 | 用途 |
-|---|---|
-| 通知监听（Notification Listener） | 核心功能：读取系统通知以匹配关键词，仅本地处理 |
-| 前台服务（含 specialUse） | 报警时保持服务存活，循环播放铃声 |
-| 唤醒锁（WAKE_LOCK） | 报警期间保持设备唤醒，确保你能看到报警 |
-| 全屏通知（USE_FULL_SCREEN_INTENT） | 报警时展示全屏提醒 |
-| 请求忽略电池优化 | 防止系统省电策略强杀报警服务，由你自愿开启 |
-| 麦克风（RECORD_AUDIO） | 仅用于铃声库「录音」功能，录音文件保存在应用私有目录，仅本地使用 |
-| 闹钟和提醒（SCHEDULE_EXACT_ALARM，Android 12+） | 仅用于「延时报警」：让设定的延时/每日定点报警到点准时响铃；未授权时回落系统非精确闹钟。不涉及任何数据收集或传输 |
-
-### 数据安全
-
-由于所有数据均仅存于你的设备本地，其安全性取决于你设备本身的安全措施（如锁屏密码）。卸载应用会清除全部配置与日志。
-
-### 开源透明
-
-本应用全部源代码公开，你可以随时审查我们的实际行为：https://github.com/XGWNJE/Vigil
-
-### 政策变更
-
-如本政策发生变更，将在本页面更新并注明生效日期。
-
-### 联系我们
-
-如有隐私相关问题，请通过 GitHub Issues 反馈：https://github.com/XGWNJE/Vigil/issues
-
----
+如有隐私问题，请通过 [GitHub Issues](https://github.com/XGWNJE/Vigil/issues) 联系项目维护者。政策更新会在本页注明新的生效日期。
 
 ## English
 
-Vigil ("the App") is an open-source keyword notification alarm tool. We take your privacy seriously. This policy explains how the App handles your information.
+Vigil is an open-source Android app that alarms on matching notification keywords. This policy explains what it handles on your device and when its update feature uses the network.
 
-### TL;DR
+### On-device data
 
-**All data processing happens entirely on your device. Nothing is ever transmitted to any server.**
+- **Notifications**: With Notification Listener access, Vigil reads notifications and matches them against your keywords on the device. Notification bodies are neither uploaded nor written to diagnostic logs.
+- **Settings and alarms**: Keywords, app filters, ringtone choices, scheduled alerts, the alert queue, and alert history are stored in app-private storage. History includes the keyword, source app, time, and how the alert ended. Imported or recorded ringtones stay on the device.
+- **Diagnostic logs**: Logs remain in app-private storage unless you explicitly choose Export logs and a sharing destination.
 
-### Information the App Collects
+### Network access
 
-The App does **not** collect, store (outside your device), or transmit any personal information. Specifically:
+The app declares the `INTERNET` permission. It checks GitHub for a newer release on startup and when you request a check in Settings. If you choose to download an update, it downloads the APK from GitHub and hands it to the Android installer. Vigil does not include notification bodies, keywords, alert history, or ringtone files in update requests. GitHub may process connection data such as your IP address under its [privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 
-- **Notification content**: The App reads system notifications via Android's Notification Listener Service, solely for on-device keyword matching. Notification content is never uploaded to any server and is never written to diagnostic logs.
-- **Keywords & settings**: Your keywords, ringtone choices, app filters and other configurations are stored only in the App's private storage (SharedPreferences) on your device.
-- **Diagnostic logs**: Log files stay in the App's private directory. They can only be exported manually by you for troubleshooting, contain no notification content, and are never sent automatically.
+Vigil requires no account and includes no advertising or analytics SDK. Keyword matching and alarms work without network access; update checks and downloads require access to GitHub.
 
-### What the App Does NOT Do
+### Permissions
 
-- No account registration, no sign-in
-- No analytics, tracking, or advertising SDKs
-- No network requests of any kind — the App does not even declare the INTERNET permission and is technically incapable of going online; all features work fully offline
-- No access to contacts, location, photos, or any unrelated data
+| Permission or system access | Purpose |
+| --- | --- |
+| Notification Listener | Read system notifications for on-device keyword matching |
+| Notifications, foreground service, wake lock | Show status or alert notifications and keep the service and ringtone running during an alarm |
+| Ignore battery optimizations | Reduce interruptions by device power management, at your choice |
+| Alarms & reminders | Schedule delayed alerts; fall back to inexact alarms if unavailable |
+| Microphone | Requested only when you record a custom ringtone |
+| Install unknown apps | Requested by the system only if you choose to install a downloaded update |
 
-### Permissions Explained
+Uninstalling normally removes app-private data; Android and device backup settings determine whether data can later be restored. You can clear alert history in the app or clear app data through system settings.
 
-| Permission | Purpose |
-|---|---|
-| Notification Listener | Core feature: reads system notifications for keyword matching, processed locally only |
-| Foreground Service (specialUse) | Keeps the alarm service alive to loop the alarm sound |
-| WAKE_LOCK | Keeps the device awake during an alarm so you can see it |
-| USE_FULL_SCREEN_INTENT | Shows the full-screen alarm alert |
-| Request ignore battery optimizations | Prevents the system from killing the alarm service; enabled voluntarily by you |
-| SCHEDULE_EXACT_ALARM (Alarms & reminders, Android 12+) | Used only for the delayed-alarm feature so a scheduled alarm rings on time; falls back to inexact alarms if not granted. No data is collected or transmitted |
-
-### Data Security
-
-Since all data resides only on your device, its security depends on your device's own protections (e.g., screen lock). Uninstalling the App removes all configurations and logs.
-
-### Open Source Transparency
-
-The App's complete source code is publicly available for audit: https://github.com/XGWNJE/Vigil
-
-### Changes to This Policy
-
-Any changes will be posted on this page with an updated effective date.
-
-### Contact Us
-
-For privacy-related questions, please open an issue: https://github.com/XGWNJE/Vigil/issues
+For privacy questions, use [GitHub Issues](https://github.com/XGWNJE/Vigil/issues). Changes to this policy will be dated on this page.

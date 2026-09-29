@@ -107,6 +107,7 @@ Android 关键词通知报警应用（Kotlin + Jetpack Compose，MVVM）。
 
 ## 已知平台坑
 
+- **设备重启后的延时报警未保证准点触发**：`scheduled_alerts` 会持久化，服务重建时会重排或补触发，但当前 Manifest 没有 `BOOT_COMPLETED` 接收器；Android 关机后会取消 AlarmManager 闹钟。不要把“进程被杀后恢复”写成“设备重启后按原计划响铃”；v1.19.0 发行说明已追加更正。
 - 系统（国产 ROM 尤甚）可能在进程被杀重建后不再重新绑定 NotificationListenerService，但 `enabled_notification_listeners` 设置仍在——权限检查与"进程活着"都不能证明监听在工作，唯一可信信号是 `onListenerConnected` 回调（持久化为 `listener_connected`）。自愈手段：`NotificationListenerService.requestRebind()`，失败时组件 toggle 强刷（等效用户撤销再授予权限）。
   - **[HyperOS 3.0.308 实机证据 2026-08（issue #2 日志）]**：应用开关关闭再打开后，`requestRebind()` 被系统静默忽略（连续多次调用、永不回调 onListenerConnected），唯一有效恢复是系统级撤销+重新授权（用户卸载重装/清数据重配即此效果）。因此检测到绑定断开（`onListenerDisconnected` 或看门狗）后走「快速自愈」：先无损 `requestRebind` → 短观察（2.5s）→ 完整重连序列（stopService → 组件 disable → 1.5s → enable → 重启服务 → requestRebind，`ListenerRecovery.runForceReconnectSequence`，须在独立作用域执行——序列会 stopService 销毁服务，用服务自己的 scope 会在 onDestroy 时 cancel 中断）→ 观察（4s）；序列仍无效则**立即**持久化 `listener_recovery_failed` 标记（从断开到标记失败约 10s，不做长时间重连，避免用户误以为卡死）→ UI 显示「立即重试 / 重新授权」逃生通道（跳系统「通知使用权」设置页），用户无需再卸载重装。恢复成功（`onListenerConnected`）即清除该标记。
 - Motorola Device Guard（`com.motorola.deviceguard`）把"前台服务 + 唤醒锁 + 循环响铃"判为耗电并强杀进程 —— 电池白名单是功能前提，设置页已有引导入口。

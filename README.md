@@ -1,6 +1,4 @@
-<img src="app/src/main/ic_launcher-playstore.png" alt="Vigil 图标" width="96" height="96">
-
-# Vigil
+# <img src="app/src/main/ic_launcher-playstore.png" alt="Vigil 图标" width="96" height="96"> Vigil
 
 Android 通知关键词报警应用。设置关键词和监听范围后，匹配的通知会触发闹钟铃声；你可以在应用内确认停铃，也可以让铃声按设定次数自动结束。
 

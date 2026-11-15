@@ -43,15 +43,14 @@ import com.example.vigil.AlertEndType
 import com.example.vigil.AlertRecord
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirAAmber
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilError
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilDivider
+import com.example.vigil.node.formatAlarmTime
+import com.example.vigil.ui.rememberAlarmTimeZone
 
 /**
  * 「A · 一线」报警记录页：与应用过滤页同一语言——暗底、发丝线分区、等宽元信息。
@@ -73,7 +72,7 @@ fun AlertHistoryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VigilDirABg)
+            .background(VigilBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)
@@ -91,24 +90,24 @@ fun AlertHistoryScreen(
                         .clickable(onClick = onNavigateBack),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(text = "←", fontSize = 18.sp, color = VigilDirADim)
+                    Text(text = "←", fontSize = 18.sp, color = VigilTextSecondary)
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "HISTORY // 报警记录",
-                    style = MonoTextStyle,
+                    style = BodyTextStyle,
                     fontSize = 11.sp,
                     letterSpacing = 2.sp,
-                    color = VigilDirAInk
+                    color = VigilTextPrimary
                 )
             }
             if (records.isNotEmpty()) {
                 Text(
                     text = "CLEAR",
-                    style = MonoTextStyle,
+                    style = BodyTextStyle,
                     fontSize = 10.sp,
                     letterSpacing = 1.2.sp,
-                    color = VigilDirAAmber,
+                    color = VigilError,
                     modifier = Modifier
                         .clickable { showClearConfirm = true }
                         .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -118,18 +117,18 @@ fun AlertHistoryScreen(
 
         // ---- 统计 ----
         Text(
-            text = "${records.size} RECORDS",
-            style = MonoTextStyle,
+            text = "${records.size} 条记录",
+            style = BodyTextStyle,
             fontSize = 10.sp,
             letterSpacing = 1.sp,
-            color = VigilDirADim,
+            color = VigilTextSecondary,
             modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(VigilDirALine)
+                .background(VigilDivider)
         )
 
         if (records.isEmpty()) {
@@ -142,12 +141,12 @@ fun AlertHistoryScreen(
                 Text(
                     text = "暂无报警记录",
                     fontSize = 13.sp,
-                    color = VigilDirADim
+                    color = VigilTextSecondary
                 )
             }
         } else {
             LazyColumn {
-                items(records, key = { "${it.timestamp}-${it.keyword}" }) { record ->
+                items(records, key = { it.id }) { record ->
                     AlertRecordRow(record, modifier = Modifier.animateItemPlacement())
                 }
             }
@@ -157,23 +156,23 @@ fun AlertHistoryScreen(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            containerColor = VigilDirABg,
+            containerColor = VigilBackground,
             shape = RoundedCornerShape(8.dp),
             tonalElevation = 0.dp,
-            modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+            modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
             title = {
                 Text(
                     text = "清空报警记录",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = VigilDirAInk
+                    color = VigilTextPrimary
                 )
             },
             text = {
                 Text(
                     text = "确认清空全部 ${records.size} 条报警记录？此操作不可撤销。",
                     fontSize = 13.sp,
-                    color = VigilDirADim
+                    color = VigilTextSecondary
                 )
             },
             confirmButton = {
@@ -181,12 +180,12 @@ fun AlertHistoryScreen(
                     viewModel.clearAlertHistory()
                     showClearConfirm = false
                 }) {
-                    Text(text = "清空", color = VigilDirAAmber)
+                    Text(text = "清空", color = VigilError)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirm = false }) {
-                    Text(text = "取消", color = VigilDirADim)
+                    Text(text = "取消", color = VigilTextSecondary)
                 }
             }
         )
@@ -196,8 +195,10 @@ fun AlertHistoryScreen(
 /** 单条记录：关键词 + 结束方式徽标 / 来源应用 + 时间，底部发丝线 */
 @Composable
 private fun AlertRecordRow(record: AlertRecord, modifier: Modifier = Modifier) {
-    val timeText = remember(record.timestamp) {
-        SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(record.timestamp))
+    val rowLineColor = VigilDivider
+    val timeZone = rememberAlarmTimeZone()
+    val timeText = remember(record.timestamp, timeZone) {
+        formatAlarmTime(record.timestamp, "MM-dd HH:mm", timeZone)
     }
     Column(
         modifier = modifier
@@ -205,7 +206,7 @@ private fun AlertRecordRow(record: AlertRecord, modifier: Modifier = Modifier) {
             .drawBehind {
                 val stroke = 1.dp.toPx()
                 drawLine(
-                    VigilDirALine,
+                    rowLineColor,
                     start = Offset(0f, size.height - stroke / 2),
                     end = Offset(size.width, size.height - stroke / 2),
                     strokeWidth = stroke
@@ -222,14 +223,18 @@ private fun AlertRecordRow(record: AlertRecord, modifier: Modifier = Modifier) {
                 text = record.keyword,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
             Text(
-                text = if (record.endType == AlertEndType.AUTO) "自动结束" else "手动确认",
-                style = MonoTextStyle,
+                text = when (record.endType) {
+                    AlertEndType.AUTO -> "自动结束"
+                    AlertEndType.MANUAL -> "手动确认"
+                    AlertEndType.ERROR -> "播放失败"
+                },
+                style = BodyTextStyle,
                 fontSize = 10.sp,
                 letterSpacing = 0.8.sp,
-                color = if (record.endType == AlertEndType.AUTO) VigilDirAAmber else VigilDirADim
+                color = if (record.endType == AlertEndType.AUTO) VigilError else VigilTextSecondary
             )
         }
         Row(
@@ -242,16 +247,16 @@ private fun AlertRecordRow(record: AlertRecord, modifier: Modifier = Modifier) {
             Text(
                 text = record.sourceApp ?: "未知来源",
                 fontSize = 11.sp,
-                color = VigilDirADim
+                color = VigilTextSecondary
             )
             Text(
                 text = timeText,
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 10.sp,
-                color = VigilDirADim
+                color = VigilTextSecondary
             )
         }
     }
 }
 
-private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)

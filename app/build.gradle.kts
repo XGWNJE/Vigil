@@ -67,6 +67,7 @@ android {
         jvmTarget = "11" // Kotlin 编译到 JVM 的目标版本
     }
     buildFeatures {
+        buildConfig = true
         compose = true // *** 启用 Jetpack Compose ***
         viewBinding = true // 如果项目中仍有部分UI使用ViewBinding，则保留此项
     }
@@ -80,6 +81,7 @@ android {
 }
 
 dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // Android 核心 KTX 库
     implementation("androidx.core:core-ktx:1.12.0")

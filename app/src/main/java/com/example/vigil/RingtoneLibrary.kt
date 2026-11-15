@@ -25,6 +25,7 @@ import java.util.Locale
  * - null → 系统默认闹钟铃声
  */
 object RingtoneLibrary {
+    const val SILENT_VALUE = "silent:"
 
     private const val TAG = "RingtoneLibrary"
     private const val DIR_NAME = "ringtones"
@@ -78,7 +79,7 @@ object RingtoneLibrary {
         /**
          * 内置预设：raw 资源。经 AssetFileDescriptor 播放——
          * 实测 android.resource:// URI 在部分平台（API 36 模拟器）MediaPlayer 解析失败（what=1），
-         * fd + offset/length 是各版本都可靠的方式。
+         * 使用资源 fd + offset/length 设置数据源；具体设备仍需验证播放。
          */
         data class RawResource(val resId: Int, val rawName: String) : DataSource()
     }
@@ -89,7 +90,7 @@ object RingtoneLibrary {
 
     /** 铃声值是否为铃声库本地文件（非 content URI / 非内置预设）。 */
     fun isLibraryFile(value: String?): Boolean {
-        return value != null && !value.startsWith("content://") && !value.startsWith("android.resource://")
+        return value != null && value != SILENT_VALUE && !value.startsWith("content://") && !value.startsWith("android.resource://")
     }
 
     /**
@@ -97,7 +98,7 @@ object RingtoneLibrary {
      * 本地文件缺失时返回 null 并写日志（调用方回落系统默认闹钟铃声）。
      */
     fun resolve(context: Context, value: String?): DataSource? {
-        if (value == null) return null
+        if (value == null || value == SILENT_VALUE) return null
         if (value.startsWith("content://")) {
             return DataSource.ContentUri(Uri.parse(value))
         }

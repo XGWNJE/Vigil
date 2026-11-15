@@ -4,7 +4,7 @@
     <string name="keywords_hint">输入关键词，用英文逗号分隔</string>
     <string name="select_ringtone_button">选择提醒音</string>
     <string name="selected_ringtone_label">当前铃声: %s</string>
-    <string name="no_ringtone_selected">未选择提醒音</string>
+    <string name="no_ringtone_selected">系统默认闹钟铃声</string>
     <string name="enable_service_switch">通知监听</string>
     <string name="service_status_label">服务状态:</string>
     <string name="service_running">监听中</string>

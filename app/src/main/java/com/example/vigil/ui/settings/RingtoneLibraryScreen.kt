@@ -59,13 +59,13 @@ import com.example.vigil.ui.dialogs.PermissionGuideDialog
 import com.example.vigil.ui.main.rememberFrameDrivenProgress
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirAAmber
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAFaint
-import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilError
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilBorder
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilDivider
 import com.example.vigil.ui.theme.VigilSurface
 import kotlinx.coroutines.delay
 
@@ -81,6 +81,7 @@ fun RingtoneLibraryScreen(
         factory = SettingsViewModelFactory(LocalContext.current.applicationContext as Application)
     )
 ) {
+    val rowLineColor = VigilDivider
     val context = LocalContext.current
     val entries = viewModel.ringtoneLibrary
     // 版本号必须在组合时真正读取（.value）才会订阅状态：isRecording/previewingFileName
@@ -137,7 +138,7 @@ fun RingtoneLibraryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VigilDirABg)
+            .background(VigilBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)
@@ -155,23 +156,23 @@ fun RingtoneLibraryScreen(
                         .clickable(onClick = onNavigateBack),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(text = "←", fontSize = 18.sp, color = VigilDirADim)
+                    Text(text = "←", fontSize = 18.sp, color = VigilTextSecondary)
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "RINGTONES // 铃声库",
-                    style = MonoTextStyle,
+                    style = BodyTextStyle,
                     fontSize = 11.sp,
                     letterSpacing = 2.sp,
-                    color = VigilDirAInk
+                    color = VigilTextPrimary
                 )
             }
             Text(
                 text = "IMPORT",
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 10.sp,
                 letterSpacing = 1.2.sp,
-                color = VigilDirAAcid,
+                color = VigilPrimary,
                 modifier = Modifier
                     .clickable {
                         importLauncher.launch(arrayOf("audio/*"))
@@ -186,7 +187,7 @@ fun RingtoneLibraryScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(VigilDirALine)
+                    .background(VigilDivider)
             )
             Row(
                 modifier = Modifier
@@ -194,7 +195,7 @@ fun RingtoneLibraryScreen(
                     .drawBehind {
                         val stroke = 1.dp.toPx()
                         drawLine(
-                            VigilDirALine,
+                            rowLineColor,
                             start = Offset(0f, size.height - stroke / 2),
                             end = Offset(size.width, size.height - stroke / 2),
                             strokeWidth = stroke
@@ -216,7 +217,7 @@ fun RingtoneLibraryScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "录音", fontSize = 12.sp, letterSpacing = 0.6.sp, color = VigilDirADim)
+                Text(text = "录音", fontSize = 12.sp, letterSpacing = 0.6.sp, color = VigilTextSecondary)
                 if (isRecording) {
                     // 红点 1s 脉冲：透明度 0.15→1 全幅明暗 + 0.8→1.2 缩放，录音进行中一眼可见
                     val pulse = rememberFrameDrivenProgress(1000)
@@ -227,33 +228,33 @@ fun RingtoneLibraryScreen(
                         Text(
                             text = "●",
                             fontSize = 13.sp,
-                            color = VigilDirAAmber.copy(alpha = dotAlpha),
+                            color = VigilError.copy(alpha = dotAlpha),
                             modifier = Modifier.scale(dotScale)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "${recordSeconds}s 停止",
-                            style = MonoTextStyle,
+                            style = BodyTextStyle,
                             fontSize = 11.sp,
-                            color = VigilDirAAmber
+                            color = VigilError
                         )
                     }
                 } else {
-                    Text(text = "开始录音", fontSize = 13.sp, color = VigilDirAInk)
+                    Text(text = "开始录音", fontSize = 13.sp, color = VigilTextPrimary)
                 }
             }
             Text(
                 text = "${RingtoneLibrary.PRESETS.size} PRESET · ${entries.size} RINGTONES · 点击名称重命名",
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 10.sp,
                 letterSpacing = 1.sp,
-                color = VigilDirADim,
+                color = VigilTextSecondary,
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
             )
         }
 
         // ---- 条目列表（内置预设 + 铃声库文件；预设不可删除/重命名） ----
-        LazyColumn {
+        LazyColumn(Modifier.weight(1f)) {
             items(RingtoneLibrary.PRESETS, key = { "preset:${it.rawName}" }) { preset ->
                 PresetEntryRow(
                     preset = preset,
@@ -272,7 +273,7 @@ fun RingtoneLibraryScreen(
                         Text(
                             text = "铃声库为空，点 IMPORT 导入音频或录音",
                             fontSize = 13.sp,
-                            color = VigilDirADim
+                            color = VigilTextSecondary
                         )
                     }
                 }
@@ -335,23 +336,23 @@ fun RingtoneLibraryScreen(
     deleteTarget?.let { (fileName, displayName) ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            containerColor = VigilDirABg,
+            containerColor = VigilBackground,
             shape = RoundedCornerShape(8.dp),
             tonalElevation = 0.dp,
-            modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+            modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
             title = {
                 Text(
                     text = "删除铃声",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = VigilDirAInk
+                    color = VigilTextPrimary
                 )
             },
             text = {
                 Text(
                     text = "确认删除「$displayName」？引用它的关键词/默认铃声将回落到默认闹钟铃声。",
                     fontSize = 13.sp,
-                    color = VigilDirADim
+                    color = VigilTextSecondary
                 )
             },
             confirmButton = {
@@ -359,12 +360,12 @@ fun RingtoneLibraryScreen(
                     viewModel.deleteLibraryRingtone(fileName)
                     deleteTarget = null
                 }) {
-                    Text(text = "删除", color = VigilDirAAmber)
+                    Text(text = "删除", color = VigilError)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteTarget = null }) {
-                    Text(text = "取消", color = VigilDirADim)
+                    Text(text = "取消", color = VigilTextSecondary)
                 }
             }
         )
@@ -383,13 +384,13 @@ private fun InAppToast(message: String?, modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .background(VigilSurface, RoundedCornerShape(4.dp))
-                .border(1.dp, VigilDirAFaint, RoundedCornerShape(4.dp))
+                .border(1.dp, VigilBorder, RoundedCornerShape(4.dp))
                 .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Text(
                 text = message ?: "",
                 fontSize = 12.sp,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         }
     }
@@ -403,13 +404,14 @@ private fun PresetEntryRow(
     onTogglePreview: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val rowLineColor = VigilDivider
     Row(
         modifier = modifier
             .fillMaxWidth()
             .drawBehind {
                 val stroke = 1.dp.toPx()
                 drawLine(
-                    VigilDirALine,
+                    rowLineColor,
                     start = Offset(0f, size.height - stroke / 2),
                     end = Offset(size.width, size.height - stroke / 2),
                     strokeWidth = stroke
@@ -422,22 +424,22 @@ private fun PresetEntryRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "预设",
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 10.sp,
-                color = VigilDirAAcid,
+                color = VigilPrimary,
                 modifier = Modifier.padding(end = 8.dp)
             )
             Text(
                 text = preset.displayName,
                 fontSize = 14.sp,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         }
         Text(
             text = if (isPreviewing) "■ 停止" else "试听",
-            style = MonoTextStyle,
+            style = BodyTextStyle,
             fontSize = 11.sp,
-            color = if (isPreviewing) VigilDirAAmber else VigilDirADim,
+            color = if (isPreviewing) VigilError else VigilTextSecondary,
             modifier = Modifier.clickable(onClick = onTogglePreview)
         )
     }
@@ -453,13 +455,14 @@ private fun RingtoneEntryRow(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val rowLineColor = VigilDivider
     Row(
         modifier = modifier
             .fillMaxWidth()
             .drawBehind {
                 val stroke = 1.dp.toPx()
                 drawLine(
-                    VigilDirALine,
+                    rowLineColor,
                     start = Offset(0f, size.height - stroke / 2),
                     end = Offset(size.width, size.height - stroke / 2),
                     strokeWidth = stroke
@@ -472,7 +475,7 @@ private fun RingtoneEntryRow(
         Text(
             text = displayName,
             fontSize = 14.sp,
-            color = VigilDirAInk,
+            color = VigilTextPrimary,
             modifier = Modifier
                 .weight(1f)
                 .clickable(onClick = onRename)
@@ -483,15 +486,15 @@ private fun RingtoneEntryRow(
         ) {
             Text(
                 text = if (isPreviewing) "■ 停止" else "试听",
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 11.sp,
-                color = if (isPreviewing) VigilDirAAmber else VigilDirADim,
+                color = if (isPreviewing) VigilError else VigilTextSecondary,
                 modifier = Modifier.clickable(onClick = onTogglePreview)
             )
             Text(
                 text = "删除",
                 fontSize = 11.sp,
-                color = VigilDirADim,
+                color = VigilTextSecondary,
                 modifier = Modifier.clickable(onClick = onDelete)
             )
         }
@@ -508,16 +511,16 @@ private fun RenameRingtoneDialog(
     var input by remember { mutableStateOf(oldName) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "重命名铃声",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -525,13 +528,13 @@ private fun RenameRingtoneDialog(
                 value = input,
                 onValueChange = { input = it },
                 singleLine = true,
-                placeholder = { Text("输入名称", fontSize = 14.sp, color = VigilDirADim) },
+                placeholder = { Text("输入名称", fontSize = 14.sp, color = VigilTextSecondary) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = VigilDirAAcid,
-                    unfocusedBorderColor = VigilDirADim,
-                    focusedTextColor = VigilDirAInk,
-                    unfocusedTextColor = VigilDirAInk,
-                    cursorColor = VigilDirAAcid
+                    focusedBorderColor = VigilPrimary,
+                    unfocusedBorderColor = VigilTextSecondary,
+                    focusedTextColor = VigilTextPrimary,
+                    unfocusedTextColor = VigilTextPrimary,
+                    cursorColor = VigilPrimary
                 ),
                 shape = RoundedCornerShape(4.dp)
             )
@@ -543,16 +546,16 @@ private fun RenameRingtoneDialog(
             ) {
                 Text(
                     text = "保存",
-                    color = if (input.isNotBlank()) VigilDirAAcid else VigilDirADim
+                    color = if (input.isNotBlank()) VigilPrimary else VigilTextSecondary
                 )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )
 }
 
-private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)

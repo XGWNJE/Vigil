@@ -42,13 +42,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.example.vigil.ui.main.rememberFrameDrivenProgress
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAInk
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.node.alarmTimeStandardLabel
+import com.example.vigil.node.formatAlarmTime
+import com.example.vigil.ui.rememberAlarmTimeZone
 
 /**
  * 「A · 一线」报警弹窗：酸橙绿 1dp 边框大框 + 等宽元信息 + 实心大按钮。
@@ -63,6 +63,7 @@ fun KeywordAlertDialog(
     snippet: String? = null,
     eventTimeMillis: Long? = null
 ) {
+    val timeZone = rememberAlarmTimeZone()
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
@@ -108,7 +109,7 @@ fun KeywordAlertDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(VigilDirABg)
+                .background(VigilBackground)
                 .padding(horizontal = 24.dp, vertical = 48.dp)
                 .graphicsLayer { alpha = enterAlpha }
                 .offset(y = enterOffset),
@@ -120,17 +121,17 @@ fun KeywordAlertDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .border(1.dp, VigilDirAAcid.copy(alpha = borderAlpha))
+                    .border(1.dp, VigilPrimary.copy(alpha = borderAlpha))
                     .padding(horizontal = 22.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.Start,
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
                     text = "KEYWORD ALERT // 关键词报警",
-                    style = MonoTextStyle,
+                    style = BodyTextStyle,
                     fontSize = 10.sp,
                     letterSpacing = 3.sp,
-                    color = VigilDirAAcid
+                    color = VigilPrimary
                 )
 
                 Text(
@@ -139,13 +140,14 @@ fun KeywordAlertDialog(
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 1.6.sp,
                     lineHeight = 44.sp,
-                    color = VigilDirAInk
+                    color = VigilTextPrimary
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     AlertMetaRow("FROM", sourceApp?.takeIf { it.isNotBlank() } ?: "--")
                     AlertMetaRow("TEXT", snippet?.takeIf { it.isNotBlank() } ?: "--", maxLines = 3)
-                    AlertMetaRow("TIME", formatAlertTime(eventTimeMillis))
+                    AlertMetaRow("TIME", formatAlarmTime(eventTimeMillis ?: System.currentTimeMillis(), "yyyy-MM-dd HH:mm:ss", timeZone))
+                    AlertMetaRow("ZONE", alarmTimeStandardLabel(timeZone))
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -154,10 +156,9 @@ fun KeywordAlertDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(VigilDirAAcid, RoundedCornerShape(2.dp))
+                        .background(VigilPrimary, RoundedCornerShape(2.dp))
                         .clickable {
                             onConfirm()
-                            onDismissRequest()
                         }
                         .padding(17.dp),
                     contentAlignment = Alignment.Center
@@ -167,7 +168,7 @@ fun KeywordAlertDialog(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.5.sp,
-                        color = VigilDirABg
+                        color = VigilBackground
                     )
                 }
             }
@@ -175,7 +176,7 @@ fun KeywordAlertDialog(
     }
 }
 
-private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)
 
 @Composable
 private fun AlertMetaRow(label: String, value: String, maxLines: Int = 1) {
@@ -188,22 +189,17 @@ private fun AlertMetaRow(label: String, value: String, maxLines: Int = 1) {
     ) {
         Text(
             text = label,
-            style = MonoTextStyle,
+            style = BodyTextStyle,
             fontSize = 11.sp,
-            color = VigilDirADim
+            color = VigilTextSecondary
         )
         Text(
             text = value,
-            style = MonoTextStyle,
+            style = BodyTextStyle,
             fontSize = 11.sp,
-            color = VigilDirAInk,
+            color = VigilTextPrimary,
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis
         )
     }
-}
-
-private fun formatAlertTime(eventTimeMillis: Long?): String {
-    val millis = eventTimeMillis ?: System.currentTimeMillis()
-    return SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(millis))
 }

@@ -61,8 +61,6 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "VigilMainActivity"
         const val ACTION_SERVICE_STATUS_UPDATE = "com.example.vigil.SERVICE_STATUS_UPDATE"
-        const val EXTRA_SERVICE_CONNECTED = "extra_service_connected"
-        const val ACTION_UPDATE_SERVICE_CONFIG = "com.example.vigil.ACTION_UPDATE_SERVICE_CONFIG"
     }
 
     internal lateinit var appSettingsLauncher: ActivityResultLauncher<Intent>
@@ -76,12 +74,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG, "MainActivity onCreate. Intent Action: ${intent?.action}")
         VigilLogger.i(this, TAG, "MainActivity onCreate (action=${intent?.action})")
-        handleWindowFlagsForAlert(intent)
 
         super.onCreate(savedInstanceState)
         Log.d(TAG, "MainActivity super.onCreate called.")
 
         sharedPreferencesHelper = SharedPreferencesHelper(this)
+        handleWindowFlagsForAlert(intent)
         sharedPreferencesHelper.migrateKeywordsIfNeeded()  // 一次性迁移旧版关键词格式
 
         appSettingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -91,6 +89,10 @@ class MainActivity : AppCompatActivity() {
 
         // 首次启动时自动申请 POST_NOTIFICATIONS 权限
         requestPostNotificationsIfNeeded()
+        if (com.example.vigil.node.NotificationNodeSettings(this).enabled) {
+            runCatching { com.example.vigil.node.NotificationNodeService.start(this) }
+                .onFailure { Toast.makeText(this, "通知节点未恢复，请在接警页重新连接", Toast.LENGTH_LONG).show() }
+        }
 
         // 设置 ViewModel 回调
         monitoringViewModel.startServiceCallback = { hasPermission -> startVigilService(hasPermission) }
@@ -112,14 +114,9 @@ class MainActivity : AppCompatActivity() {
                 val showDialog by this.monitoringViewModel.showKeywordAlertDialog
                 val matchedKeyword by this.monitoringViewModel.matchedKeywordForDialog
 
-                // 记录最近一次报警事件的元信息（来源应用/摘要/时间），供弹窗展示
-                var alertEvent by remember { mutableStateOf<AlertEvent?>(null) }
-                var alertEventTime by remember { mutableLongStateOf(0L) }
-                LaunchedEffect(Unit) {
-                    VigilEventBus.keywordAlert.collect { event ->
-                        alertEvent = event
-                        alertEventTime = System.currentTimeMillis()
-                    }
+                val activeAlert by this.monitoringViewModel.activeAlert
+                LaunchedEffect(showDialog, activeAlert?.id) {
+                    if (!showDialog) clearAlertWindowFlags()
                 }
 
                 if (showDialog) {
@@ -127,9 +124,9 @@ class MainActivity : AppCompatActivity() {
                         onDismissRequest = { this.monitoringViewModel.onKeywordAlertDialogDismiss() },
                         onConfirm = { this.monitoringViewModel.onKeywordAlertDialogConfirm() },
                         matchedKeyword = matchedKeyword,
-                        sourceApp = alertEvent?.sourceApp,
-                        snippet = alertEvent?.snippet,
-                        eventTimeMillis = alertEventTime.takeIf { it > 0L }
+                        sourceApp = activeAlert?.sourceApp,
+                        snippet = activeAlert?.snippet,
+                        eventTimeMillis = activeAlert?.firstTriggeredAt
                     )
                 }
 
@@ -141,16 +138,17 @@ class MainActivity : AppCompatActivity() {
                     contract = ActivityResultContracts.StartActivityForResult()
                 ) {
                     // 用户从「安装未知应用」设置返回
-                    if (UpdateChecker.canInstallPackages(appContext)) {
+                    if (UpdateChecker.canInstallPackages(appContext) && !this.monitoringViewModel.showKeywordAlertDialog.value) {
                         this.updateViewModel.completeInstall()
-                    } else {
+                    } else if (!UpdateChecker.canInstallPackages(appContext)) {
                         Toast.makeText(appContext, "未授予安装权限，无法自动更新", Toast.LENGTH_LONG).show()
                         updateViewModel.clearInstallReady()
                     }
                 }
 
                 // APK 下载完成后触发系统安装；无「安装未知应用」权限时先引导授权
-                LaunchedEffect(updateState.installReady) {
+                LaunchedEffect(updateState.installReady, showDialog) {
+                    if (showDialog) return@LaunchedEffect
                     val apk = updateState.installReady ?: return@LaunchedEffect
                     if (UpdateChecker.canInstallPackages(appContext)) {
                         updateViewModel.completeInstall()
@@ -168,7 +166,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                if (updateState.dialog != null || updateState.isDownloading) {
+                if (!showDialog && (updateState.dialog != null || updateState.isDownloading)) {
                     UpdateDialog(
                         state = updateState,
                         currentVersionName = UpdateChecker.currentVersionName(this),
@@ -199,6 +197,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleWindowFlagsForAlert(intent: Intent?) {
         if (intent?.action == MyNotificationListenerService.ACTION_SHOW_ALERT_FROM_SERVICE) {
+            val active = sharedPreferencesHelper.getActiveAlert()
+            if (active == null || active.id != intent.getStringExtra(MyNotificationListenerService.EXTRA_ALERT_ID_FROM_SERVICE)) {
+                clearAlertWindowFlags()
+                return
+            }
             Log.i(TAG, "MainActivity 检测到 ACTION_SHOW_ALERT_FROM_SERVICE，尝试设置窗口标志。")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 setShowWhenLocked(true)
@@ -218,6 +221,18 @@ class MainActivity : AppCompatActivity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
             Log.d(TAG, "窗口标志已尝试设置。")
         }
+    }
+
+    private fun clearAlertWindowFlags() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
+        @Suppress("DEPRECATION")
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
     }
 
     private fun handleIntentForAlert(intent: Intent?) {
@@ -289,6 +304,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun stopVigilService() {
+        if (com.example.vigil.node.NotificationNodeSettings(this).enabled || sharedPreferencesHelper.getActiveAlert() != null) {
+            notifyServiceToUpdateSettings()
+            return
+        }
         val serviceIntent = Intent(this, MyNotificationListenerService::class.java)
         try {
             stopService(serviceIntent)

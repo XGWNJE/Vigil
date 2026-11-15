@@ -12,6 +12,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.vigil.PermissionUtils
 import com.example.vigil.SharedPreferencesHelper
+import com.example.vigil.AlertEndType
+import com.example.vigil.AlertQueueItem
 import com.example.vigil.VigilEventBus
 import com.example.vigil.VigilLogger
 import kotlinx.coroutines.launch
@@ -21,7 +23,7 @@ import kotlinx.coroutines.launch
  */
 enum class ServiceState {
     DISABLED,               // 用户关闭了服务开关
-    INITIALIZING,           // 开关已开，等待服务连接信号（<5s）
+    INITIALIZING,           // 开关已开，等待启动窗口内的服务连接信号
     RUNNING,                // 运行正常，心跳最近有收到且系统绑定存活
     RUNNING_LIMITED,        // 运行中，但通知发送权限缺失，前台通知可能受影响
     LISTENER_DISCONNECTED,  // 进程活着（心跳正常）但系统监听绑定断开，自动重连中
@@ -53,6 +55,8 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _matchedKeywordForDialog = mutableStateOf<String?>(null)
     val matchedKeywordForDialog: State<String?> = _matchedKeywordForDialog
+    private val _activeAlert = mutableStateOf<AlertQueueItem?>(null)
+    val activeAlert: State<AlertQueueItem?> = _activeAlert
     private var activeAlertIdForDialog: String? = null
 
     // ---- 待触发延时报警数量（持久化兜底：冷启动直接读 prefs，服务侧变化经事件总线刷新）----
@@ -75,7 +79,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // 初始化超时 Runnable：5s 后若仍无信号则退出初始化状态
+    // 初始化超时 Runnable：启动窗口结束后若仍无信号则显示超时状态
     private val initTimeoutRunnable = Runnable {
         Log.d(TAG, "init timeout fired, hasReceivedAnySignal=$hasReceivedAnySignal")
         VigilLogger.w(context, TAG, "初始化窗口超时仍无服务信号 (hasReceivedAnySignal=$hasReceivedAnySignal)")
@@ -141,9 +145,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             VigilEventBus.keywordAlert.collect { event ->
                 Log.i(TAG, "AlertEvent received: keyword=${event.keyword}")
-                activeAlertIdForDialog = event.alertId
-                _matchedKeywordForDialog.value = event.keyword
-                _showKeywordAlertDialog.value = true
+                syncAlertDialogWithPersistentState()
             }
         }
 
@@ -195,7 +197,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
             // 心跳正常但系统监听绑定断开：进程活着却收不到通知，看门狗自动重连中
             heartbeatOk && !listenerConnected -> ServiceState.LISTENER_DISCONNECTED
             heartbeatOk -> ServiceState.RUNNING
-            !hasReceivedAnySignal -> ServiceState.INITIALIZING   // 从未收到信号，还在等
+            !hasReceivedAnySignal -> ServiceState.HEARTBEAT_TIMEOUT
             else -> ServiceState.HEARTBEAT_TIMEOUT
         }
 
@@ -278,6 +280,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         // 回到前台时一并刷新待触发延时报警数量（服务侧事件可能无人收集）
         refreshPendingDelayedCount()
         val active = sharedPreferencesHelper.getActiveAlert()
+        _activeAlert.value = active
         if (active == null || (expectedAlertId != null && active.id != expectedAlertId)) {
             onKeywordAlertDialogDismiss()
             return
@@ -296,7 +299,15 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         Log.d(TAG, "Alert dialog confirmed.")
         val alertId = activeAlertIdForDialog
         if (alertId != null) {
+            val transition = sharedPreferencesHelper.finishActiveAlert(alertId, AlertEndType.MANUAL)
+            if (!transition.success) {
+                android.widget.Toast.makeText(context, "停止记录未保存，请重试", android.widget.Toast.LENGTH_LONG).show()
+                return
+            }
             viewModelScope.launch { VigilEventBus.alertConfirmed.emit(alertId) }
+            notifyServiceToUpdateSettingsCallback?.invoke()
+            syncAlertDialogWithPersistentState()
+            return
         }
         onKeywordAlertDialogDismiss()
     }
@@ -305,6 +316,7 @@ class MonitoringViewModel(application: Application) : AndroidViewModel(applicati
         _showKeywordAlertDialog.value = false
         _matchedKeywordForDialog.value = null
         activeAlertIdForDialog = null
+        _activeAlert.value = null
     }
 
     // ---- 回调（由 Activity/Screen 注入）----

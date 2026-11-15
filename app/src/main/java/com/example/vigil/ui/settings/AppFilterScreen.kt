@@ -55,12 +55,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAFaint
-import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilBorder
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilDivider
 
 /**
  * 「A · 一线」应用过滤页：与主屏同一语言——暗底、发丝线分区、等宽元信息、酸橙绿强调。
@@ -82,7 +82,7 @@ fun AppFilterScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VigilDirABg)
+            .background(VigilBackground)
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)
@@ -104,24 +104,24 @@ fun AppFilterScreen(
                     Text(
                         text = "←",
                         fontSize = 18.sp,
-                        color = VigilDirADim
+                        color = VigilTextSecondary
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "APP FILTER // 应用过滤",
-                    style = MonoTextStyle,
+                    style = BodyTextStyle,
                     fontSize = 11.sp,
                     letterSpacing = 2.sp,
-                    color = VigilDirAInk
+                    color = VigilTextPrimary
                 )
             }
             Text(
                 text = "REFRESH",
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 10.sp,
                 letterSpacing = 1.2.sp,
-                color = VigilDirADim,
+                color = VigilTextSecondary,
                 modifier = Modifier
                     .clickable { viewModel.loadInstalledApps() }
                     .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -134,7 +134,7 @@ fun AppFilterScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(VigilDirALine)
+                    .background(VigilDivider)
             )
             LineRow {
                 RowLabel("仅监听指定应用")
@@ -145,15 +145,19 @@ fun AppFilterScreen(
             }
             Text(
                 text = "${filteredApps.size} APPS · ${filteredApps.count { it.isSelected }} SELECTED",
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 10.sp,
                 letterSpacing = 1.sp,
-                color = VigilDirADim,
+                color = VigilTextSecondary,
                 modifier = Modifier.padding(top = 12.dp)
             )
         }
 
         // ---- 搜索框 ----
+        if (isAppFilterEnabled && filteredApps.none { it.isSelected }) {
+            Text("未选择应用：当前不会检查任何应用的通知", color = VigilTextSecondary,
+                modifier = Modifier.padding(top = 12.dp))
+        }
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { viewModel.onSearchQueryChange(it) },
@@ -161,16 +165,16 @@ fun AppFilterScreen(
                 .fillMaxWidth()
                 .padding(top = 16.dp),
             singleLine = true,
-            textStyle = TextStyle(fontSize = 13.sp, color = VigilDirAInk),
+            textStyle = TextStyle(fontSize = 13.sp, color = VigilTextPrimary),
             placeholder = {
-                Text(text = "搜索应用名或包名", fontSize = 13.sp, color = VigilDirADim)
+                Text(text = "搜索应用名或包名", fontSize = 13.sp, color = VigilTextSecondary)
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     Text(
                         text = "×",
                         fontSize = 15.sp,
-                        color = VigilDirADim,
+                        color = VigilTextSecondary,
                         modifier = Modifier
                             .clickable { viewModel.onSearchQueryChange("") }
                             .padding(horizontal = 12.dp)
@@ -178,11 +182,11 @@ fun AppFilterScreen(
                 }
             },
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = VigilDirAAcid,
-                unfocusedBorderColor = VigilDirAFaint,
-                focusedTextColor = VigilDirAInk,
-                unfocusedTextColor = VigilDirAInk,
-                cursorColor = VigilDirAAcid
+                focusedBorderColor = VigilPrimary,
+                unfocusedBorderColor = VigilBorder,
+                focusedTextColor = VigilTextPrimary,
+                unfocusedTextColor = VigilTextPrimary,
+                cursorColor = VigilPrimary
             ),
             shape = RoundedCornerShape(4.dp)
         )
@@ -198,10 +202,10 @@ fun AppFilterScreen(
                 ) {
                     Text(
                         text = "LOADING…",
-                        style = MonoTextStyle,
+                        style = BodyTextStyle,
                         fontSize = 11.sp,
                         letterSpacing = 2.sp,
-                        color = VigilDirADim
+                        color = VigilTextSecondary
                     )
                 }
             }
@@ -214,10 +218,10 @@ fun AppFilterScreen(
                 ) {
                     Text(
                         text = "NO APPS FOUND",
-                        style = MonoTextStyle,
+                        style = BodyTextStyle,
                         fontSize = 11.sp,
                         letterSpacing = 2.sp,
-                        color = VigilDirADim
+                        color = VigilTextSecondary
                     )
                 }
             }
@@ -236,20 +240,21 @@ fun AppFilterScreen(
     }
 }
 
-private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)
 
 /** 单行：左侧灰标签 + 右侧内容，底部 1dp 发丝线（与主屏 LineRow 同语言） */
 @Composable
 private fun LineRow(
     content: @Composable RowScope.() -> Unit
 ) {
+    val rowLineColor = VigilDivider
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .drawBehind {
                 val stroke = 1.dp.toPx()
                 drawLine(
-                    VigilDirALine,
+                    rowLineColor,
                     start = Offset(0f, size.height - stroke / 2),
                     end = Offset(size.width, size.height - stroke / 2),
                     strokeWidth = stroke
@@ -269,16 +274,18 @@ private fun RowLabel(text: String) {
         text = text,
         fontSize = 12.sp,
         letterSpacing = 0.6.sp,
-        color = VigilDirADim
+        color = VigilTextSecondary
     )
 }
 
 /** 主屏大开关的缩小版：描边胶囊 + 实心圆点（位置/颜色随状态平滑过渡） */
 @Composable
 private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
+    val activeDot = VigilPrimary
+    val inactiveDot = VigilBorder
     val transition = updateTransition(targetState = checked, label = "miniSwitch")
     val dotColor by transition.animateColor(label = "dotColor") { on ->
-        if (on) VigilDirAAcid else VigilDirAFaint
+        if (on) activeDot else inactiveDot
     }
     // 圆点中心偏移：0f=左，1f=右（胶囊内径 44-3*2=38dp，圆点 16dp，行程 22dp）
     val dotOffset by transition.animateFloat(label = "dotOffset") { on -> if (on) 1f else 0f }
@@ -304,12 +311,12 @@ private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
 @Composable
 private fun AppCheck(checked: Boolean) {
     val bgColor by animateColorAsState(
-        targetValue = if (checked) VigilDirAAcid else Color.Transparent,
+        targetValue = if (checked) VigilPrimary else Color.Transparent,
         animationSpec = tween(180),
         label = "checkBg"
     )
     val borderColor by animateColorAsState(
-        targetValue = if (checked) VigilDirAAcid else VigilDirAFaint,
+        targetValue = if (checked) VigilPrimary else VigilBorder,
         animationSpec = tween(180),
         label = "checkBorder"
     )
@@ -329,7 +336,7 @@ private fun AppCheck(checked: Boolean) {
                 text = "✓",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirABg
+                color = VigilBackground
             )
         }
     }
@@ -342,6 +349,7 @@ private fun AppFilterRow(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val rowLineColor = VigilDivider
     val context = LocalContext.current
     val appIcon = remember(app.packageName) {
         try {
@@ -357,7 +365,7 @@ private fun AppFilterRow(
             .drawBehind {
                 val stroke = 1.dp.toPx()
                 drawLine(
-                    VigilDirALine,
+                    rowLineColor,
                     start = Offset(0f, size.height - stroke / 2),
                     end = Offset(size.width, size.height - stroke / 2),
                     strokeWidth = stroke
@@ -386,7 +394,7 @@ private fun AppFilterRow(
                 Text(
                     text = app.appName,
                     fontSize = 13.sp,
-                    color = VigilDirAInk,
+                    color = VigilTextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -395,21 +403,21 @@ private fun AppFilterRow(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "SYS",
-                        style = MonoTextStyle,
+                        style = BodyTextStyle,
                         fontSize = 9.sp,
                         letterSpacing = 0.8.sp,
-                        color = VigilDirADim,
+                        color = VigilTextSecondary,
                         modifier = Modifier
-                            .border(1.dp, VigilDirAFaint, RoundedCornerShape(4.dp))
+                            .border(1.dp, VigilBorder, RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }
             Text(
                 text = app.packageName,
-                style = MonoTextStyle,
+                style = BodyTextStyle,
                 fontSize = 9.sp,
-                color = VigilDirADim,
+                color = VigilTextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp)

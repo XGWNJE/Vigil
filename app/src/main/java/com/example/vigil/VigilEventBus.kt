@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 
 /**
  * 应用级事件总线，替代废弃的 LocalBroadcastManager。
- * 使用 SharedFlow(extraBufferCapacity=1) 保证即使收集方未就绪也不丢失最新事件。
+ * 非心跳事件没有 replay；关键状态从持久化数据恢复，缓冲区不能代替持久化。
  */
 object VigilEventBus {
     /**

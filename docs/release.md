@@ -17,10 +17,10 @@
 
 owner 的发布指令即授权该流程内的全部 git 操作（commit / tag / push）。按序执行：
 
-**铁律：Release 只由 CI 创建**——发版 = 推 tag 触发 workflow，禁止手动 `gh release create` / 网页建 Release / 手动传 APK 资产。手动创建会抢占同名 Release，CI 最后一步必报 `a release with the same tag name already exists`（2026-08-01 v1.11.0 教训：手动抢建导致 CI 失败；处置 = 删手动 Release（保留 tag）→ `gh run rerun` 让 CI 接管）。
+**Release 只由 CI 创建**：发布授权后推送 tag 触发 workflow，不手动创建同名 Release 或上传 APK。CI 先校验 tag 与应用版本，再执行单元测试、lint、签名构建和发布。
 
 1. **收口待发版改动**：按[项目细则第 6 条](project-rules.md)对齐文档，确认 `versionCode`/`versionName` 已递增；按 `release-notes/TEMPLATE.md` 固定格式写 `release-notes/vX.Y.Z.md`（CI 自动用作 Release 描述，缺失时回退 `--generate-notes` 只有 compare 链接）；提交并 `git push origin main`。
-2. **检查 CI secrets**：`gh secret list --repo XGWNJE/Vigil` 必须有上述 4 个。缺失则按下方「secrets 重设」补齐（2026-07-30 教训：密钥轮换后 secrets 全缺，v1.8.2/v1.8.3 发版失败，报 `Tag number over 30 is not supported`）。
+2. **检查 CI secrets**：`gh secret list --repo XGWNJE/Vigil` 必须有上述 4 个。缺失则按下方「secrets 重设」补齐。
 3. **打 tag 触发**：`git tag vX.Y.Z`（与 versionName 一致）→ `git push origin vX.Y.Z`。
 4. **盯运行**：`gh run watch --exit-status` 盯到结束；失败用 `gh run view <id> --log-failed` 定位，修复后删远端 tag 重推（`git push origin :vX.Y.Z && git push origin vX.Y.Z`）或打新 tag。
 5. **验收（全部通过才算完成）**：`gh release view vX.Y.Z` 确认 Release 与 APK 资产存在；下载 APK 跑 `apksigner verify --print-certs`，证书 SHA-256 应与可信保存的轮换后签名证书指纹一致。若维护者有安全保管的密钥备份，可用 `keytool -list` 比对；普通本地检出不要求存在密钥文件。

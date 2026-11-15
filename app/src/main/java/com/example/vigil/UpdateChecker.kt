@@ -19,7 +19,9 @@ import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
-import java.util.concurrent.atomic.AtomicBoolean
+import java.security.MessageDigest
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * GitHub 渠道的自动更新检查。
@@ -64,7 +66,9 @@ object UpdateChecker {
         val releaseNotes: String,     // 清洗后的发版说明
         val apkUrl: String?,          // APK 资产直链；null 表示该 release 未上传 APK
         val releasePageUrl: String,   // 浏览器打开的发版页
-        val publishedAt: String       // ISO 时间
+        val publishedAt: String,       // ISO 时间
+        val apkSize: Long = 0L,
+        val apkDigest: String? = null
     )
 
     /**
@@ -131,12 +135,15 @@ object UpdateChecker {
                 return@withContext CheckResult.Error("无法解析版本号")
             }
 
+            val apkAsset = findApkAsset(json)
             val info = UpdateInfo(
                 versionName = versionName,
                 releaseNotes = cleanReleaseNotes(json.optString("body")),
-                apkUrl = findApkAssetUrl(json),
+                apkUrl = apkAsset?.optString("browser_download_url"),
                 releasePageUrl = json.optString("html_url"),
-                publishedAt = json.optString("published_at")
+                publishedAt = json.optString("published_at"),
+                apkSize = apkAsset?.optLong("size", 0L) ?: 0L,
+                apkDigest = apkAsset?.optString("digest")?.takeIf { it.isNotBlank() }
             )
 
             if (!isNewer(versionName, currentVersionName(context))) {
@@ -160,14 +167,14 @@ object UpdateChecker {
     }
 
     /** 从 release 的 assets 数组里挑出 .apk 资产，返回其浏览器直链；没有则返回 null。 */
-    private fun findApkAssetUrl(json: JSONObject): String? {
+    private fun findApkAsset(json: JSONObject): JSONObject? {
         val assets = json.optJSONArray("assets") ?: return null
         for (i in 0 until assets.length()) {
             val asset = assets.getJSONObject(i)
             val name = asset.optString("name")
             if (name.endsWith(".apk", ignoreCase = true)) {
                 val url = asset.optString("browser_download_url")
-                if (url.isNotBlank()) return url
+                if (url.isNotBlank()) return asset
             }
         }
         return null
@@ -201,12 +208,9 @@ object UpdateChecker {
     }
 
     private fun parseVersion(v: String): List<Int>? {
-        val parts = v.trim()
-            .dropWhile { it.isLetter() }     // 去掉 v 前缀
-            .split('.', '-', '_')
-            .map { it.trim().toIntOrNull() }
-            .filterNotNull()
-        return if (parts.isEmpty()) null else parts
+        val match = Regex("^v?(\\d+(?:\\.\\d+)*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$")
+            .matchEntire(v.trim()) ?: return null
+        return match.groupValues[1].split('.').map { it.toIntOrNull() ?: return null }
     }
 
     /**
@@ -217,14 +221,18 @@ object UpdateChecker {
         context: Context,
         url: String,
         versionName: String,
+        expectedSize: Long = 0L,
+        expectedDigest: String? = null,
         onProgress: ((Float) -> Unit)? = null
     ): File? = withContext(Dispatchers.IO) {
-        val cancelled = AtomicBoolean(false)
         val sanitized = versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val dest = File(context.cacheDir, "vigil-update-$sanitized.apk")
+        val partial = File(context.cacheDir, "vigil-update-$sanitized.apk.part")
+        var conn: HttpURLConnection? = null
+        var succeeded = false
         try {
             if (dest.exists()) dest.delete()
-            val conn = URL(url).openConnection() as HttpURLConnection
+            conn = URL(url).openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.connectTimeout = 15_000
             conn.readTimeout = 15_000
@@ -235,17 +243,18 @@ object UpdateChecker {
                 Log.w(TAG, "下载 APK 返回异常 HTTP $code")
                 return@withContext null
             }
-            val contentLength = conn.contentLength.toLong()
+            val contentLength = conn.contentLengthLong
             var total = 0L
             conn.inputStream.use { input ->
-                FileOutputStream(dest).use { out ->
+                FileOutputStream(partial).use { out ->
                     val buf = ByteArray(8192)
                     while (true) {
-                        if (cancelled.get()) return@withContext null
+                        currentCoroutineContext().ensureActive()
                         val read = input.read(buf)
                         if (read == -1) break
                         out.write(buf, 0, read)
                         total += read
+                        if (total > 512L * 1024 * 1024) throw IOException("安装包超过大小限制")
                         if (contentLength > 0) {
                             onProgress?.invoke((total.toFloat() / contentLength).coerceIn(0f, 1f))
                         }
@@ -253,24 +262,59 @@ object UpdateChecker {
                     out.flush()
                 }
             }
-            if (dest.length() == 0L) {
-                dest.delete()
-                return@withContext null
+            if (total == 0L || (contentLength >= 0 && total != contentLength) ||
+                (expectedSize > 0 && total != expectedSize)) throw IOException("安装包下载不完整")
+            if (expectedDigest != null) {
+                val digest = MessageDigest.getInstance("SHA-256")
+                partial.inputStream().use { input ->
+                    val buf = ByteArray(8192)
+                    while (true) { val count = input.read(buf); if (count < 0) break; digest.update(buf, 0, count) }
+                }
+                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+                if (!expectedDigest.equals("sha256:$actual", ignoreCase = true)) throw IOException("安装包校验失败")
             }
+            if (!isValidUpdateApk(context, partial, versionName)) throw IOException("安装包身份、版本或签名不匹配")
+            if (!partial.renameTo(dest)) throw IOException("无法保存安装包")
+            succeeded = true
             Log.i(TAG, "下载完成: ${dest.absolutePath} (${dest.length()} bytes)")
             dest
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "下载更新 APK 失败", e)
             dest.delete()
             null
+        } finally {
+            conn?.disconnect()
+            partial.delete()
+            if (!succeeded) dest.delete()
         }
+    }
+
+    internal fun isValidUpdateApk(context: Context, file: File, versionName: String): Boolean {
+        val pm = context.packageManager
+        @Suppress("DEPRECATION")
+        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        @Suppress("DEPRECATION")
+        val candidate = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: return false
+        @Suppress("DEPRECATION")
+        val installed = pm.getPackageInfo(context.packageName, flags)
+        if (candidate.packageName != context.packageName || candidate.versionName != versionName) return false
+        fun signers(info: android.content.pm.PackageInfo): Set<String> {
+            @Suppress("DEPRECATION")
+            val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
+            return signatures?.map { signature ->
+                MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).joinToString("") { "%02x".format(it) }
+            }?.toSet() ?: emptySet()
+        }
+        val currentSigners = signers(installed)
+        return currentSigners.isNotEmpty() && currentSigners == signers(candidate)
     }
 
     /**
      * 触发系统安装界面（FileProvider 授权给系统安装器）。
      * 注意：需要已获得 REQUEST_INSTALL_PACKAGES（安装未知应用）权限，由调用方先行检查/引导。
      */
-    fun triggerInstall(context: Context, apkFile: File) {
+    fun triggerInstall(context: Context, apkFile: File): Boolean {
         try {
             val uri: Uri = FileProvider.getUriForFile(context, fileProviderAuthority(context), apkFile)
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -280,8 +324,10 @@ object UpdateChecker {
             }
             context.startActivity(intent)
             Log.i(TAG, "已调起安装界面: $apkFile")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "调起安装界面失败", e)
+            return false
         }
     }
 

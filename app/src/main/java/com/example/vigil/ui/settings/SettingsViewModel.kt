@@ -17,7 +17,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.vigil.MainActivity
 import com.example.vigil.DelayedAlertScheduler
 import com.example.vigil.DelayPolicy
 import com.example.vigil.PermissionUtils
@@ -59,9 +58,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _keywordList = mutableStateListOf<String>()
     val keywordList: List<String> = _keywordList
 
-    private val _selectedRingtoneUri = mutableStateOf<Uri?>(null)
-    val selectedRingtoneUri: State<Uri?> = _selectedRingtoneUri
-
     private val _selectedRingtoneName = mutableStateOf(context.getString(R.string.no_ringtone_selected))
     val selectedRingtoneName: State<String> = _selectedRingtoneName
 
@@ -90,6 +86,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _alertHistoryVersion = mutableStateOf(0)
     val alertHistoryVersion: State<Int> = _alertHistoryVersion
+    private val historyListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "alert_history") _alertHistoryVersion.value++
+    }
 
     // --- 铃声库（自定义铃声来源：导入/录音，fileName to displayName） ---
     private val _ringtoneLibrary = mutableStateListOf<Pair<String, String>>()
@@ -135,6 +134,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         updatePermissionStates()
         loadInstalledApps() // 只在初始化时加载应用列表
         loadSettings() // 加载关键词和铃声设置
+        sharedPreferencesHelper.prefs.registerOnSharedPreferenceChangeListener(historyListener)
+    }
+
+    override fun onCleared() {
+        sharedPreferencesHelper.prefs.unregisterOnSharedPreferenceChangeListener(historyListener)
+        super.onCleared()
     }
 
     fun updatePermissionStates() {
@@ -301,10 +306,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private fun loadSettings() {
         _keywordList.clear()
         _keywordList.addAll(sharedPreferencesHelper.getKeywords())
-        // 仅 content:// 值回填给系统铃声选择器的 EXISTING_URI；铃声库文件/内置预设不适用
-        _selectedRingtoneUri.value = sharedPreferencesHelper.getRingtoneValue()
-            ?.takeIf { !RingtoneLibrary.isLibraryFile(it) && !RingtoneLibrary.isPresetValue(it) }
-            ?.let { Uri.parse(it) }
         updateSelectedRingtoneName()
         loadRingtoneLibrary()
     }
@@ -409,12 +410,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         return ringtoneValueDisplayName(value)
     }
 
-    /** 关键词绑定铃声为系统铃声时返回其 URI（选择器 EXISTING_URI 用）；铃声库文件/内置预设返回 null。 */
-    fun getKeywordRingtoneUri(keyword: String): Uri? {
-        return sharedPreferencesHelper.getKeywordRingtoneValue(keyword)
-            ?.takeIf { !RingtoneLibrary.isLibraryFile(it) && !RingtoneLibrary.isPresetValue(it) }
-            ?.let { Uri.parse(it) }
-    }
+    fun getKeywordRingtoneValue(keyword: String): String? = sharedPreferencesHelper.getKeywordRingtoneValue(keyword)
+    fun getDefaultRingtoneValue(): String? = sharedPreferencesHelper.getRingtoneValue()
 
     fun onKeywordRingtoneSelected(keyword: String, value: String?) {
         sharedPreferencesHelper.saveKeywordRingtone(keyword, value)
@@ -517,26 +514,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _alertHistoryVersion.value++
     }
 
-    @Deprecated("Use addKeyword/removeKeyword instead")
-    fun onKeywordsChange(newKeywords: String) {
-        // 保留兼容性：将逗号分隔字符串解析为列表
-        _keywordList.clear()
-        _keywordList.addAll(newKeywords.split(",").map { it.trim() }.filter { it.isNotEmpty() })
-    }
-
-    fun onRingtoneUriSelected(uri: Uri?) {
-        _selectedRingtoneUri.value = uri
-        // 立即持久化，避免依赖手动 saveSettings()（先保存再刷新展示名，否则读到的是旧值）
-        sharedPreferencesHelper.saveRingtoneValue(uri?.toString())
-        updateSelectedRingtoneName()
-        // 通知服务重新加载设置（让 Service.loadSettings() 读取新 URI）
-        notifyServiceToUpdateSettingsCallback?.invoke()
-        Log.i(TAG, "Ringtone URI selected and saved immediately: $uri")
-    }
-
     /** 选择铃声库文件/内置预设作为默认铃声（value 为文件路径或 android.resource:// URI）。 */
     fun onRingtoneValueSelected(value: String?) {
-        _selectedRingtoneUri.value = null
         // 先保存再刷新展示名，否则读到的是旧值（原逻辑会把行内名称卡在旧值）
         sharedPreferencesHelper.saveRingtoneValue(value)
         updateSelectedRingtoneName()
@@ -547,6 +526,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /** 铃声值 → 展示名：内置预设取预设名，铃声库文件取库内命名，content URI 取系统铃声标题。 */
     private fun ringtoneValueDisplayName(value: String): String {
         return when {
+            value == RingtoneLibrary.SILENT_VALUE -> "静音"
             RingtoneLibrary.isPresetValue(value) -> RingtoneLibrary.presetDisplayName(value) ?: "预设铃声"
             RingtoneLibrary.isLibraryFile(value) -> {
                 val fileName = java.io.File(value).name
@@ -579,28 +559,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun saveSettings() {
-        viewModelScope.launch {
-            // 保存关键词（keywordList 已实时自动保存，这里再确保一次）
-            sharedPreferencesHelper.saveKeywords(_keywordList.toList())
-
-            // 铃声已即时持久化（onRingtoneUriSelected/onRingtoneValueSelected），无需重复保存
-
-            // 保存过滤应用列表
-            saveFilteredApps()
-            
-            // 通知服务更新设置
-            try {
-                val intent = Intent(MainActivity.ACTION_UPDATE_SERVICE_CONFIG)
-                context.sendBroadcast(intent)
-                Log.i(TAG, "Broadcast sent to update service configuration")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error sending broadcast to update service", e)
-            }
-
-            Log.i(TAG, "设置已保存: 关键词=${keywordList.size}个, 铃声URI=${_selectedRingtoneUri.value}")
-        }
-    }
 }
 
 class SettingsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {

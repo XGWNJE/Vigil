@@ -3,18 +3,15 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.vigil">
 
-    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- 延时报警：到点唤起响铃（Android 12+ 需用户在系统「闹钟和提醒」授权；
-         未授权时回落非精确闹钟 + 服务内定时器 + 心跳扫描，不丢报警） -->
+         未授权时使用非精确闹钟；服务内定时器和心跳也检查到期任务） -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- 铃声库录音来源：运行时申请，拒绝时按 PermissionGuideDialog 模式引导 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -32,6 +29,9 @@
 
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -62,6 +62,10 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+        </service>
+
+        <service android:name=".node.NotificationNodeService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Receive realtime alarms from a configured service" />
         </service>
 
         <!-- 延时报警到期闹钟的接收方：拉起服务处理到期项（不导出，仅系统闹钟投递） -->

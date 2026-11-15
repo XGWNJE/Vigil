@@ -62,10 +62,13 @@ class MyNotificationListenerService : NotificationListenerService() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val handler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val alertedNotificationKeys = mutableSetOf<String>()
+    private val alertedNotificationKeys = linkedMapOf<String, String>()
 
     // 进程存活时的延时报警精度补偿定时器（闹钟非精确/被拦截时的兜底，见 DelayedAlertScheduler 注释）
     private val delayedCheckRunnable = Runnable { processDueDelayedAlerts() }
+    private val queueListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "alert_queue") handler.post { reconcileActiveAlert() }
+    }
 
     // 系统绑定状态：只有它才代表 NotificationManagerService 正在向本服务投递通知。
     // 进程被杀后系统以 START_STICKY 重建服务时，onListenerConnected 可能永不被调用，
@@ -79,6 +82,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
+            reconcileActiveAlert()
             sendHeartbeat()
             // 每 20 次心跳（10 分钟）落一条存活标记，便于事后判断进程/绑定在何时断掉
             heartbeatCount++
@@ -159,6 +163,8 @@ class MyNotificationListenerService : NotificationListenerService() {
         Log.i(TAG, "服务创建中...")
         VigilLogger.i(applicationContext, TAG, "服务创建 (onCreate)")
         sharedPreferencesHelper = SharedPreferencesHelper(applicationContext)
+        createNotificationChannel()
+        sharedPreferencesHelper.prefs.registerOnSharedPreferenceChangeListener(queueListener)
         // 进程若是被系统强杀后重建，onDestroy 不会执行，持久化的绑定状态会残留 true；
         // 重建后绑定状态未知，先重置为 false，等 onListenerConnected 真正回调再置 true
         listenerActuallyConnected = false
@@ -171,11 +177,9 @@ class MyNotificationListenerService : NotificationListenerService() {
         serviceScope.launch {
             VigilEventBus.alertConfirmed.collect { alertId ->
                 Log.i(TAG, "收到来自 UI 的确认事件 (alertId=$alertId)。")
-                finishCurrentAlert(alertId, AlertEndType.MANUAL)
+                reconcileActiveAlert()
             }
         }
-        createNotificationChannel()
-
         // 使用简单方式启动前台服务
         val notification = createForegroundServiceNotification()
         startForeground(FOREGROUND_NOTIFICATION_ID, notification)
@@ -245,6 +249,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             updateForegroundNotification()
         }
         
+        reconcileActiveAlert()
         return START_STICKY
     }
 
@@ -255,6 +260,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         listenerActuallyConnected = false
         sharedPreferencesHelper.saveListenerConnectedState(false)
         serviceScope.cancel()
+        sharedPreferencesHelper.prefs.unregisterOnSharedPreferenceChangeListener(queueListener)
         stopHeartbeat()
         handler.removeCallbacks(delayedCheckRunnable)
         stopRingtoneAndLock()
@@ -266,7 +272,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) { Log.w(TAG, "StatusBarNotification 为空，忽略。"); return }
 
-        if (filterAppsEnabled && filteredAppPackages.isNotEmpty()) {
+        if (filterAppsEnabled) {
             if (sbn.packageName !in filteredAppPackages) {
                 Log.d(TAG, "通知来自 ${sbn.packageName}，不在过滤列表中，忽略。当前过滤应用列表: $filteredAppPackages")
                 VigilLogger.d(applicationContext, TAG, "过滤排除: pkg=${sbn.packageName} 不在监听列表 $filteredAppPackages")
@@ -276,7 +282,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             VigilLogger.d(applicationContext, TAG, "通知到达: pkg=${sbn.packageName} (在过滤列表中)")
         }
 
-        if (sbn.packageName == packageName && (sbn.id == FOREGROUND_NOTIFICATION_ID)) {
+        if (sbn.packageName == packageName && (sbn.id == FOREGROUND_NOTIFICATION_ID || sbn.id == com.example.vigil.node.NotificationNodeService.NOTIFICATION_ID)) {
             return
         }
 
@@ -321,12 +327,11 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         if (matchedKeyword != null) {
             val notifKey = sbn.key
-            if (notifKey in alertedNotificationKeys) {
+            if (alertedNotificationKeys[notifKey] == notificationContent) {
                 Log.d(TAG, "通知 $notifKey 已报警过，跳过重复触发。")
                 VigilLogger.d(applicationContext, TAG, "忽略通知: pkg=${sbn.packageName}, 原因=已报警过去重 (keyword=$matchedKeyword)")
                 return
             }
-            alertedNotificationKeys.add(notifKey)
             VigilLogger.i(applicationContext, TAG, "命中关键词 '$matchedKeyword' (pkg=${sbn.packageName})，触发报警")
 
             // 解析该关键词的铃声与循环次数（未配置则回落全局默认）
@@ -346,15 +351,17 @@ class MyNotificationListenerService : NotificationListenerService() {
             val delayPolicy = keywordDelayPolicyMap[matchedKeyword] ?: defaultDelayPolicy
             val triggerAtMs = DelayedAlertScheduler.resolveTriggerAt(delayPolicy)
             if (triggerAtMs != null) {
-                scheduleDelayedAlert(
+                val accepted = scheduleDelayedAlert(
                     keyword = matchedKeyword,
                     sourcePackage = sbn.packageName,
                     sourceApp = sourceAppName,
                     ringtoneUri = alertRingtoneValue,
                     loopLimit = alertLoopLimit,
                     triggerAtMs = triggerAtMs,
-                    policyMode = delayPolicy.mode
+                    policyMode = delayPolicy.mode,
+                    snippet = snippet
                 )
+                if (accepted) rememberAcceptedNotification(notifKey, notificationContent)
                 return
             }
 
@@ -363,8 +370,12 @@ class MyNotificationListenerService : NotificationListenerService() {
                 sourcePackage = sbn.packageName,
                 sourceApp = sourceAppName,
                 ringtoneUri = alertRingtoneValue,
-                loopLimit = alertLoopLimit
+                loopLimit = alertLoopLimit,
+                snippet = snippet
             )
+            if (result.status !in listOf(AlertEnqueueStatus.QUEUE_FULL, AlertEnqueueStatus.PERSIST_FAILED)) {
+                rememberAcceptedNotification(notifKey, notificationContent)
+            }
             when (result.status) {
                 AlertEnqueueStatus.STARTED -> result.active?.let { startActiveAlert(it, snippet) }
                 AlertEnqueueStatus.QUEUED -> {
@@ -387,6 +398,24 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         sbn?.key?.let { alertedNotificationKeys.remove(it) }
+    }
+
+    private fun rememberAcceptedNotification(key: String, content: String) {
+        alertedNotificationKeys.remove(key)
+        alertedNotificationKeys[key] = content
+        if (alertedNotificationKeys.size > 500) alertedNotificationKeys.remove(alertedNotificationKeys.keys.first())
+    }
+
+    // UI 先持久化确认，事件仅用于加快响应；命令/心跳也会对账。
+    private fun reconcileActiveAlert() {
+        val persisted = sharedPreferencesHelper.getActiveAlert()
+        if (activeAlertId == persisted?.id) return
+        stopRingtoneAndLock()
+        activeAlertId = null
+        activeAlertKeyword = null
+        activeAlertSourceApp = null
+        if (persisted != null) startActiveAlert(persisted, persisted.snippet)
+        else { updateForegroundNotification(); emitAlertStateChanged() }
     }
 
     private fun stopRingtoneAndLock() {
@@ -424,12 +453,13 @@ class MyNotificationListenerService : NotificationListenerService() {
         activeAlertSourceApp = item.sourceApp
         updateForegroundNotification()
         handler.post {
+            if (sharedPreferencesHelper.getActiveAlert()?.id != item.id || activeAlertId != item.id) return@post
             acquireWakeLock()
             playRingtoneLooping(item.ringtoneUri, item.loopLimit, item.playedLoops)
             val queueSize = sharedPreferencesHelper.getAlertQueue().size
             serviceScope.launch {
                 VigilEventBus.keywordAlert.emit(
-                    AlertEvent(item.id, item.keyword, item.sourceApp, snippet, queueSize, item.occurrenceCount)
+                    AlertEvent(item.id, item.keyword, item.sourceApp, item.snippet, queueSize, item.occurrenceCount)
                 )
                 VigilEventBus.alertStateChanged.emit(Unit)
             }
@@ -464,26 +494,21 @@ class MyNotificationListenerService : NotificationListenerService() {
         ringtoneUri: String?,
         loopLimit: Int,
         triggerAtMs: Long,
-        policyMode: DelayMode
-    ) {
-        if (!sharedPreferencesHelper.tryAcceptKeywordTrigger(keyword, sourcePackage)) {
-            VigilLogger.d(
-                applicationContext, TAG,
-                "忽略通知: keyword=$keyword, 原因=重复提醒间隔（延时报警路径）"
-            )
-            return
-        }
+        policyMode: DelayMode,
+        snippet: String?
+    ): Boolean {
         val item = sharedPreferencesHelper.addScheduledAlert(
             keyword = keyword,
             sourcePackage = sourcePackage,
             sourceApp = sourceApp,
             ringtoneUri = ringtoneUri,
             loopLimit = loopLimit,
-            triggerAtMs = triggerAtMs
+            triggerAtMs = triggerAtMs,
+            snippet = snippet
         )
         if (item == null) {
             VigilLogger.e(applicationContext, TAG, "延时报警排定失败（已满或持久化失败）: keyword=$keyword")
-            return
+            return false
         }
         DelayedAlertScheduler.schedule(applicationContext, item.id, item.triggerAtMs)
         scheduleDelayedCheckTimer()
@@ -495,11 +520,12 @@ class MyNotificationListenerService : NotificationListenerService() {
         )
         updateForegroundNotification()
         emitAlertStateChanged()
+        return true
     }
 
     /**
      * 扫描并触发已到期的延时报警。onlyId 非空时只处理闹钟定向投递的那一条。
-     * 先入队成功再移除待触发项：入队失败（队列满/持久化失败）时保留，等下次扫描重试，避免报警丢失。
+     * 同一次保存完成入队与移除；入队失败时保留待触发项供下次扫描重试。
      */
     private fun processDueDelayedAlerts(onlyId: String? = null) {
         val now = System.currentTimeMillis()
@@ -511,7 +537,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
             // 过期太久的陈旧项（设备长时间关机/闹钟被系统丢弃）不再补响，避免开机后集中炸响
             if (now - item.triggerAtMs > MAX_OVERDUE_FIRE_MS) {
-                sharedPreferencesHelper.removeScheduledAlert(item.id)
+                if (!sharedPreferencesHelper.removeScheduledAlert(item.id)) continue
                 DelayedAlertScheduler.cancel(applicationContext, item.id)
                 changed = true
                 VigilLogger.w(
@@ -521,15 +547,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 continue
             }
 
-            val result = sharedPreferencesHelper.enqueueOrAggregateAlert(
-                keyword = item.keyword,
-                sourcePackage = item.sourcePackage,
-                sourceApp = item.sourceApp,
-                ringtoneUri = item.ringtoneUri,
-                loopLimit = item.loopLimit,
-                now = now,
-                cooldownMs = 0L
-            )
+            val result = sharedPreferencesHelper.transferScheduledAlert(item.id, now)
             if (result.status == AlertEnqueueStatus.QUEUE_FULL ||
                 result.status == AlertEnqueueStatus.PERSIST_FAILED
             ) {
@@ -539,7 +557,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 )
                 continue
             }
-            sharedPreferencesHelper.removeScheduledAlert(item.id)
+            if (result.affected == null) continue
             DelayedAlertScheduler.cancel(applicationContext, item.id)
             changed = true
             VigilLogger.i(
@@ -552,17 +570,17 @@ class MyNotificationListenerService : NotificationListenerService() {
             }
         }
         if (changed) {
-            scheduleDelayedCheckTimer()
             updateForegroundNotification()
             emitAlertStateChanged()
         }
+        scheduleDelayedCheckTimer()
     }
 
     /** 进程存活时按最近到期时刻设一次性定时器：闹钟非精确/被 ROM 压制时的精度补偿。 */
     private fun scheduleDelayedCheckTimer() {
         handler.removeCallbacks(delayedCheckRunnable)
         val next = sharedPreferencesHelper.getScheduledAlerts().minOfOrNull { it.triggerAtMs } ?: return
-        val delayMs = (next - System.currentTimeMillis()).coerceIn(0L, MAX_DELAYED_TIMER_MS)
+        val delayMs = (next - System.currentTimeMillis()).coerceIn(1_000L, MAX_DELAYED_TIMER_MS)
         handler.postDelayed(delayedCheckRunnable, delayMs)
     }
 
@@ -607,7 +625,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             Log.d(TAG, "应用过滤已启用，包含的应用包名: ${filteredAppPackages.joinToString()}")
             VigilLogger.i(applicationContext, TAG, "过滤列表: ${filteredAppPackages.joinToString()}")
         } else if (filterAppsEnabled) {
-            Log.w(TAG, "应用过滤已启用，但过滤列表为空，将监听所有应用")
+            Log.w(TAG, "应用过滤已启用，但过滤列表为空，不检查任何应用")
         } else {
             Log.d(TAG, "应用过滤未启用，将监听所有应用")
         }
@@ -645,6 +663,10 @@ class MyNotificationListenerService : NotificationListenerService() {
         loopLimit: Int = SharedPreferencesHelper.DEFAULT_LOOP_COUNT,
         alreadyPlayed: Int = 0
     ) {
+        if (preferredValue == RingtoneLibrary.SILENT_VALUE) {
+            stopRingtoneAndLock()
+            return
+        }
         // 防止并发触发：正在准备或播放中则忽略新请求
         if (playerState == PlayerState.PREPARING || playerState == PlayerState.PLAYING) {
             Log.d(TAG, "playRingtoneLooping: 已在播放中 ($playerState)，忽略重复请求。")
@@ -658,7 +680,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)?.let { RingtoneLibrary.DataSource.ContentUri(it) }
         if (dataSource == null) {
             Log.e(TAG, "无法获取铃声数据源！")
-            releaseWakeLock()
+            handlePlaybackFailure()
             return
         }
         val dataSourceDesc = when (dataSource) {
@@ -696,7 +718,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 isLooping = false
                 prepareAsync()
                 setOnPreparedListener { mp ->
-                    if (playerState == PlayerState.PREPARING) {
+                    if (mediaPlayer === mp && playerState == PlayerState.PREPARING) {
                         playerState = PlayerState.PLAYING
                         Log.i(TAG, "MediaPlayer 已准备好，开始播放。")
                         VigilLogger.i(applicationContext, TAG, "报警铃声开始播放 (source=$dataSourceDesc, loopLimit=$normalizedLoopLimit, 已播=$alreadyPlayed)")
@@ -705,7 +727,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                         } catch (startEx: IllegalStateException) {
                             Log.e(TAG, "MediaPlayer 调用 start() 时出错", startEx)
                             playerState = PlayerState.STOPPED
-                            stopRingtoneAndLock()
+                            handlePlaybackFailure()
                         }
                     } else {
                         // 在 prepare 期间已被取消，释放此孤立实例
@@ -716,24 +738,25 @@ class MyNotificationListenerService : NotificationListenerService() {
                 setOnCompletionListener { mp ->
                     handleCompletedLoop(mp, normalizedLoopLimit, "onCompletion")
                 }
-                setOnErrorListener { _, what, extra ->
+                setOnErrorListener { failedPlayer, what, extra ->
+                    if (mediaPlayer !== failedPlayer) return@setOnErrorListener true
                     Log.e(TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, source: $dataSourceDesc")
                     VigilLogger.e(applicationContext, TAG, "MediaPlayer 播放错误: what=$what, extra=$extra, source: $dataSourceDesc")
                     playerState = PlayerState.STOPPED
-                    stopRingtoneAndLock()
+                    handlePlaybackFailure()
                     true
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "设置 MediaPlayer 数据源或准备时出错", e)
             playerState = PlayerState.STOPPED
-            stopRingtoneAndLock()
+            handlePlaybackFailure()
         }
     }
 
     /**
      * 部分系统闹钟文件带 autoLoop 元数据，即使 isLooping=false 也不会触发 OnCompletion。
-     * 按媒体时长设置兜底，保证 1..10 次限制最终一定生效。
+     * 按媒体时长安排完成检查，与 OnCompletion 共用有限次数计数。
      */
     private fun startPlaybackCycle(player: MediaPlayer, loopLimit: Int, seekToStart: Boolean) {
         cancelLoopCompletionTimeout()
@@ -787,7 +810,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         cancelLoopCompletionTimeout()
         activePlayedLoops++
         activeAlertId?.let { sharedPreferencesHelper.updateActiveAlertPlayedLoops(it, activePlayedLoops) }
-        // 每次播完续期唤醒锁，保证长铃声和高档位期间 CPU 不休眠。
+        // 每次播完续期唤醒锁；后台存活仍受系统限制。
         releaseWakeLock()
         acquireWakeLock()
         if (activePlayedLoops >= loopLimit) {
@@ -801,8 +824,15 @@ class MyNotificationListenerService : NotificationListenerService() {
         } catch (e: IllegalStateException) {
             Log.e(TAG, "循环续播失败", e)
             playerState = PlayerState.STOPPED
-            stopRingtoneAndLock()
+            handlePlaybackFailure()
         }
+    }
+
+    private fun handlePlaybackFailure() {
+        val failedId = activeAlertId ?: return
+        stopRingtoneAndLock()
+        // 避免连续损坏文件递归启动队列。
+        handler.post { if (activeAlertId == failedId) finishCurrentAlert(failedId, AlertEndType.ERROR) }
     }
 
     /** 当前报警结束、历史入库和队列推进共用同一入口。 */

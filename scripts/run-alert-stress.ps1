@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$AvdName = "VisionGuard_API36",
     [int]$CooldownSeconds = 5,
@@ -27,7 +27,8 @@ function Add-Result([string]$Scenario, [bool]$Passed, [string]$Detail) {
 }
 
 function Invoke-Adb {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+    param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+    $Arguments = @($Arguments | ForEach-Object { $_ })
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
@@ -41,8 +42,8 @@ function Invoke-Adb {
 }
 
 function Invoke-DeviceAdb {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
-    $allArguments = @('-s', $script:Serial) + $Arguments
+    param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+    $allArguments = @('-s', $script:Serial) + @($Arguments | ForEach-Object { $_ })
     return Invoke-Adb @allArguments
 }
 
@@ -135,7 +136,6 @@ function Wait-ActiveKeyword([string]$Keyword) {
 }
 
 function Confirm-VisibleAlert {
-    if ($null -eq $script:ConfirmX -or $null -eq $script:ConfirmY) {
         $raw = Get-UiXml "vigil-confirm"
         $match = [regex]::Match($raw, 'text="已知晓，停止报警"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"')
         if (-not $match.Success) {
@@ -144,11 +144,35 @@ function Confirm-VisibleAlert {
         if (-not $match.Success) { throw "Alert confirmation button is not visible" }
         $script:ConfirmX = [int](([int]$match.Groups[1].Value + [int]$match.Groups[3].Value) / 2)
         $script:ConfirmY = [int](([int]$match.Groups[2].Value + [int]$match.Groups[4].Value) / 2)
-    }
     Invoke-DeviceAdb shell input tap $script:ConfirmX $script:ConfirmY | Out-Null
     # Let the Compose dialog consume the complete tap and finish its exit before
     # another adb action can expose the underlying main-screen controls.
     Start-Sleep -Seconds 1
+}
+
+function Set-TestPrefStrings([hashtable]$Values) {
+    Invoke-DeviceAdb shell cmd notification disallow_listener $Listener | Out-Null
+    Invoke-DeviceAdb shell am force-stop $Package | Out-Null
+    [xml]$prefXml = Get-PrefsXml
+    $connected = $prefXml.SelectSingleNode("/map/boolean[@name='listener_connected']")
+    if ($null -ne $connected) { $connected.SetAttribute('value', 'false') }
+    foreach ($name in $Values.Keys) {
+        $node = $prefXml.SelectSingleNode("/map/string[@name='$name']")
+        if ($null -eq $node) {
+            $node = $prefXml.CreateElement('string')
+            $node.SetAttribute('name', $name)
+            $prefXml.map.AppendChild($node) | Out-Null
+        }
+        $node.InnerText = [string]$Values[$name]
+    }
+    $path = Join-Path $ReportDir 'updated-prefs.xml'
+    [System.IO.File]::WriteAllText($path, $prefXml.OuterXml, [System.Text.UTF8Encoding]::new($false))
+    Invoke-DeviceAdb push $path /data/local/tmp/vigil-updated-prefs.xml | Out-Null
+    Invoke-DeviceAdb shell chmod 644 /data/local/tmp/vigil-updated-prefs.xml | Out-Null
+    Invoke-DeviceAdb shell run-as $Package cp /data/local/tmp/vigil-updated-prefs.xml shared_prefs/vigil_prefs.xml | Out-Null
+    Invoke-DeviceAdb shell cmd notification allow_listener $Listener | Out-Null
+    Invoke-DeviceAdb shell am start -n $Activity | Out-Null
+    Wait-Until { (Get-PrefsXml) -match 'listener_connected.*true' } 'listener binding after preference update'
 }
 
 function Install-TestPreferences {
@@ -276,6 +300,64 @@ try {
     Confirm-VisibleAlert
     Wait-QueueCount 0 "post-cooldown completion"
     Save-Evidence "storm-cooldown"
+
+    # Updating the same notification must re-check its new content.
+    Invoke-DeviceAdb shell cmd notification post -t K01 vigil-same-notification K01 | Out-Null
+    Wait-ActiveKeyword K01
+    Invoke-DeviceAdb shell cmd notification post -t K02 vigil-same-notification K02 | Out-Null
+    Wait-QueueCount 2 'same notification with updated content'
+    Add-Result 'notification-update' (@(Get-Queue)[1].keyword -eq 'K02') 'Updated content on the same notification tag was accepted'
+    Confirm-VisibleAlert
+    Wait-ActiveKeyword K02
+    Confirm-VisibleAlert
+    Wait-QueueCount 0 'notification update drain'
+
+    # A real file that exists but cannot be decoded must not block its successor.
+    $badFile = Join-Path $ReportDir 'broken-audio.wav'
+    [System.IO.File]::WriteAllText($badFile, 'not an audio file')
+    Invoke-DeviceAdb push $badFile /data/local/tmp/vigil-broken-audio.wav | Out-Null
+    Invoke-DeviceAdb shell chmod 644 /data/local/tmp/vigil-broken-audio.wav | Out-Null
+    Invoke-DeviceAdb shell run-as $Package cp /data/local/tmp/vigil-broken-audio.wav files/broken-audio.wav | Out-Null
+    Set-TestPrefStrings @{ keyword_ringtones = '{"K01":"/data/data/com.example.vigil/files/broken-audio.wav"}' }
+    Start-Sleep -Seconds ([Math]::Max(1, $CooldownSeconds))
+    Post-Keyword K01 broken
+    Post-Keyword K02 after-broken
+    Wait-ActiveKeyword K02
+    $history = Get-PrefString 'alert_history' | ConvertFrom-Json
+    Add-Result 'playback-failure-advances' (@($history | Where-Object { $_.keyword -eq 'K01' -and $_.endType -eq 'ERROR' }).Count -gt 0) 'Undecodable audio recorded an error and the next alert started'
+    Confirm-VisibleAlert
+    Wait-QueueCount 0 'playback failure drain'
+    Save-Evidence 'playback-failure'
+    Set-TestPrefStrings @{ keyword_ringtones = '{}' }
+    Invoke-DeviceAdb logcat -c | Out-Null
+
+    # FIXED expiry moves into the queue once and leaves no scheduled duplicate.
+    Set-TestPrefStrings @{ default_delay_policy = '{"mode":"FIXED","fixedDelayMs":2000}' }
+    Start-Sleep -Seconds ([Math]::Max(1, $CooldownSeconds))
+    Post-Keyword K01 delayed-transfer
+    Wait-Until { (Get-PrefString 'scheduled_alerts' | ConvertFrom-Json).items.Count -eq 1 } 'delayed item saved'
+    $scheduledId = (Get-PrefString 'scheduled_alerts' | ConvertFrom-Json).items[0].id
+    Wait-ActiveKeyword K01
+    $dueQueue = @(Get-Queue)
+    Add-Result 'delayed-transfer' ($dueQueue.Count -eq 1 -and $dueQueue[0].id -eq $scheduledId -and (Get-PrefString 'scheduled_alerts' | ConvertFrom-Json).items.Count -eq 0) 'Due item retained its ID and was removed from scheduled storage'
+    Confirm-VisibleAlert
+    Wait-QueueCount 0 'delayed drain'
+    Save-Evidence 'delayed-transfer'
+    Set-TestPrefStrings @{ default_delay_policy = '{"mode":"IMMEDIATE"}' }
+
+    # Stop confirmation must survive even while the service is disconnected.
+    Start-Sleep -Seconds ([Math]::Max(1, $CooldownSeconds))
+    Post-Keyword K01 confirm-without-listener
+    Wait-ActiveKeyword K01
+    $confirmedId = @(Get-Queue)[0].id
+    Invoke-DeviceAdb shell cmd notification disallow_listener $Listener | Out-Null
+    Start-Sleep -Seconds 2
+    Confirm-VisibleAlert
+    Wait-QueueCount 0 'confirmation without a connected listener'
+    Invoke-DeviceAdb shell cmd notification allow_listener $Listener | Out-Null
+    Wait-Until { (Get-PrefsXml) -match 'listener_connected.*true' } 'listener reconnected after confirmation'
+    Start-Sleep -Seconds 2
+    Add-Result 'confirmation-persistent' (@(Get-Queue | Where-Object id -eq $confirmedId).Count -eq 0) 'Confirmed alert did not reappear after the listener reconnected'
 
     $serviceStillEnabled = (Get-PrefsXml) -match 'name="service_enabled" value="true"'
     Add-Result "service-switch-stability" $serviceStillEnabled "Automated alert confirmations did not toggle the main service switch"

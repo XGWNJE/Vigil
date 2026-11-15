@@ -18,8 +18,8 @@ import java.util.TimeZone
  * 命中关键词后若策略要求延时，报警不立即入队，而是先持久化一条 ScheduledAlert（铁律 3），
  * 再由这里用 AlarmManager 排一个到期闹钟；到期后 [DelayedAlertReceiver] 拉起服务把该项转成真正的报警。
  *
- * 三层触发保证不漏报：
- * 1. AlarmManager：进程被杀、设备休眠也由系统唤醒（有精确闹钟权限时精确到秒，否则非精确兜底）；
+ * 三个到期检查入口均受系统后台策略限制：
+ * 1. AlarmManager：由系统投递到期任务，有精确授权时使用精确闹钟，否则使用非精确闹钟；
  * 2. 服务内 Handler 定时器：进程存活时对非精确兜底做精度补偿；
  * 3. 心跳每 30s 顺带扫描到期项：前两层都被 ROM 拦截时仍能在进程存活期内补触发。
  * 三层都以「已移除的待触发项」为幂等判据，重复触发是安全的。
@@ -99,7 +99,7 @@ object DelayedAlertScheduler {
             Log.i(TAG, "延时报警闹钟已排定: id=$id, triggerAt=$triggerAtMs, exact=$exact")
             VigilLogger.i(context, "VigilDelayScheduler", "闹钟已排定: id=$id, exact=$exact, 距现在 ${(triggerAtMs - System.currentTimeMillis()) / 1000}s")
         } catch (e: SecurityException) {
-            // 精确闹钟权限刚被撤销：回落非精确，宁可晚几秒也不丢报警
+            // 精确授权刚被撤销时改排非精确闹钟，投递时间取决于系统策略。
             Log.w(TAG, "精确闹钟被拒（权限缺失），回落非精确闹钟", e)
             VigilLogger.w(context, "VigilDelayScheduler", "精确闹钟被拒，回落非精确闹钟: ${e.javaClass.simpleName}")
             try {

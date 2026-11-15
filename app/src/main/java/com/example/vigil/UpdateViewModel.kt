@@ -123,7 +123,7 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
                 openReleasePage(context, info.releasePageUrl)
                 return@launch
             }
-            val apk = UpdateChecker.download(context, url, info.versionName) { progress ->
+            val apk = UpdateChecker.download(context, url, info.versionName, info.apkSize, info.apkDigest) { progress ->
                 // 下载进度回主线程
                 viewModelScope.launch {
                     _state.value = _state.value.copy(downloadProgress = progress)
@@ -146,8 +146,9 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
         val apk = _state.value.installReady ?: return
         _state.value = _state.value.copy(installReady = null, installing = true)
         val context = getApplication<Application>()
-        UpdateChecker.triggerInstall(context, apk)
-        _state.value = _state.value.copy(installing = false)
+        val launched = UpdateChecker.triggerInstall(context, apk)
+        _state.value = _state.value.copy(installing = false,
+            dialog = if (launched) null else UpdateDialog.Error("无法打开系统安装器，请稍后重试"))
     }
 
     /** 用户拒绝授予安装权限或放弃安装时，清理待安装文件。 */
@@ -163,6 +164,7 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "打开发版页失败", e)
+            _state.value = _state.value.copy(dialog = UpdateDialog.Error("无法打开发版页面"))
         }
     }
 

@@ -22,11 +22,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.UpdateViewModel
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilDivider
 
 /**
  * 应用自动更新弹窗（DirA 风格）。
@@ -54,40 +54,40 @@ fun UpdateDialog(
                         Text(
                             text = "当前版本  v$currentVersionName",
                             fontSize = 13.sp,
-                            color = VigilDirADim
+                            color = VigilTextSecondary
                         )
                         Text(
                             text = "最新版本  v${info.versionName}",
                             fontSize = 13.sp,
-                            color = VigilDirAAcid,
+                            color = VigilPrimary,
                             modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
                         )
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(1.dp)
-                                .background(VigilDirALine)
+                                .background(VigilDivider)
                         )
                         Text(
                             text = "更新内容",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = VigilDirAInk,
+                            color = VigilTextPrimary,
                             modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)
                         )
                         Text(
                             text = info.releaseNotes,
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
-                            color = VigilDirADim,
+                            color = VigilTextSecondary,
                             modifier = Modifier
                                 .heightIn(max = 240.dp)
                                 .verticalScroll(rememberScrollState())
                         )
                     }
                 },
-                confirm = { TextButton(onClick = onUpdate) { Text("更新", color = VigilDirAAcid) } },
-                dismiss = { TextButton(onClick = onDismiss) { Text("稍后", color = VigilDirADim) } }
+                confirm = { TextButton(onClick = onUpdate) { Text("更新", color = VigilPrimary) } },
+                dismiss = { TextButton(onClick = onDismiss) { Text("稍后", color = VigilTextSecondary) } }
             )
         }
 
@@ -95,8 +95,8 @@ fun UpdateDialog(
             DirAAlertDialog(
                 onDismissRequest = onDismiss,
                 title = "已是最新版本",
-                text = { Text("当前 v$currentVersionName 已是最新版本。", fontSize = 13.sp, color = VigilDirADim) },
-                confirm = { TextButton(onClick = onDismiss) { Text("确定", color = VigilDirAAcid) } }
+                text = { Text("当前 v$currentVersionName 已是最新版本。", fontSize = 13.sp, color = VigilTextSecondary) },
+                confirm = { TextButton(onClick = onDismiss) { Text("确定", color = VigilPrimary) } }
             )
         }
 
@@ -109,10 +109,10 @@ fun UpdateDialog(
                         text = "当前网络环境可能无法访问 GitHub，请检查网络连接后重试。",
                         fontSize = 13.sp,
                         lineHeight = 20.sp,
-                        color = VigilDirADim
+                        color = VigilTextSecondary
                     )
                 },
-                confirm = { TextButton(onClick = onDismiss) { Text("知道了", color = VigilDirAAcid) } }
+                confirm = { TextButton(onClick = onDismiss) { Text("知道了", color = VigilPrimary) } }
             )
         }
 
@@ -120,8 +120,8 @@ fun UpdateDialog(
             DirAAlertDialog(
                 onDismissRequest = onDismiss,
                 title = "检查更新失败",
-                text = { Text(dialog.message, fontSize = 13.sp, color = VigilDirADim) },
-                confirm = { TextButton(onClick = onDismiss) { Text("知道了", color = VigilDirAAcid) } }
+                text = { Text(dialog.message, fontSize = 13.sp, color = VigilTextSecondary) },
+                confirm = { TextButton(onClick = onDismiss) { Text("知道了", color = VigilPrimary) } }
             )
         }
 
@@ -145,19 +145,19 @@ private fun DownloadProgressDialog(progress: Float) {
                 Text(
                     text = "下载完成后将自动进入安装。",
                     fontSize = 12.sp,
-                    color = VigilDirADim,
+                    color = VigilTextSecondary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 LinearProgressIndicator(
                     progress = { progress },
-                    color = VigilDirAAcid,
-                    trackColor = VigilDirALine,
+                    color = VigilPrimary,
+                    trackColor = VigilDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
                     text = "${(progress * 100).toInt()}%",
                     fontSize = 11.sp,
-                    color = VigilDirADim,
+                    color = VigilTextSecondary,
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
@@ -177,11 +177,11 @@ private fun DirAAlertDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
-        title = { Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = VigilDirAInk) },
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
+        title = { Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = VigilTextPrimary) },
         text = text,
         confirmButton = confirm,
         dismissButton = dismiss

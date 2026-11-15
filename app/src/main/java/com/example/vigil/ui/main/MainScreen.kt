@@ -29,6 +29,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -108,22 +109,17 @@ import com.example.vigil.ui.dialogs.PermissionGuideDialog
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.monitoring.ServiceState
 import com.example.vigil.ui.settings.SettingsViewModel
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirAAmber
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAFaint
-import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilError
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilBorder
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilDivider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * 「A · 一线」单页主屏：状态即首页。
- * 全屏涟漪（RippleBackground）从中央核心开关扩散，涟漪颜色/节奏即服务状态；
- * 设置项收进底部浮出 Sheet（顶栏齿轮入口）。
- * 两个 ViewModel 由 MainActivity 传入（与原来双屏共用同一实例），本屏只做 UI 接线。
- */
+/** 本机通知设置与报警策略；主界面由统一通知节点布局承载。 */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -149,34 +145,9 @@ fun MainScreen(
     val hasNotificationAccess by settingsViewModel.hasNotificationAccess
     val isIgnoringBatteryOptimizations by settingsViewModel.isIgnoringBatteryOptimizations
 
-    // 心跳：UI 侧直接收集事件总线（payload 为服务发射时刻，replay=1，冷启动立即有值）
-    var lastHeartbeatAt by remember { mutableLongStateOf(0L) }
-    var nowTick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(Unit) {
-        launch {
-            VigilEventBus.heartbeat.collect { beatAt ->
-                lastHeartbeatAt = beatAt
-            }
-        }
-        while (true) {
-            nowTick = SystemClock.elapsedRealtime()
-            delay(1000)
-        }
-    }
-    val heartbeatText = if (lastHeartbeatAt == 0L) {
-        "HEARTBEAT --"
-    } else {
-        val seconds = (nowTick - lastHeartbeatAt) / 1000
-        when {
-            seconds < 60 -> "HEARTBEAT ${seconds}s AGO"
-            seconds < 3600 -> "HEARTBEAT ${seconds / 60}m AGO"
-            else -> "HEARTBEAT ${seconds / 3600}h AGO"
-        }
-    }
-
     // 铃声选择器（逻辑搬自原 SettingsScreen）
     // ringtonePickTarget 非空时表示正在为某个关键词选铃声，null = 全局默认铃声
-    var ringtonePickTarget by remember { mutableStateOf<String?>(null) }
+    var ringtonePickTarget by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -189,9 +160,9 @@ fun MainScreen(
             }
             val target = ringtonePickTarget
             if (target == null) {
-                settingsViewModel.onRingtoneUriSelected(uri)
+                settingsViewModel.onRingtoneValueSelected(uri?.toString() ?: RingtoneLibrary.SILENT_VALUE)
             } else {
-                settingsViewModel.onKeywordRingtoneSelected(target, uri?.toString())
+                settingsViewModel.onKeywordRingtoneSelected(target, uri?.toString() ?: RingtoneLibrary.SILENT_VALUE)
             }
         }
         ringtonePickTarget = null
@@ -203,9 +174,11 @@ fun MainScreen(
         val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
             putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
             putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "选择报警铃声")
-            val existing = target?.let { settingsViewModel.getKeywordRingtoneUri(it) }
-                ?: settingsViewModel.selectedRingtoneUri.value
-            existing?.let { putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, it) }
+            val value = target?.let { settingsViewModel.getKeywordRingtoneValue(it) }
+                ?: settingsViewModel.getDefaultRingtoneValue()
+            val existing = if (value == RingtoneLibrary.SILENT_VALUE) null
+                else value?.takeIf { it.startsWith("content://") }?.let(Uri::parse)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
             putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
             putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
         }
@@ -218,25 +191,6 @@ fun MainScreen(
 
     var showAddKeywordDialog by remember { mutableStateOf(false) }
     var showGuideDialog by remember { mutableStateOf<PermissionGuide?>(null) }
-    // 设置面板开关：rememberSaveable——从面板进子页（主屏出组合）再返回时自动恢复展开，
-    // 实现「返回一次只退一个层级」：子页 → 面板 → 主屏
-    var sheetOpen by rememberSaveable { mutableStateOf(false) }
-    // 面板跟手进度：0=收起 1=全展开；拖动中同步改值实时贴手指，松手后 animate 吸附。
-    // 不用 Animatable：drag 高频 launch snapTo 会在互斥锁上排队/与吸附动画互相取消，状态竞态。
-    var sheetProgress by remember { mutableFloatStateOf(0f) }
-    // 拖动结束信号：每次松手/取消自增。sheetOpen 未变化时 LaunchedEffect 不会重触发，
-    // 低于阈值的拖动会把面板卡在半开——用它保证松手后吸附动画无条件执行。
-    var sheetSnapNonce by remember { mutableIntStateOf(0) }
-    LaunchedEffect(sheetOpen, sheetSnapNonce) {
-        // 磁铁吸附段：FastOutSlowInEasing 非线性弹出/收回
-        animate(
-            initialValue = sheetProgress,
-            targetValue = if (sheetOpen) 1f else 0f,
-            animationSpec = tween(300, easing = FastOutSlowInEasing)
-        ) { value, _ -> sheetProgress = value }
-    }
-    // 面板像素高（屏高 0.85），drag 距离↔进度换算与 translationY 都用它
-    var panelHeightPx by remember { mutableFloatStateOf(1f) }
     // 关键词删除二次确认：待删除的关键词，非空时弹出确认框
     var keywordPendingDelete by remember { mutableStateOf<String?>(null) }
     // 关键词个性化配置弹窗：待配置的关键词，非空时弹出（铃声 + 循环次数）
@@ -261,317 +215,22 @@ fun MainScreen(
 
     // 入口提示与引导行的持久化状态（纯 UI 标记，与服务/ViewModel 无关，直接读 prefs）
     val prefs = remember { SharedPreferencesHelper(context) }
-    var swipeHintShown by remember { mutableStateOf(prefs.hasShownSwipeHint()) }
     var lockTaskTipDismissed by remember { mutableStateOf(prefs.isLockTaskTipDismissed()) }
-    // 设置面板被打开过一次（任意入口）即视为已发现入口，收起手势提示文案
-    LaunchedEffect(sheetOpen) {
-        if (sheetOpen && !swipeHintShown) {
-            prefs.markSwipeHintShown()
-            swipeHintShown = true
-        }
-    }
-
-    // 返回键/侧边返回手势：面板展开时先收面板，一次只退一个层级
-    BackHandler(enabled = sheetOpen) {
-        sheetOpen = false
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(VigilDirABg)
-            .onSizeChanged { panelHeightPx = it.height * 0.85f }
-            // 磁铁式上滑开面板：前段跟手，进度越过 35% 意图阈值立即交非线性动画吸附全开，
-            // 之后本次拖动不再跟手；未越阈值则松手时按进度吸附开/关。
-            .pointerInput(Unit) {
-                var committed = false
-                detectVerticalDragGestures(
-                    onDragStart = { committed = false },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        if (committed) return@detectVerticalDragGestures
-                        sheetProgress = (sheetProgress - dragAmount / panelHeightPx).coerceIn(0f, 1f)
-                        if (sheetProgress >= 0.35f) {
-                            committed = true
-                            sheetOpen = true
-                        }
-                    },
-                    onDragEnd = {
-                        if (!committed) sheetOpen = sheetProgress > 0.35f
-                        sheetSnapNonce++
-                    },
-                    onDragCancel = {
-                        if (!committed) sheetOpen = sheetProgress > 0.35f
-                        sheetSnapNonce++
-                    }
-                )
-            }
-    ) {
-        // ---- 底层：全屏涟漪，从中央核心开关扩散，颜色/节奏即状态 ----
-        RippleBackground(state = serviceState, modifier = Modifier.fillMaxSize())
-
-        // ---- 顶栏：字标 + 心跳 + 设置齿轮（statusBarsPadding 避让状态栏） ----
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(start = 24.dp, end = 24.dp, top = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "VIGIL",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.7.sp, // ≈ .18em
-                    color = VigilDirAInk
-                )
-                Text(
-                    text = "_",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.7.sp,
-                    color = VigilDirAAcid
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = heartbeatText,
-                    style = MonoTextStyle,
-                    fontSize = 10.sp,
-                    color = VigilDirADim,
-                    letterSpacing = 0.8.sp
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                // 齿轮：18dp 字形 + 48dp 触控热区（右端与页面右边距对齐）
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable { sheetOpen = true },
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "设置",
-                        tint = VigilDirADim,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        // ---- 状态词：悬浮于核心开关正上方；状态切换时交叉淡入 + 轻微上浮 ----
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(y = (-148).dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val stateText = when (serviceState) {
-                ServiceState.RUNNING, ServiceState.RUNNING_LIMITED -> "监听中"
-                ServiceState.DISABLED -> "已停止"
-                ServiceState.NO_PERMISSION -> "未授权"
-                ServiceState.INITIALIZING -> "连接中"
-                ServiceState.LISTENER_DISCONNECTED -> "重连中"
-                ServiceState.HEARTBEAT_TIMEOUT -> "心跳超时"
-                ServiceState.ERROR -> "异常"
-            }
-            AnimatedContent(
-                targetState = stateText,
-                transitionSpec = {
-                    (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 3 })
-                        .togetherWith(fadeOut(tween(180)) + slideOutVertically(tween(180)) { -it / 3 })
-                },
-                label = "stateWord"
-            ) { word ->
-                Text(
-                    text = word,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 2.sp,
-                    color = VigilDirAInk
-                )
-            }
-            Text(
-                text = "${keywordList.size} KEYWORDS",
-                style = MonoTextStyle,
-                fontSize = 10.sp,
-                color = VigilDirADim,
-                letterSpacing = 1.2.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-
-            // ---- 自动重连失败逃生通道：看门狗完整重连序列也无效时出现 ----
-            // HyperOS 等 ROM 上 requestRebind 会被系统静默忽略，唯一可靠恢复是
-            // 系统级撤销+重新授权（用户卸载重装/清数据即此效果），这里直接给出入口
-            if (serviceState == ServiceState.LISTENER_DISCONNECTED && listenerRecoveryFailed) {
-                Column(
-                    modifier = Modifier.padding(top = 14.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "自动重连失败 · 需重新授权",
-                        style = MonoTextStyle,
-                        fontSize = 10.sp,
-                        letterSpacing = 1.0.sp,
-                        color = VigilDirAAmber
-                    )
-                    Row(horizontalArrangement = Arrangement.Center) {
-                        TextButton(onClick = {
-                            Toast.makeText(context, "已尝试重连", Toast.LENGTH_SHORT).show()
-                            ListenerRecovery.startFastRecovery(context)
-                        }) {
-                            Text("立即重试", style = MonoTextStyle, fontSize = 12.sp, color = VigilDirAInk)
-                        }
-                        TextButton(onClick = {
-                            activity?.let { PermissionUtils.openNotificationListenerSettings(it) }
-                        }) {
-                            Text("重新授权", style = MonoTextStyle, fontSize = 12.sp, color = VigilDirAAcid)
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- 核心开关：涟漪环心，点按切换服务 ----
-        CoreSwitch(
-            enabled = serviceEnabled,
-            modifier = Modifier.align(Alignment.Center),
-            onClick = {
-                val targetEnabled = !serviceEnabled
-                if (targetEnabled && !hasNotificationAccess) {
-                    Toast.makeText(context, "请先授予通知使用权", Toast.LENGTH_SHORT).show()
-                    return@CoreSwitch
-                }
-                monitoringViewModel.onServiceEnabledChange(
-                    enabled = targetEnabled,
-                    startServiceCallback = { hasPermission ->
-                        (activity as? MainActivity)?.startVigilService(hasPermission)
-                    },
-                    stopServiceCallback = {
-                        (activity as? MainActivity)?.stopVigilService()
-                    }
-                )
-            }
-        )
-
-        // ---- SERVICE ON/OFF：核心正下方；颜色随开关平滑过渡 ----
-        val serviceLabelColor by animateColorAsState(
-            targetValue = if (serviceEnabled) VigilDirAAcid else VigilDirADim,
-            animationSpec = tween(400),
-            label = "serviceLabelColor"
-        )
-        Text(
-            text = if (serviceEnabled) "SERVICE ON" else "SERVICE OFF",
-            style = MonoTextStyle,
-            fontSize = 10.sp,
-            letterSpacing = 2.sp,
-            color = serviceLabelColor,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(y = 64.dp)
-        )
-
-        // ---- 底部把手：上滑手势的视觉锚点（点按也能打开设置 Sheet），避让手势导航条 ----
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 16.dp)
-                .padding(vertical = 12.dp)
-                .clickable { sheetOpen = true },
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            if (!swipeHintShown) {
-                Text(
-                    text = "上滑打开设置",
-                    style = MonoTextStyle,
-                    fontSize = 10.sp,
-                    letterSpacing = 1.2.sp,
-                    color = VigilDirADim,
-                    modifier = Modifier.padding(bottom = 10.dp)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .width(36.dp)
-                    .height(1.dp)
-                    .background(VigilDirAFaint)
-            )
-        }
-    }
-
-    // ---- 设置面板：跟手底部浮出（进度驱动，拖动实时贴手指） ----
-    if (sheetProgress > 0.001f) {
-        Box(modifier = Modifier.fillMaxSize()) {
-        // 遮罩：透明度随进度，展开后才拦截点击（点遮罩收面板）
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.6f * sheetProgress))
-                .clickable(enabled = sheetProgress > 0.5f) { sheetOpen = false }
-        )
-        // 面板本体：translationY 随进度，松手吸附
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.85f)
-                .align(Alignment.BottomCenter)
-                .graphicsLayer { translationY = (1f - sheetProgress) * panelHeightPx }
-                .background(VigilDirABg)
-        ) {
-            // 顶部把手：视觉锚点 + 下拉跟手收面板的热区
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    // 对称的磁铁式下拉关面板：跟手到越过 65% 进度即交动画吸附关闭
-                    .pointerInput(Unit) {
-                        var committed = false
-                        detectVerticalDragGestures(
-                            onDragStart = { committed = false },
-                            onVerticalDrag = { change, dragAmount ->
-                                change.consume()
-                                if (committed) return@detectVerticalDragGestures
-                                sheetProgress = (sheetProgress - dragAmount / panelHeightPx).coerceIn(0f, 1f)
-                                if (sheetProgress <= 1f - 0.35f) {
-                                    committed = true
-                                    sheetOpen = false
-                                }
-                            },
-                            onDragEnd = {
-                                if (!committed) sheetOpen = sheetProgress > 0.35f
-                                sheetSnapNonce++
-                            },
-                            onDragCancel = {
-                                if (!committed) sheetOpen = sheetProgress > 0.35f
-                                sheetSnapNonce++
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(36.dp)
-                        .height(4.dp)
-                        .background(VigilDirAFaint, RoundedCornerShape(2.dp))
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 24.dp, end = 24.dp, bottom = 32.dp)
-            ) {
-                // 列表顶部发丝线
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(VigilDirALine)
-                )
+    NotificationDashboard(
+        serviceEnabled = serviceEnabled, serviceState = serviceState, keywordCount = keywordList.size,
+        ringtone = selectedRingtoneName, loops = defaultLoopCount,
+        onToggleLocal = {
+            if (!serviceEnabled && !hasNotificationAccess) {
+                showGuideDialog = PermissionGuide.NotificationAccess
+            } else monitoringViewModel.onServiceEnabledChange(!serviceEnabled,
+                startServiceCallback = { (activity as? MainActivity)?.startVigilService(it) },
+                stopServiceCallback = { (activity as? MainActivity)?.stopVigilService() })
+        },
+        onRingtone = { ringtoneSelectTarget = "" }, onLoops = { loopCountDialogTarget = "" },
+        onHistory = onNavigateToAlertHistory, onLibrary = onNavigateToRingtoneLibrary,
+        settingsContent = { keywordPage ->
+            Column(Modifier.fillMaxWidth()) {
+                if (keywordPage) {
                 // 1. 关键词
                 LineRow {
                     RowLabel("关键词")
@@ -593,6 +252,8 @@ fun MainScreen(
                     }
                 }
 
+                }
+                if (!keywordPage) {
                 // 2. 默认铃声（未单独配置的关键词统一使用；系统铃声或铃声库文件）
                 LineRow(onClick = { ringtoneSelectTarget = "" }) {
                     RowLabel("默认铃声")
@@ -625,26 +286,18 @@ fun MainScreen(
                     }
                 }
 
-                // 7. 铃声库（自定义铃声来源：导入音频 / 录音，支持命名、删除、试听）
-                LineRow(onClick = onNavigateToRingtoneLibrary) {
-                    RowLabel("铃声库")
-                    RowValue("导入 / 录音", withArrow = true)
                 }
-
-                // 8. 报警记录
-                LineRow(onClick = onNavigateToAlertHistory) {
-                    RowLabel("报警记录")
-                    RowValue("查看历史", withArrow = true)
-                }
-
+                if (keywordPage) {
                 // 9. 应用过滤
                 LineRow(onClick = onNavigateToAppFilter) {
                     RowLabel("应用过滤")
                     RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
                 }
 
+                }
+                if (!keywordPage) {
                 // ---- 权限与保活：按必需性分级（必需 / 推荐 / 可选） ----
-                GroupHeader("REQUIRED")
+                GroupHeader("本机通知权限")
 
                 // 通知使用权：功能前提，未开启则监听不存在
                 LineRow(onClick = {
@@ -660,7 +313,7 @@ fun MainScreen(
                     }
                 }
 
-                GroupHeader("RECOMMENDED")
+                GroupHeader("后台运行建议")
 
                 // 电池白名单：后台稳定检测的前提（Device Guard 类强杀防护），状态可检测
                 LineRow(onClick = {
@@ -698,7 +351,7 @@ fun MainScreen(
                     }
                 }
 
-                GroupHeader("OPTIONAL")
+                GroupHeader("其他设置")
 
                 // 自启动管理（国产 ROM 通用引导，跳转系统对应设置页；状态不可检测）
                 LineRow(onClick = {
@@ -759,10 +412,10 @@ fun MainScreen(
                     RowLabel("检查更新")
                     RowValue("版本 v$currentVersionName", withArrow = true)
                 }
+                }
             }
         }
-        }
-    }
+    )
 
     if (showAddKeywordDialog) {
         AddKeywordDialog(
@@ -954,63 +607,23 @@ private enum class PermissionGuide {
     LockTask
 }
 
-private val MonoTextStyle = TextStyle(fontFamily = FontFamily.Monospace)
+private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)
 
 /**
  * 核心开关：涟漪的环心。
  * ON：酸橙绿描边 + 实心圆点呼吸缩放；OFF：暗灰描边 + 静止暗点。
  */
 @Composable
-private fun CoreSwitch(
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val ringColor by animateColorAsState(
-        targetValue = if (enabled) VigilDirAAcid else VigilDirAFaint,
-        animationSpec = tween(durationMillis = 400),
-        label = "coreColor"
-    )
-    // 呼吸：仅 ON 时启动，帧驱动（与涟漪同因：InfiniteTransition 会被系统动画缩放=0 挂起）
-    val breatheScale = if (enabled) {
-        val p = rememberFrameDrivenProgress(4000)
-        // 三角波往返 + 缓动，与涟漪 4s 周期同步
-        val tri = if (p < 0.5f) p * 2f else (1f - p) * 2f
-        1f + 0.3f * FastOutSlowInEasing.transform(tri)
-    } else {
-        1f
-    }
-
-    Box(
-        modifier = modifier
-            .size(88.dp)
-            // 裁剪成圆形再加 clickable：按压涟漪不溢出圆环外成方形
-            .clip(CircleShape)
-            .border(width = 1.dp, color = ringColor, shape = CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(16.dp)
-            // 呼吸缩发放内层，避免影响点击热区
-                .scale(breatheScale)
-                .background(ringColor, CircleShape)
-        )
-    }
-}
-
-/** 单行：左侧灰标签 + 右侧值，底部 1dp 发丝线 */
-@Composable
 private fun LineRow(
     onClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
+    val lineColor = VigilDivider
     val modifier = Modifier
         .fillMaxWidth()
         .drawBehind {
             val stroke = 1.dp.toPx()
-            drawLine(VigilDirALine, start = androidx.compose.ui.geometry.Offset(0f, size.height - stroke / 2),
+            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(0f, size.height - stroke / 2),
                 end = androidx.compose.ui.geometry.Offset(size.width, size.height - stroke / 2), strokeWidth = stroke)
         }
         .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
@@ -1030,7 +643,7 @@ private fun RowLabel(text: String) {
         text = text,
         fontSize = 12.sp,
         letterSpacing = 0.6.sp,
-        color = VigilDirADim
+        color = VigilTextSecondary
     )
 }
 
@@ -1040,9 +653,9 @@ private fun RowValue(text: String, withArrow: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(text = text, fontSize = 13.sp, color = VigilDirAInk)
+        Text(text = text, fontSize = 13.sp, color = VigilTextPrimary)
         if (withArrow) {
-            Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+            Text(text = "→", fontSize = 13.sp, color = VigilBorder)
         }
     }
 }
@@ -1051,10 +664,10 @@ private fun RowValue(text: String, withArrow: Boolean) {
 private fun GrantedValue() {
     Text(
         text = "GRANTED",
-        style = MonoTextStyle,
+        style = BodyTextStyle,
         fontSize = 11.sp,
         letterSpacing = 0.8.sp,
-        color = VigilDirAAcid
+        color = VigilPrimary
     )
 }
 
@@ -1062,11 +675,11 @@ private fun GrantedValue() {
 private fun WarnCapsule() {
     Text(
         text = "去设置",
-        style = MonoTextStyle,
+        style = BodyTextStyle,
         fontSize = 11.sp,
-        color = VigilDirAAmber,
+        color = VigilError,
         modifier = Modifier
-            .border(1.dp, VigilDirAAmber, RoundedCornerShape(4.dp))
+            .border(1.dp, VigilError, RoundedCornerShape(4.dp))
             .padding(horizontal = 7.dp, vertical = 2.dp)
     )
 }
@@ -1076,10 +689,10 @@ private fun WarnCapsule() {
 private fun GroupHeader(text: String) {
     Text(
         text = text,
-        style = MonoTextStyle,
+        style = BodyTextStyle,
         fontSize = 10.sp,
         letterSpacing = 1.6.sp,
-        color = VigilDirAFaint,
+        color = VigilBorder,
         modifier = Modifier.padding(start = 2.dp, top = 20.dp, bottom = 4.dp)
     )
 }
@@ -1096,16 +709,16 @@ private fun LockTaskGuideDialog(
 ) {
     AlertDialog(
         onDismissRequest = onClose,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = stringResource(R.string.lock_task_dialog_title),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -1113,17 +726,17 @@ private fun LockTaskGuideDialog(
                 text = stringResource(R.string.lock_task_dialog_message),
                 fontSize = 13.sp,
                 lineHeight = 20.sp,
-                color = VigilDirADim
+                color = VigilTextSecondary
             )
         },
         confirmButton = {
             TextButton(onClick = onClose) {
-                Text(text = "知道了", color = VigilDirAAcid)
+                Text(text = "知道了", color = VigilPrimary)
             }
         },
         dismissButton = {
             TextButton(onClick = onNeverShow) {
-                Text(text = "不再提示", color = VigilDirADim)
+                Text(text = "不再提示", color = VigilTextSecondary)
             }
         }
     )
@@ -1134,8 +747,8 @@ private fun LockTaskGuideDialog(
 private fun KeywordChip(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
-            .background(VigilDirALine.copy(alpha = 0.45f), CircleShape)
-            .border(1.dp, VigilDirAFaint, CircleShape)
+            .background(VigilDivider.copy(alpha = 0.45f), CircleShape)
+            .border(1.dp, VigilBorder, CircleShape)
             .padding(start = 12.dp, end = 5.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)
@@ -1143,21 +756,21 @@ private fun KeywordChip(text: String, onClick: () -> Unit, onRemove: () -> Unit)
         Text(
             text = text,
             fontSize = 11.sp,
-            color = VigilDirAInk,
+            color = VigilTextPrimary,
             modifier = Modifier.clickable(onClick = onClick)
         )
         // × 独立热区：圆形暗底，矢量图标天然居中（字符 × 有字形基线偏移）
         Box(
             modifier = Modifier
                 .size(17.dp)
-                .background(VigilDirAFaint.copy(alpha = 0.45f), CircleShape)
+                .background(VigilBorder.copy(alpha = 0.45f), CircleShape)
                 .clickable(onClick = onRemove),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "删除关键词 $text",
-                tint = VigilDirAInk,
+                tint = VigilTextPrimary,
                 modifier = Modifier.size(9.dp)
             )
         }
@@ -1167,12 +780,13 @@ private fun KeywordChip(text: String, onClick: () -> Unit, onRemove: () -> Unit)
 /** 虚线 "+" chip */
 @Composable
 private fun AddChip(onClick: () -> Unit) {
+    val borderColor = VigilTextSecondary
     Box(
         modifier = Modifier
             .drawBehind {
                 val strokeWidth = 1.dp.toPx()
                 drawRoundRect(
-                    color = VigilDirADim,
+                    color = borderColor,
                     style = Stroke(
                         width = strokeWidth,
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
@@ -1184,7 +798,7 @@ private fun AddChip(onClick: () -> Unit) {
             .padding(horizontal = 10.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "+", fontSize = 11.sp, color = VigilDirADim)
+        Text(text = "+", fontSize = 11.sp, color = VigilTextSecondary)
     }
 }
 
@@ -1197,33 +811,33 @@ private fun DeleteKeywordDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "删除关键词",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
             Text(
                 text = "确认删除「$keyword」？删除后该关键词的通知将不再触发报警。",
                 fontSize = 13.sp,
-                color = VigilDirADim
+                color = VigilTextSecondary
             )
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(text = "删除", color = VigilDirAAmber)
+                Text(text = "删除", color = VigilError)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )
@@ -1238,16 +852,16 @@ private fun AddKeywordDialog(
     var input by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "添加关键词",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -1255,13 +869,13 @@ private fun AddKeywordDialog(
                 value = input,
                 onValueChange = { input = it },
                 singleLine = true,
-                placeholder = { Text("输入关键词", fontSize = 14.sp, color = VigilDirADim) },
+                placeholder = { Text("输入关键词", fontSize = 14.sp, color = VigilTextSecondary) },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = VigilDirAAcid,
-                    unfocusedBorderColor = VigilDirAFaint,
-                    focusedTextColor = VigilDirAInk,
-                    unfocusedTextColor = VigilDirAInk,
-                    cursorColor = VigilDirAAcid
+                    focusedBorderColor = VigilPrimary,
+                    unfocusedBorderColor = VigilBorder,
+                    focusedTextColor = VigilTextPrimary,
+                    unfocusedTextColor = VigilTextPrimary,
+                    cursorColor = VigilPrimary
                 ),
                 shape = RoundedCornerShape(4.dp)
             )
@@ -1273,13 +887,13 @@ private fun AddKeywordDialog(
             ) {
                 Text(
                     text = "添加",
-                    color = if (input.isNotBlank()) VigilDirAAcid else VigilDirADim
+                    color = if (input.isNotBlank()) VigilPrimary else VigilTextSecondary
                 )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )
@@ -1310,16 +924,16 @@ private fun KeywordConfigDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "「$keyword」",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -1333,7 +947,7 @@ private fun KeywordConfigDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "铃声", fontSize = 13.sp, color = VigilDirADim)
+                    Text(text = "铃声", fontSize = 13.sp, color = VigilTextSecondary)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1341,19 +955,19 @@ private fun KeywordConfigDialog(
                         Text(
                             text = ringtoneName ?: "默认",
                             fontSize = 13.sp,
-                            color = VigilDirAInk
+                            color = VigilTextPrimary
                         )
                         if (ringtoneName != null) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "清除自定义铃声",
-                                tint = VigilDirADim,
+                                tint = VigilTextSecondary,
                                 modifier = Modifier
                                     .size(14.dp)
                                     .clickable(onClick = onClearRingtone)
                             )
                         } else {
-                            Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                            Text(text = "→", fontSize = 13.sp, color = VigilBorder)
                         }
                     }
                 }
@@ -1366,7 +980,7 @@ private fun KeywordConfigDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "循环次数", fontSize = 13.sp, color = VigilDirADim)
+                    Text(text = "循环次数", fontSize = 13.sp, color = VigilTextSecondary)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1375,9 +989,9 @@ private fun KeywordConfigDialog(
                             text = loopCountOverride?.let { formatLoopCount(it) }
                                 ?: "默认（${formatLoopCount(defaultLoopCount)}）",
                             fontSize = 13.sp,
-                            color = VigilDirAInk
+                            color = VigilTextPrimary
                         )
-                        Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                        Text(text = "→", fontSize = 13.sp, color = VigilBorder)
                     }
                 }
                 // 延时报警行（未覆盖则跟随默认策略）
@@ -1389,7 +1003,7 @@ private fun KeywordConfigDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "延时报警", fontSize = 13.sp, color = VigilDirADim)
+                    Text(text = "延时报警", fontSize = 13.sp, color = VigilTextSecondary)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1398,16 +1012,16 @@ private fun KeywordConfigDialog(
                             text = delayPolicyOverride?.let { formatDelayPolicy(it) }
                                 ?: "默认（${formatDelayPolicy(defaultDelayPolicy)}）",
                             fontSize = 13.sp,
-                            color = VigilDirAInk
+                            color = VigilTextPrimary
                         )
-                        Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                        Text(text = "→", fontSize = 13.sp, color = VigilBorder)
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "完成", color = VigilDirAAcid)
+                Text(text = "完成", color = VigilPrimary)
             }
         }
     )
@@ -1429,20 +1043,20 @@ private fun RingtoneSelectDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "选择铃声",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
-            Column {
+            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 // 内置预设（随 APK 打包的 WAV 语音）
                 RingtoneLibrary.PRESETS.forEachIndexed { index, preset ->
                     if (index > 0) {
@@ -1450,7 +1064,7 @@ private fun RingtoneSelectDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(1.dp)
-                                .background(VigilDirALine)
+                                .background(VigilDivider)
                         )
                     }
                     val isSelected = currentValue == RingtoneLibrary.presetValue(context, preset)
@@ -1465,13 +1079,13 @@ private fun RingtoneSelectDialog(
                         Text(
                             text = preset.displayName,
                             fontSize = 13.sp,
-                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                            color = if (isSelected) VigilPrimary else VigilTextPrimary
                         )
                         if (isSelected) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
-                                    .background(VigilDirAAcid, CircleShape)
+                                    .background(VigilPrimary, CircleShape)
                             )
                         }
                     }
@@ -1480,7 +1094,7 @@ private fun RingtoneSelectDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(VigilDirALine)
+                        .background(VigilDivider)
                 )
                 // 系统铃声入口
                 Row(
@@ -1491,15 +1105,15 @@ private fun RingtoneSelectDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "系统铃声…", fontSize = 13.sp, color = VigilDirAInk)
-                    Text(text = "→", fontSize = 13.sp, color = VigilDirAFaint)
+                    Text(text = "系统铃声…", fontSize = 13.sp, color = VigilTextPrimary)
+                    Text(text = "→", fontSize = 13.sp, color = VigilBorder)
                 }
                 if (libraryEntries.isNotEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(VigilDirALine)
+                            .background(VigilDivider)
                     )
                 }
                 libraryEntries.forEach { (fileName, displayName) ->
@@ -1516,13 +1130,13 @@ private fun RingtoneSelectDialog(
                         Text(
                             text = displayName,
                             fontSize = 13.sp,
-                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                            color = if (isSelected) VigilPrimary else VigilTextPrimary
                         )
                         if (isSelected) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
-                                    .background(VigilDirAAcid, CircleShape)
+                                    .background(VigilPrimary, CircleShape)
                             )
                         }
                     }
@@ -1531,7 +1145,7 @@ private fun RingtoneSelectDialog(
                     Text(
                         text = "铃声库为空，可在「铃声库」页导入音频或录音",
                         fontSize = 11.sp,
-                        color = VigilDirADim,
+                        color = VigilTextSecondary,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
@@ -1539,7 +1153,7 @@ private fun RingtoneSelectDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )
@@ -1563,16 +1177,16 @@ private fun LoopCountDialog(
     var followDefault by remember(selected) { mutableStateOf(showFollowDefault && selected == null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "循环次数",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -1589,13 +1203,13 @@ private fun LoopCountDialog(
                         Text(
                             text = "跟随默认",
                             fontSize = 13.sp,
-                            color = if (followDefault) VigilDirAAcid else VigilDirAInk
+                            color = if (followDefault) VigilPrimary else VigilTextPrimary
                         )
                         if (followDefault) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
-                                    .background(VigilDirAAcid, CircleShape)
+                                    .background(VigilPrimary, CircleShape)
                             )
                         }
                     }
@@ -1603,7 +1217,7 @@ private fun LoopCountDialog(
                 Text(
                     text = if (followDefault) "默认（$defaultValue 次）" else "$pendingValue 次",
                     fontSize = 13.sp,
-                    color = if (followDefault) VigilDirADim else VigilDirAAcid,
+                    color = if (followDefault) VigilTextSecondary else VigilPrimary,
                     modifier = Modifier.padding(top = 8.dp)
                 )
                 Slider(
@@ -1623,19 +1237,19 @@ private fun LoopCountDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("1 次", fontSize = 11.sp, color = VigilDirADim)
-                    Text("10 次", fontSize = 11.sp, color = VigilDirADim)
+                    Text("1 次", fontSize = 11.sp, color = VigilTextSecondary)
+                    Text("10 次", fontSize = 11.sp, color = VigilTextSecondary)
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = { onSelect(if (followDefault) null else pendingValue) }) {
-                Text(text = "确定", color = VigilDirAAcid)
+                Text(text = "确定", color = VigilPrimary)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )
@@ -1661,16 +1275,16 @@ private fun KeywordCooldownDialog(
     val options = listOf(0, 30, 60, 180, 300, 600)
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "重复提醒间隔",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -1678,7 +1292,7 @@ private fun KeywordCooldownDialog(
                 Text(
                     text = "同一应用的同一关键词在间隔内再次出现时，不重复响铃。",
                     fontSize = 12.sp,
-                    color = VigilDirADim,
+                    color = VigilTextSecondary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 options.forEach { seconds ->
@@ -1694,13 +1308,13 @@ private fun KeywordCooldownDialog(
                         Text(
                             text = formatKeywordCooldown(seconds),
                             fontSize = 13.sp,
-                            color = if (isSelected) VigilDirAAcid else VigilDirAInk
+                            color = if (isSelected) VigilPrimary else VigilTextPrimary
                         )
                         if (isSelected) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
-                                    .background(VigilDirAAcid, CircleShape)
+                                    .background(VigilPrimary, CircleShape)
                             )
                         }
                     }
@@ -1709,7 +1323,7 @@ private fun KeywordCooldownDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )
@@ -1791,33 +1405,33 @@ private fun DelayPolicyDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "延时报警",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (addingTime) {
-                    Text(text = "添加时间点", fontSize = 13.sp, color = VigilDirADim)
+                    Text(text = "添加时间点", fontSize = 13.sp, color = VigilTextSecondary)
                     Text(
                         text = formatTimeOfDay(draftHour * 60 + draftMinute),
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
-                        color = VigilDirAAcid,
+                        color = VigilPrimary,
                         modifier = Modifier.padding(top = 6.dp)
                     )
                     Text(
                         text = "时",
                         fontSize = 11.sp,
-                        color = VigilDirADim,
+                        color = VigilTextSecondary,
                         modifier = Modifier.padding(top = 8.dp)
                     )
                     Slider(
@@ -1830,10 +1444,10 @@ private fun DelayPolicyDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("00", fontSize = 11.sp, color = VigilDirADim)
-                        Text("23", fontSize = 11.sp, color = VigilDirADim)
+                        Text("00", fontSize = 11.sp, color = VigilTextSecondary)
+                        Text("23", fontSize = 11.sp, color = VigilTextSecondary)
                     }
-                    Text(text = "分", fontSize = 11.sp, color = VigilDirADim)
+                    Text(text = "分", fontSize = 11.sp, color = VigilTextSecondary)
                     Slider(
                         value = draftMinute.toFloat(),
                         onValueChange = { draftMinute = it.toInt().coerceIn(0, 55) },
@@ -1844,8 +1458,8 @@ private fun DelayPolicyDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("00", fontSize = 11.sp, color = VigilDirADim)
-                        Text("55", fontSize = 11.sp, color = VigilDirADim)
+                        Text("00", fontSize = 11.sp, color = VigilTextSecondary)
+                        Text("55", fontSize = 11.sp, color = VigilTextSecondary)
                     }
                 } else {
                     // 关键词场景：可回到「跟随默认」
@@ -1895,9 +1509,9 @@ private fun DelayPolicyDialog(
                             },
                             fontSize = 12.sp,
                             color = if (fixedDelayMs < SharedPreferencesHelper.MIN_FIXED_DELAY_MS) {
-                                VigilDirAAmber
+                                VigilError
                             } else {
-                                VigilDirADim
+                                VigilTextSecondary
                             },
                             modifier = Modifier.padding(start = 12.dp, top = 8.dp)
                         )
@@ -1915,7 +1529,7 @@ private fun DelayPolicyDialog(
                             Text(
                                 text = "还没有时间点，先添加一个",
                                 fontSize = 12.sp,
-                                color = VigilDirAAmber,
+                                color = VigilError,
                                 modifier = Modifier.padding(top = 6.dp, start = 12.dp)
                             )
                         }
@@ -1931,12 +1545,12 @@ private fun DelayPolicyDialog(
                                 Text(
                                     text = formatTimeOfDay(minutes),
                                     fontSize = 14.sp,
-                                    color = VigilDirAInk
+                                    color = VigilTextPrimary
                                 )
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "删除时间点",
-                                    tint = VigilDirADim,
+                                    tint = VigilTextSecondary,
                                     modifier = Modifier
                                         .size(14.dp)
                                         .clickable { times = times - minutes }
@@ -1946,7 +1560,7 @@ private fun DelayPolicyDialog(
                         Text(
                             text = "+ 添加时间点",
                             fontSize = 13.sp,
-                            color = VigilDirAAcid,
+                            color = VigilPrimary,
                             modifier = Modifier
                                 .padding(start = 12.dp, top = 6.dp, bottom = 6.dp)
                                 .clickable {
@@ -1962,7 +1576,7 @@ private fun DelayPolicyDialog(
                                 .fillMaxWidth()
                                 .padding(top = 12.dp)
                                 .height(1.dp)
-                                .background(VigilDirALine)
+                                .background(VigilDivider)
                         )
                         Row(
                             modifier = Modifier
@@ -1974,12 +1588,12 @@ private fun DelayPolicyDialog(
                             Text(
                                 text = "已排定 $pendingCount 条待触发",
                                 fontSize = 12.sp,
-                                color = VigilDirADim
+                                color = VigilTextSecondary
                             )
                             Text(
                                 text = "全部取消",
                                 fontSize = 12.sp,
-                                color = VigilDirAAmber,
+                                color = VigilError,
                                 modifier = Modifier.clickable(onClick = onCancelAllPending)
                             )
                         }
@@ -1988,7 +1602,7 @@ private fun DelayPolicyDialog(
                         Text(
                             text = "系统未授权「闹钟和提醒」，到点可能延迟几分钟；请在设置里授予精确闹钟。",
                             fontSize = 11.sp,
-                            color = VigilDirAAmber,
+                            color = VigilError,
                             modifier = Modifier.padding(top = 10.dp)
                         )
                     }
@@ -2003,11 +1617,14 @@ private fun DelayPolicyDialog(
                     )
                     addingTime = false
                 }) {
-                    Text(text = "添加", color = VigilDirAAcid)
+                    Text(text = "添加", color = VigilPrimary)
                 }
             } else {
-                val fixedDelayValid = followDefault || mode != DelayMode.FIXED ||
-                    fixedDelayMs >= SharedPreferencesHelper.MIN_FIXED_DELAY_MS
+                val fixedDelayValid = followDefault || when (mode) {
+                    DelayMode.FIXED -> fixedDelayMs >= SharedPreferencesHelper.MIN_FIXED_DELAY_MS
+                    DelayMode.SCHEDULED -> times.isNotEmpty()
+                    DelayMode.IMMEDIATE -> true
+                }
                 TextButton(
                     onClick = {
                         val policy = when {
@@ -2022,14 +1639,14 @@ private fun DelayPolicyDialog(
                 ) {
                     Text(
                         text = "确定",
-                        color = if (fixedDelayValid) VigilDirAAcid else VigilDirADim
+                        color = if (fixedDelayValid) VigilPrimary else VigilTextSecondary
                     )
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = { if (addingTime) addingTime = false else onDismiss() }) {
-                Text(text = if (addingTime) "返回" else "取消", color = VigilDirADim)
+                Text(text = if (addingTime) "返回" else "取消", color = VigilTextSecondary)
             }
         }
     )
@@ -2059,15 +1676,15 @@ private fun DelayTimeField(
                 onValueChange(normalized)
             },
             singleLine = true,
-            label = { Text(label, fontSize = 11.sp, color = VigilDirADim) },
+            label = { Text(label, fontSize = 11.sp, color = VigilTextSecondary) },
             textStyle = TextStyle(fontSize = 14.sp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = VigilDirAAcid,
-                unfocusedBorderColor = VigilDirAFaint,
-                focusedTextColor = VigilDirAInk,
-                unfocusedTextColor = VigilDirAInk,
-                cursorColor = VigilDirAAcid
+                focusedBorderColor = VigilPrimary,
+                unfocusedBorderColor = VigilBorder,
+                focusedTextColor = VigilTextPrimary,
+                unfocusedTextColor = VigilTextPrimary,
+                cursorColor = VigilPrimary
             ),
             shape = RoundedCornerShape(4.dp),
             modifier = Modifier.width(74.dp)
@@ -2096,14 +1713,14 @@ private fun SelectableRow(
             Text(
                 text = label,
                 fontSize = 13.sp,
-                color = if (selected) VigilDirAAcid else VigilDirAInk
+                color = if (selected) VigilPrimary else VigilTextPrimary
             )
             if (detail != null) {
-                Text(text = detail, fontSize = 11.sp, color = VigilDirADim)
+                Text(text = detail, fontSize = 11.sp, color = VigilTextSecondary)
             }
         }
         if (selected) {
-            Box(modifier = Modifier.size(8.dp).background(VigilDirAAcid, CircleShape))
+            Box(modifier = Modifier.size(8.dp).background(VigilPrimary, CircleShape))
         }
     }
 }
@@ -2118,22 +1735,22 @@ private fun ScheduledAlertsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "待触发延时报警",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (items.isEmpty()) {
-                    Text(text = "暂无待触发报警", fontSize = 13.sp, color = VigilDirADim)
+                    Text(text = "暂无待触发报警", fontSize = 13.sp, color = VigilTextSecondary)
                 }
                 items.forEach { item ->
                     Row(
@@ -2144,20 +1761,20 @@ private fun ScheduledAlertsDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = item.keyword, fontSize = 13.sp, color = VigilDirAInk)
+                            Text(text = item.keyword, fontSize = 13.sp, color = VigilTextPrimary)
                             Text(
                                 text = buildString {
                                     append(formatScheduledAt(item.triggerAtMs))
                                     item.sourceApp?.let { append(" · $it") }
                                 },
                                 fontSize = 11.sp,
-                                color = VigilDirADim
+                                color = VigilTextSecondary
                             )
                         }
                         Text(
                             text = "取消",
                             fontSize = 12.sp,
-                            color = VigilDirAAmber,
+                            color = VigilError,
                             modifier = Modifier.clickable { onCancelOne(item.id) }
                         )
                     }
@@ -2165,20 +1782,20 @@ private fun ScheduledAlertsDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(VigilDirALine)
+                            .background(VigilDivider)
                     )
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "关闭", color = VigilDirAAcid)
+                Text(text = "关闭", color = VigilPrimary)
             }
         },
         dismissButton = {
             if (items.isNotEmpty()) {
                 TextButton(onClick = onCancelAll) {
-                    Text(text = "全部取消", color = VigilDirADim)
+                    Text(text = "全部取消", color = VigilTextSecondary)
                 }
             }
         }

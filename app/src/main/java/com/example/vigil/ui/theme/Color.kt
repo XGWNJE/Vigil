@@ -3,52 +3,13 @@ package com.example.vigil.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Design palette from vigil-ui-design
-val VigilBackground = Color(0xFF0A0A0A)
-val VigilSurface = Color(0xFF141414)
-val VigilSurfaceVariant = Color(0xFF0F0F14)
-val VigilBorder = Color(0xFF27272A)
+// Shared design tokens follow the current Material theme.
+val VigilBackground: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.background
+val VigilTextPrimary: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+val VigilTextSecondary: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+val VigilBorder: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.outline
+val VigilPrimary: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.primary
+val VigilDivider: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant
+val VigilError: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.error
 
-// Primary accent - Purple
-val VigilPrimary = Color(0xFFA855F7)
-val VigilPrimaryContainer = Color(0xFF1A1A2E)
-val VigilOnPrimary = Color(0xFFFFFFFF)
-
-// Status colors
-val VigilSuccess = Color(0xFF22C55E)
-val VigilSuccessContainer = Color(0xFF14532D1A)
-val VigilSuccessBorder = Color(0xFF22C55E33)
-
-val VigilWarning = Color(0xFFEAB308)
-val VigilWarningContainer = Color(0xFF78350F33)
-
-val VigilError = Color(0xFFEF4444)
-val VigilErrorContainer = Color(0xFF130A0A)
-val VigilErrorBorder = Color(0xFFEF444433)
-val VigilErrorSubtle = Color(0xFFEF44441A)
-
-val VigilInfo = Color(0xFF6366F1)
-val VigilInfoContainer = Color(0xFF1E1B4B33)
-
-// Text colors
-val VigilTextPrimary = Color(0xFFFFFFFF)
-val VigilTextSecondary = Color(0xFFA1A1AA)
-val VigilTextTertiary = Color(0xFF71717A)
-val VigilTextDisabled = Color(0xFF52525B)
-
-// Keyword chip
-val VigilChipBackground = Color(0xFF27272A)
-val VigilChipText = Color(0xFFFFFFFF)
-
-// Switch colors
-val VigilSwitchThumb = Color(0xFFFFFFFF)
-val VigilSwitchTrack = Color(0xFFA855F7)
-
-// ===== Dir A · 一线 设计稿配色（design/v2-proposals #dir-a）=====
-val VigilDirABg = Color(0xFF0A0A0B)     // --bg
-val VigilDirAInk = Color(0xFFEAEAE7)    // --ink 主文字
-val VigilDirADim = Color(0xFF71717A)    // --dim 次要文字
-val VigilDirAFaint = Color(0xFF3F3F46)  // --faint 描边/弱化元素
-val VigilDirAAcid = Color(0xFFE4FF54)   // --acid 酸橙绿（唯一强调色）
-val VigilDirALine = Color(0xFF1F1F23)   // --line 发丝线
-val VigilDirAAmber = Color(0xFFFFB020)  // 未授权警示琥珀
+val VigilSurface: Color @androidx.compose.runtime.Composable get() = androidx.compose.material3.MaterialTheme.colorScheme.surface

@@ -12,6 +12,13 @@ import org.junit.Test
  * 网络/下载逻辑在真机/模拟器做端到端验证。
  */
 class UpdateCheckerTest {
+    @Test
+    fun malformed_components_never_become_a_new_version() {
+        listOf("1.bad.99", "1..99", "version99", "2_9", "999999999999.0", "2.0-").forEach {
+            assertFalse(it, UpdateChecker.isNewer(it, "1.19.0"))
+        }
+        assertFalse(UpdateChecker.isNewer("2.0.0", "1.broken.0"))
+    }
 
     @Test
     fun `newer_patch_version_is_true`() {

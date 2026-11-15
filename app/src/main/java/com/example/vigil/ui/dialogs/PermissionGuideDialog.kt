@@ -11,11 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.vigil.ui.theme.VigilDirAAcid
-import com.example.vigil.ui.theme.VigilDirABg
-import com.example.vigil.ui.theme.VigilDirADim
-import com.example.vigil.ui.theme.VigilDirAInk
-import com.example.vigil.ui.theme.VigilDirALine
+import com.example.vigil.ui.theme.VigilPrimary
+import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilTextSecondary
+import com.example.vigil.ui.theme.VigilTextPrimary
+import com.example.vigil.ui.theme.VigilDivider
 
 /**
  * 「A · 一线」权限引导确认弹窗：替代 PermissionUtils 原生的 android.app.AlertDialog。
@@ -32,16 +32,16 @@ fun PermissionGuideDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilDirABg,
+        containerColor = VigilBackground,
         shape = RoundedCornerShape(8.dp),
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDirALine, RoundedCornerShape(8.dp)),
+        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = title,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = VigilDirAInk
+                color = VigilTextPrimary
             )
         },
         text = {
@@ -49,7 +49,7 @@ fun PermissionGuideDialog(
                 text = message,
                 fontSize = 13.sp,
                 lineHeight = 20.sp,
-                color = VigilDirADim
+                color = VigilTextSecondary
             )
         },
         confirmButton = {
@@ -57,12 +57,12 @@ fun PermissionGuideDialog(
                 onConfirm()
                 onDismiss()
             }) {
-                Text(text = confirmText, color = VigilDirAAcid)
+                Text(text = confirmText, color = VigilPrimary)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消", color = VigilDirADim)
+                Text(text = "取消", color = VigilTextSecondary)
             }
         }
     )

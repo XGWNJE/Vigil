@@ -12,7 +12,7 @@
 | 包名 | `com.example.vigil` |
 | 源代码 | https://github.com/XGWNJE/Vigil |
 | 隐私政策 | https://github.com/XGWNJE/Vigil/blob/main/PRIVACY.md |
-| 当前版本 | `v1.19.0`，以待提交 APK 的版本为准 |
+| 当前版本 | `v1.20.0`，以待提交 APK 的版本为准 |
 
 ## 二、短描述
 

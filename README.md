@@ -14,9 +14,9 @@ Android 通知关键词报警应用。在本机按通知关键词触发铃声，
 
 ## 快速开始
 
-当前源码包含新界面与可靠性改进，尚未发布。验证当前功能请按[源码构建](docs/release.md#本地调试构建)生成 APK；已发布包的范围以[发行说明](release-notes/)为准。Android 最低版本为 8.0。
+从 [GitHub Releases](https://github.com/XGWNJE/Vigil/releases/latest) 下载安装最新 APK（或按[源码构建](docs/release.md#本地调试构建)自行编译），Android 最低版本为 8.0。各版本变更见[发行说明](release-notes/)。
 
-1. 安装当前源码构建包；Android 13 及以上允许发送通知。
+1. 安装 APK；Android 13 及以上允许发送通知。
 2. 进入「关键词」添加监控词及应用过滤，授予通知使用权，在「监控」开启通知监听。
 3. 报警时在应用内点「已知晓，停止报警」。若应用在后台，可点报警通知进入处理。
 

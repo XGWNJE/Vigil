@@ -64,10 +64,6 @@
             </intent-filter>
         </service>
 
-        <service android:name=".node.NotificationNodeService" android:exported="false" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Receive realtime alarms from a configured service" />
-        </service>
-
         <!-- 延时报警到期闹钟的接收方：拉起服务处理到期项（不导出，仅系统闹钟投递） -->
         <receiver
             android:name=".DelayedAlertReceiver"

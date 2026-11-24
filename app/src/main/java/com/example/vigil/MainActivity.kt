@@ -89,10 +89,6 @@ class MainActivity : AppCompatActivity() {
 
         // 首次启动时自动申请 POST_NOTIFICATIONS 权限
         requestPostNotificationsIfNeeded()
-        if (com.example.vigil.node.NotificationNodeSettings(this).enabled) {
-            runCatching { com.example.vigil.node.NotificationNodeService.start(this) }
-                .onFailure { Toast.makeText(this, "通知节点未恢复，请在接警页重新连接", Toast.LENGTH_LONG).show() }
-        }
 
         // 设置 ViewModel 回调
         monitoringViewModel.startServiceCallback = { hasPermission -> startVigilService(hasPermission) }
@@ -304,7 +300,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun stopVigilService() {
-        if (com.example.vigil.node.NotificationNodeSettings(this).enabled || sharedPreferencesHelper.getActiveAlert() != null) {
+        if (sharedPreferencesHelper.getActiveAlert() != null) {
             notifyServiceToUpdateSettings()
             return
         }

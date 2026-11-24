@@ -46,9 +46,9 @@ import com.example.vigil.ui.theme.VigilPrimary
 import com.example.vigil.ui.theme.VigilBackground
 import com.example.vigil.ui.theme.VigilTextSecondary
 import com.example.vigil.ui.theme.VigilTextPrimary
-import com.example.vigil.node.alarmTimeStandardLabel
-import com.example.vigil.node.formatAlarmTime
-import com.example.vigil.ui.rememberAlarmTimeZone
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 「A · 一线」报警弹窗：酸橙绿 1dp 边框大框 + 等宽元信息 + 实心大按钮。
@@ -63,7 +63,6 @@ fun KeywordAlertDialog(
     snippet: String? = null,
     eventTimeMillis: Long? = null
 ) {
-    val timeZone = rememberAlarmTimeZone()
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
@@ -146,8 +145,11 @@ fun KeywordAlertDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     AlertMetaRow("FROM", sourceApp?.takeIf { it.isNotBlank() } ?: "--")
                     AlertMetaRow("TEXT", snippet?.takeIf { it.isNotBlank() } ?: "--", maxLines = 3)
-                    AlertMetaRow("TIME", formatAlarmTime(eventTimeMillis ?: System.currentTimeMillis(), "yyyy-MM-dd HH:mm:ss", timeZone))
-                    AlertMetaRow("ZONE", alarmTimeStandardLabel(timeZone))
+                    val timeText = remember(eventTimeMillis) {
+                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
+                            .format(Date(eventTimeMillis ?: System.currentTimeMillis()))
+                    }
+                    AlertMetaRow("TIME", timeText)
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))

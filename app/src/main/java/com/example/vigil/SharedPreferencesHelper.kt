@@ -485,29 +485,6 @@ class SharedPreferencesHelper(context: Context) {
 
     fun getActiveAlert(): AlertQueueItem? = getAlertQueue().firstOrNull()
 
-    /** 收件确认只在事件和去重标识一起落盘后返回；不聚合不同的服务事件。 */
-    fun acceptRemoteAlert(id: String, label: String, source: String, summary: String,
-                          timestamp: Long, expiresAt: Long, now: Long = System.currentTimeMillis()): Boolean =
-        synchronized(alertQueueLock) {
-            if (id.isBlank() || id.length > 128 || expiresAt <= now || timestamp > now + 5_000 ||
-                expiresAt <= timestamp || expiresAt - timestamp > 30_000) return@synchronized false
-            val key = "remote_receipts"
-            val accepted = try { JSONObject(prefs.getString(key, "{}") ?: "{}") }
-                catch (_: Exception) { return@synchronized false }
-            accepted.keys().asSequence().toList().filter { accepted.optLong(it) <= now }.forEach { accepted.remove(it) }
-            if (accepted.has(id)) return@synchronized true
-            migratePendingAlertToQueueLocked()
-            val queue = readAlertQueueLocked().toMutableList()
-            if (queue.size >= MAX_ALERT_QUEUE_SIZE || accepted.length() >= 1_000) return@synchronized false
-            // A previously accepted item can remain in the queue beyond the transport deadline.
-            if (queue.any { it.id == id }) return@synchronized true
-            queue += AlertQueueItem(id, label, "visionguard", source.take(160), timestamp, timestamp,
-                getRingtoneValue(), getDefaultLoopCount(), 0, 1, summary.take(100))
-            accepted.put(id, expiresAt)
-            commitCritical(prefs.edit().putString(KEY_ALERT_QUEUE, encodeAlertQueue(queue))
-                .putString(key, accepted.toString()), KEY_ALERT_QUEUE, key)
-        }
-
     fun updateActiveAlertPlayedLoops(expectedId: String, playedLoops: Int): Boolean =
         synchronized(alertQueueLock) {
             val queue = readAlertQueueLocked().toMutableList()

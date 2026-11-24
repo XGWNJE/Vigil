@@ -282,7 +282,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             VigilLogger.d(applicationContext, TAG, "通知到达: pkg=${sbn.packageName} (在过滤列表中)")
         }
 
-        if (sbn.packageName == packageName && (sbn.id == FOREGROUND_NOTIFICATION_ID || sbn.id == com.example.vigil.node.NotificationNodeService.NOTIFICATION_ID)) {
+        if (sbn.packageName == packageName && sbn.id == FOREGROUND_NOTIFICATION_ID) {
             return
         }
 

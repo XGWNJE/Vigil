@@ -56,27 +56,6 @@ powershell -ExecutionPolicy Bypass -File scripts/run-alert-stress.ps1 -AvdName V
 
 调试更新接口只对 Debug 生效。较大本地响应使用 `adb reverse tcp:<port> tcp:<port>` 和设备侧 `127.0.0.1`；外部系统安装、Play Protect 和同签名 Release 升级保留给用户验收。
 
-## 通知节点联动
+## 真机补充验收
 
-纯本机关键词测试需要通知使用权；仅服务接警不需要该授权。Release 使用 WSS；Debug 只为回环及模拟器宿主允许明文。通知节点凭据不得打印或提交。
-
-先在相邻 VisionGuard 仓库安装服务/Web 依赖、构建服务，启动隔离 fixture：
-
-```powershell
-npm --prefix server ci
-npm --prefix receiver/web ci
-npm --prefix server run build
-node server/test/notification-node-fixture.cjs
-```
-
-再在本仓库、已运行的可见平板模拟器上执行（PowerShell 必须整体引用 `-P` 参数）：
-
-```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.example.vigil.NotificationNodeRuntimeTest' '-Pandroid.testInstrumentationRunnerArguments.relayFixture=http://10.0.2.2:4319' --console=plain
-```
-
-该测试使用随机私有登记和模拟检测节点，核对范围过滤、后台保存及播放器、确认后释放、统一服务停机的本地提醒、恢复后不重放；普通仪器命令未提供 fixture 参数时显式跳过此项。它不验证真实 WPF 推理或物理传感器。fixture 数据位于 VisionGuard 的被忽略 `.local/group2-verification/`；结束后关闭 fixture、子服务与模拟器。
-
-真机另验：使用同签名当前包和真实 WSS 测试服务；先由用户确认闹钟流静音。分别检查锁屏与其他页面、长时间后台、延时、有限次数、确认持久化、系统铃声与字号旋转，以及真实检测节点到手机的链路。浅色和深色均检查输入、列表、弹窗与应用过滤，不能用模拟器播放器状态代替听感和厂商后台证明。
-
-统一时间验收：Web「设置 → 统一时间」保存北京时间，再查看同一事件的 Web 时间和 Vigil 弹窗、最近报警与历史。切为 UTC 后应恰好减少 8 小时，跨日日期相应变化；切回北京时间并重连，确认标准保留。已有告警的原始时间与队列顺序不改变，不修改设备系统时区或每日定点策略。格式化回归由 `AlarmTimeTest` 覆盖，私有设置重建与无效标准拒绝由 `AlarmTimeSettingsTest` 覆盖；跨端目检仍需按本流程单独验收。
+真机使用同签名当前包；发通知前先由用户确认闹钟流静音。分别检查锁屏与其他页面、长时间后台、延时、有限次数、确认持久化、系统铃声与字号旋转；浅色和深色均检查输入、列表、弹窗与应用过滤，不能用模拟器播放器状态代替听感和厂商后台证明。

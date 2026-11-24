@@ -49,8 +49,9 @@ import com.example.vigil.ui.theme.VigilBackground
 import com.example.vigil.ui.theme.VigilTextSecondary
 import com.example.vigil.ui.theme.VigilTextPrimary
 import com.example.vigil.ui.theme.VigilDivider
-import com.example.vigil.node.formatAlarmTime
-import com.example.vigil.ui.rememberAlarmTimeZone
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 「A · 一线」报警记录页：与应用过滤页同一语言——暗底、发丝线分区、等宽元信息。
@@ -196,9 +197,8 @@ fun AlertHistoryScreen(
 @Composable
 private fun AlertRecordRow(record: AlertRecord, modifier: Modifier = Modifier) {
     val rowLineColor = VigilDivider
-    val timeZone = rememberAlarmTimeZone()
-    val timeText = remember(record.timestamp, timeZone) {
-        formatAlarmTime(record.timestamp, "MM-dd HH:mm", timeZone)
+    val timeText = remember(record.timestamp) {
+        SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).format(Date(record.timestamp))
     }
     Column(
         modifier = modifier

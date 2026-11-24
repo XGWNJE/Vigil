@@ -119,7 +119,7 @@ import com.example.vigil.ui.theme.VigilDivider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** 本机通知设置与报警策略；主界面由统一通知节点布局承载。 */
+/** 本机通知设置与报警策略；主界面由 NotificationDashboard 承载。 */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(

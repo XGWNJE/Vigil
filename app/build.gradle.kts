@@ -81,8 +81,6 @@ android {
 }
 
 dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-
     // Android 核心 KTX 库
     implementation("androidx.core:core-ktx:1.12.0")
     // AppCompat 库，提供向后兼容的 Material Design 组件

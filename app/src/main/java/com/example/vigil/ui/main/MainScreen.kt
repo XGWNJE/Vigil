@@ -13,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
@@ -52,9 +54,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -63,6 +74,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.vigil.ui.components.VigilCardShape
 import com.example.vigil.ui.components.VigilDialogShape
 import com.example.vigil.ui.components.VigilPillChip
@@ -198,6 +210,7 @@ fun MainScreen(
     }
 
     var showAddKeywordDialog by remember { mutableStateOf(false) }
+    var expandedKeyword by rememberSaveable { mutableStateOf<String?>(null) }
     var showGuideDialog by remember { mutableStateOf<PermissionGuide?>(null) }
     // 关键词删除二次确认：待删除的关键词，非空时弹出确认框
     var keywordPendingDelete by remember { mutableStateOf<String?>(null) }
@@ -245,27 +258,125 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (keywordPage) {
-                // 1. 关键词
-                LineRow {
-                    RowLabel("关键词")
-                    FlowRow(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    // 方案 C · 顶部双胶囊操作栏（+ 添加关键词 | 应用过滤）
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        keywordList.forEach { keyword ->
-                            KeywordChip(
-                                text = keyword,
-                                onClick = { keywordPendingConfig = keyword },
-                                onRemove = { keywordPendingDelete = keyword }
+                        val colors = MaterialTheme.colorScheme
+                        Surface(
+                            onClick = { showAddKeywordDialog = true },
+                            modifier = Modifier.weight(1f),
+                            color = colors.primaryContainer,
+                            shape = VigilPillShape,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.65f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Add,
+                                    contentDescription = null,
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = "添加关键词",
+                                    color = colors.primary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = onNavigateToAppFilter,
+                            modifier = Modifier.weight(1f),
+                            color = colors.surface,
+                            shape = VigilPillShape,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FilterAlt,
+                                    contentDescription = null,
+                                    tint = if (isAppFilterEnabled) colors.primary else colors.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (isAppFilterEnabled) "仅指定应用" else "全部应用",
+                                    color = colors.onSurface,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Icon(
+                                    imageVector = Icons.Outlined.ChevronRight,
+                                    contentDescription = null,
+                                    tint = colors.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // 方案 C · 手风琴原地展开规则卡列表
+                    if (keywordList.isEmpty()) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = VigilCardShape,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = "暂无关键词，点击上方「添加关键词」开始监听",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)
                             )
                         }
-                        AddChip(onClick = { showAddKeywordDialog = true })
+                    } else {
+                        keywordList.forEach { keyword ->
+                            val configTrigger = keywordConfigVersion
+                            val ringtoneOverride = remember(keyword, configTrigger) {
+                                settingsViewModel.getKeywordRingtoneName(keyword)
+                            }
+                            val loopCountOverride = remember(keyword, configTrigger) {
+                                settingsViewModel.getKeywordLoopCount(keyword)
+                            }
+                            val delayPolicyOverride = remember(keyword, configTrigger) {
+                                settingsViewModel.getKeywordDelayPolicy(keyword)
+                            }
+                            AccordionKeywordCard(
+                                keyword = keyword,
+                                expanded = expandedKeyword == keyword,
+                                ringtoneLabel = ringtoneOverride ?: "默认",
+                                loopLabel = formatLoopCount(loopCountOverride ?: defaultLoopCount),
+                                delayLabel = formatDelayShort(delayPolicyOverride ?: defaultDelayPolicy),
+                                hasCustomRule = ringtoneOverride != null || loopCountOverride != null || delayPolicyOverride != null,
+                                onToggleExpand = {
+                                    expandedKeyword = if (expandedKeyword == keyword) null else keyword
+                                },
+                                onPickRingtone = { ringtoneSelectTarget = keyword },
+                                onPickLoopCount = { loopCountDialogTarget = keyword },
+                                onPickDelay = { delayDialogTarget = keyword },
+                                onDelete = { keywordPendingDelete = keyword }
+                            )
+                        }
                     }
-                }
-
                 }
                 if (!keywordPage) {
                 GroupHeader("声音与报警")
@@ -351,14 +462,6 @@ fun MainScreen(
                         RowLabel("待触发延时报警")
                         RowValue("$pendingDelayedCount 条", withArrow = true)
                     }
-                }
-
-                }
-                if (keywordPage) {
-                // 9. 应用过滤
-                LineRow(onClick = onNavigateToAppFilter) {
-                    RowLabel("应用过滤")
-                    RowValue(if (isAppFilterEnabled) "仅指定应用" else "全部应用", withArrow = true)
                 }
 
                 }
@@ -825,62 +928,209 @@ private fun LockTaskGuideDialog(
     )
 }
 
+/**
+ * 方案 C · 手风琴原地展开规则卡：
+ * - 折叠态：左关键词（最多 2 行优雅省略，绝不撑破）+ 右摘要胶囊与展开箭头；
+ * - 展开态：琥珀金边框高亮，原地显示「铃声 / 循环 / 延时」三联直调胶囊与右下角独立红色删除键。
+ */
 @Composable
-private fun KeywordChip(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
+private fun AccordionKeywordCard(
+    keyword: String,
+    expanded: Boolean,
+    ringtoneLabel: String,
+    loopLabel: String,
+    delayLabel: String,
+    hasCustomRule: Boolean,
+    onToggleExpand: () -> Unit,
+    onPickRingtone: () -> Unit,
+    onPickLoopCount: () -> Unit,
+    onPickDelay: () -> Unit,
+    onDelete: () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        color = colors.surfaceVariant,
-        shape = VigilPillShape,
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant)
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        color = colors.surface,
+        shape = VigilCardShape,
+        border = androidx.compose.foundation.BorderStroke(
+            width = if (expanded) 1.5.dp else 1.dp,
+            color = if (expanded) colors.primary else colors.outlineVariant
+        )
     ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = text,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                color = colors.onSurface,
-                modifier = Modifier.clickable(onClick = onClick)
-            )
-            Box(
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 折叠态主行
+            Row(
                 modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(colors.outlineVariant)
-                    .clickable(onClick = onRemove),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggleExpand)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "删除关键词 $text",
-                    tint = colors.onSurfaceVariant,
-                    modifier = Modifier.size(11.dp)
+                Text(
+                    text = keyword,
+                    color = colors.onSurface,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = if (expanded) 4 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                Spacer(Modifier.width(10.dp))
+                Surface(
+                    color = if (hasCustomRule) colors.primaryContainer else colors.surfaceVariant,
+                    shape = VigilPillShape
+                ) {
+                    Text(
+                        text = "$loopLabel · $delayLabel",
+                        color = if (hasCustomRule) colors.primary else colors.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = if (expanded) "收起" else "展开",
+                    tint = if (expanded) colors.primary else colors.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // 展开态：原地配置胶囊 + 右下角独立删除按钮
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    HorizontalDivider(color = colors.outlineVariant)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AccordionInlineField(
+                            icon = Icons.Outlined.Notifications,
+                            label = "铃声",
+                            value = ringtoneLabel,
+                            onClick = onPickRingtone,
+                            modifier = Modifier.weight(1f)
+                        )
+                        AccordionInlineField(
+                            icon = Icons.Outlined.Repeat,
+                            label = "循环",
+                            value = loopLabel,
+                            onClick = onPickLoopCount,
+                            modifier = Modifier.weight(1f)
+                        )
+                        AccordionInlineField(
+                            icon = Icons.Outlined.Schedule,
+                            label = "延时",
+                            value = delayLabel,
+                            onClick = onPickDelay,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Surface(
+                            onClick = onDelete,
+                            color = colors.error,
+                            shape = VigilPillShape
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteOutline,
+                                    contentDescription = "删除关键词 $keyword",
+                                    tint = colors.onError,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = "删除",
+                                    color = colors.onError,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AddChip(onClick: () -> Unit) {
+private fun AccordionInlineField(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        onClick = onClick,
-        color = colors.primaryContainer,
-        shape = VigilPillShape,
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f))
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
-            text = "+ 添加",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.primary,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            text = label,
+            color = colors.onSurfaceVariant,
+            fontSize = 11.sp
         )
+        Surface(
+            onClick = onClick,
+            color = colors.surfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = value,
+                    color = colors.onSurface,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
+}
+
+private fun formatDelayShort(policy: DelayPolicy): String = when (policy.mode) {
+    DelayMode.IMMEDIATE -> "即时"
+    DelayMode.FIXED -> {
+        val secs = (policy.fixedDelayMs / 1000L).coerceAtLeast(1L)
+        when {
+            secs >= 3600L -> "+${secs / 3600L}h"
+            secs >= 60L -> "+${secs / 60L}m"
+            else -> "+${secs}s"
+        }
+    }
+    DelayMode.SCHEDULED -> "定点"
 }
 
 /** 关键词删除二次确认对话框（DirA 风格，与 AddKeywordDialog 一致） */

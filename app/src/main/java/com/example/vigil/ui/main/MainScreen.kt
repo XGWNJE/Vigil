@@ -335,7 +335,7 @@ fun MainScreen(
                             ) {
                                 Text(
                                     text = label,
-                                    color = if (selected) Color(0xFF06131C) else VigilTextPrimary,
+                                    color = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.onPrimary else VigilTextPrimary,
                                     fontSize = 12.sp,
                                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                                 )

@@ -39,13 +39,13 @@ object AlertOverlayManager {
 
     private const val TAG = "AlertOverlayManager"
 
-    private const val COLOR_CARD_BG = 0xF50E1319.toInt()
-    private const val COLOR_SNIPPET_BG = 0xFF171E27.toInt()
-    private const val COLOR_CRIMSON = 0xFFF43F5E.toInt()
-    private const val COLOR_CRIMSON_DARK = 0xFF3A1520.toInt()
-    private const val COLOR_TEXT_PRIMARY = 0xFFF8FAFC.toInt()
-    private const val COLOR_TEXT_SECONDARY = 0xFF94A3B8.toInt()
-    private const val COLOR_TRACK_BG = 0xFF232C38.toInt()
+    private const val COLOR_CARD_BG = 0xF5191614.toInt()
+    private const val COLOR_SNIPPET_BG = 0xFF25211E.toInt()
+    private const val COLOR_CRIMSON = 0xFFE5484D.toInt()
+    private const val COLOR_CRIMSON_DARK = 0xFF381719.toInt()
+    private const val COLOR_TEXT_PRIMARY = 0xFFF5F2EB.toInt()
+    private const val COLOR_TEXT_SECONDARY = 0xFFA39B8F.toInt()
+    private const val COLOR_TRACK_BG = 0xFF332E29.toInt()
 
     private val mainHandler = Handler(Looper.getMainLooper())
 

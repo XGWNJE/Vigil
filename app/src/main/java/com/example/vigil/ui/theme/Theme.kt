@@ -13,49 +13,49 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 /**
- * 方案 B · 静默暗夜（Obsidian Sentinel）色彩体系。
- * 默认 OLED 深炭黑 + 电青蓝待机信号 + 警戒红触发态；同时完整支持系统浅色外观。
+ * 暖黑石墨 + 琥珀金（Warm Graphite & Amber）色彩体系。
+ * 深暖灰底 + 琥珀金待机信号 + 高级暖红报警态；浅色模式对应暖纸白 + 沉稳深琥珀。
  */
-private val ObsidianDarkColorScheme = darkColorScheme(
-    primary = Color(0xFF38BDF8),
-    onPrimary = Color(0xFF06131C),
-    primaryContainer = Color(0xFF0E2A3A),
-    onPrimaryContainer = Color(0xFFE0F2FE),
-    secondary = Color(0xFF94A3B8),
-    onSecondary = Color(0xFF0B0E11),
-    background = Color(0xFF0B0E11),
-    onBackground = Color(0xFFF1F5F9),
-    surface = Color(0xFF141920),
-    onSurface = Color(0xFFF1F5F9),
-    surfaceVariant = Color(0xFF1C232D),
-    onSurfaceVariant = Color(0xFF8B98A5),
-    outline = Color(0xFF334155),
-    outlineVariant = Color(0xFF222A35),
-    error = Color(0xFFF43F5E),
+private val WarmGraphiteDarkColorScheme = darkColorScheme(
+    primary = Color(0xFFF5A524),
+    onPrimary = Color(0xFF1A1205),
+    primaryContainer = Color(0xFF332512),
+    onPrimaryContainer = Color(0xFFFDE8C8),
+    secondary = Color(0xFFA39B8F),
+    onSecondary = Color(0xFF121110),
+    background = Color(0xFF121110),
+    onBackground = Color(0xFFF5F2EB),
+    surface = Color(0xFF1C1A17),
+    onSurface = Color(0xFFF5F2EB),
+    surfaceVariant = Color(0xFF26231F),
+    onSurfaceVariant = Color(0xFFA39B8F),
+    outline = Color(0xFF4A443C),
+    outlineVariant = Color(0xFF2E2A25),
+    error = Color(0xFFE5484D),
     onError = Color.White,
-    errorContainer = Color(0xFF3A1520),
-    onErrorContainer = Color(0xFFFFD6DD)
+    errorContainer = Color(0xFF381719),
+    onErrorContainer = Color(0xFFFFD8DA)
 )
 
-private val ObsidianLightColorScheme = lightColorScheme(
-    primary = Color(0xFF0284C7),
+private val WarmPaperLightColorScheme = lightColorScheme(
+    primary = Color(0xFFC87A08),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE0F2FE),
-    onPrimaryContainer = Color(0xFF082F49),
-    secondary = Color(0xFF475569),
+    primaryContainer = Color(0xFFFDEFD8),
+    onPrimaryContainer = Color(0xFF3B2304),
+    secondary = Color(0xFF736B60),
     onSecondary = Color.White,
-    background = Color(0xFFF4F6F9),
-    onBackground = Color(0xFF0F172A),
+    background = Color(0xFFF6F4EF),
+    onBackground = Color(0xFF1C1917),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF0F172A),
-    surfaceVariant = Color(0xFFEAEFF4),
-    onSurfaceVariant = Color(0xFF64748B),
-    outline = Color(0xFFCBD5E1),
-    outlineVariant = Color(0xFFE2E8F0),
-    error = Color(0xFFE11D48),
+    onSurface = Color(0xFF1C1917),
+    surfaceVariant = Color(0xFFECE8E0),
+    onSurfaceVariant = Color(0xFF736B60),
+    outline = Color(0xFFCFC8BC),
+    outlineVariant = Color(0xFFE5DFD5),
+    error = Color(0xFFD9383E),
     onError = Color.White,
-    errorContainer = Color(0xFFFFE4E6),
-    onErrorContainer = Color(0xFF881337)
+    errorContainer = Color(0xFFFFE5E6),
+    onErrorContainer = Color(0xFF7A1418)
 )
 
 @Composable
@@ -63,7 +63,7 @@ fun VigilTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) ObsidianDarkColorScheme else ObsidianLightColorScheme
+    val colorScheme = if (darkTheme) WarmGraphiteDarkColorScheme else WarmPaperLightColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {

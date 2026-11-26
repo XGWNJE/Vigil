@@ -25,66 +25,65 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.vigil.data.DelayMode
-import com.example.vigil.data.DelayPolicy
+import com.example.vigil.data.OverlayAlertStyle
 import com.example.vigil.data.SharedPreferencesHelper
+import com.example.vigil.ui.components.VigilSectionCard
+import com.example.vigil.ui.components.VigilTopBar
+import com.example.vigil.ui.history.AlertHistoryScreen
 import com.example.vigil.ui.monitoring.ServiceState
+import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.util.ListenerRecovery
 import com.example.vigil.util.PermissionUtils
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
- * 方案 B · 静默暗夜（Obsidian Sentinel）主仪表盘。
+ * 统一风格主容器（暖黑石墨 + 琥珀金 · 单一入口信息架构）。
  *
- * 遵循「秩序、自适应、不说明」：
- * - 居中发光守望环直接承载主开关与状态（点按即启停，零废话副标题）；
- * - 紧凑数字胶囊直达关键词、默认铃声/次数、延时模式；
- * - 随容器空间在单栏与左右双栏之间自然自适应，不按固定机型硬切。
+ * 4 个一级页面严格各司其职，同一个能力全应用只保留唯一入口：
+ * - 监控：唯一监听主开关（居中发光守望环）+ 纯只读运行概览 + 异常恢复
+ * - 规则：关键词管理 + 应用过滤
+ * - 记录：完整报警历史与清空
+ * - 设置：声音策略、铃声库、应用外浮窗、系统权限与版本更新
  */
 @Composable
 internal fun NotificationDashboard(
     serviceEnabled: Boolean,
     serviceState: ServiceState,
     keywordCount: Int,
-    ringtone: String,
-    loops: Int,
-    delayPolicy: DelayPolicy,
-    hasOverlayPermission: Boolean,
+    overlayStyle: OverlayAlertStyle,
+    settingsViewModel: SettingsViewModel,
     onToggleLocal: () -> Unit,
-    onRingtone: () -> Unit,
-    onLoops: () -> Unit,
-    onDelay: () -> Unit,
-    onRequestOverlay: () -> Unit,
-    onHistory: () -> Unit,
-    onLibrary: () -> Unit,
     settingsContent: @Composable (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val alarmPrefs = remember { SharedPreferencesHelper(context) }
     var page by rememberSaveable { mutableStateOf("监控") }
-    var records by remember { mutableStateOf(alarmPrefs.getAlertHistory()) }
+    var recordCount by remember { mutableIntStateOf(alarmPrefs.getAlertHistory().size) }
 
     DisposableEffect(Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "alert_history") records = alarmPrefs.getAlertHistory()
+            if (key == "alert_history") recordCount = alarmPrefs.getAlertHistory().size
         }
         alarmPrefs.prefs.registerOnSharedPreferenceChangeListener(listener)
         onDispose { alarmPrefs.prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     val colors = MaterialTheme.colorScheme
-    val delayShortLabel = when (delayPolicy.mode) {
-        DelayMode.IMMEDIATE -> "即时"
-        DelayMode.FIXED -> {
-            val secs = (delayPolicy.fixedDelayMs / 1000L).coerceAtLeast(1L)
-            if (secs >= 60L) "+${secs / 60}m" else "+${secs}s"
-        }
-        DelayMode.SCHEDULED -> "定点"
+    val navItems = remember {
+        listOf(
+            Triple("监控", Icons.Outlined.Sensors, "监控"),
+            Triple("规则", Icons.Outlined.Tune, "规则"),
+            Triple("记录", Icons.Outlined.History, "记录"),
+            Triple("设置", Icons.Outlined.Settings, "设置")
+        )
+    }
+
+    val overlayStyleLabel = when (overlayStyle) {
+        OverlayAlertStyle.AUTO -> "自动"
+        OverlayAlertStyle.TOP_BANNER -> "顶部"
+        OverlayAlertStyle.CENTER_CARD -> "居中"
+        OverlayAlertStyle.CORNER_COMPACT -> "角落"
     }
 
     BoxWithConstraints(
@@ -94,187 +93,184 @@ internal fun NotificationDashboard(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        // 按容器实际容纳能力自适应，不按固定机型硬切
-        val wideTwoPane = maxWidth >= 660.dp
+        val wideLayout = maxWidth >= 660.dp
 
-        if (wideTwoPane) {
+        if (wideLayout) {
             Row(Modifier.fillMaxSize()) {
-                // 宽屏极简图标导航轨（紧凑秩序，不占内容空间）
+                // 宽屏 4 格极简图标导航轨（唯一导航入口）
                 Column(
                     modifier = Modifier
                         .width(68.dp)
                         .fillMaxHeight()
                         .background(colors.surface)
-                        .padding(vertical = 16.dp),
+                        .padding(vertical = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    RailNavItem(Icons.Outlined.Sensors, "监控", page == "监控") { page = "监控" }
-                    RailNavItem(Icons.Outlined.Tune, "规则", page == "规则") { page = "规则" }
-                    RailNavItem(Icons.Outlined.History, "记录", false) { onHistory() }
-                    RailNavItem(Icons.Outlined.MusicNote, "铃声", false) { onLibrary() }
-                    Spacer(Modifier.weight(1f))
-                    RailNavItem(Icons.Outlined.Settings, "设置", page == "设置") { page = "设置" }
+                    navItems.forEach { (id, icon, label) ->
+                        RailNavItem(icon = icon, label = label, selected = page == id) { page = id }
+                    }
                 }
                 VerticalDivider(color = colors.outlineVariant)
 
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(horizontal = 24.dp, vertical = 20.dp)
-                ) {
-                    if (page == "监控") {
-                        Row(
-                            Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.spacedBy(24.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(
-                                Modifier
-                                    .weight(0.95f)
-                                    .verticalScroll(rememberScrollState()),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(18.dp)
-                            ) {
-                                SentinelHeroRing(
-                                    serviceEnabled = serviceEnabled,
-                                    serviceState = serviceState,
-                                    onToggle = onToggleLocal
-                                )
-                                SentinelStatusPills(
-                                    keywordCount = keywordCount,
-                                    ringtone = ringtone,
-                                    loops = loops,
-                                    delayLabel = delayShortLabel,
-                                    onKeywords = { page = "规则" },
-                                    onSound = onRingtone,
-                                    onLoops = onLoops,
-                                    onDelay = onDelay
-                                )
-                                RecoveryOrOverlayBanner(
-                                    serviceState = serviceState,
-                                    hasOverlayPermission = hasOverlayPermission,
-                                    onRequestOverlay = onRequestOverlay
-                                )
-                            }
-                            Column(
-                                Modifier
-                                    .weight(1.05f)
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                RecentAlertsCard(records = records, onViewAll = onHistory)
-                            }
-                        }
-                    } else {
-                        Column(
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    when (page) {
+                        "监控" -> MonitorPane(
+                            wide = true,
+                            serviceEnabled = serviceEnabled,
+                            serviceState = serviceState,
+                            keywordCount = keywordCount,
+                            recordCount = recordCount,
+                            overlayStyleLabel = overlayStyleLabel,
+                            onToggle = onToggleLocal
+                        )
+                        "记录" -> AlertHistoryScreen(onNavigateBack = null, viewModel = settingsViewModel)
+                        else -> Column(
                             Modifier
                                 .fillMaxSize()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            Text(
-                                text = page,
-                                color = colors.onBackground,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text(page, color = colors.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                             settingsContent(page == "规则")
                         }
                     }
                 }
             }
         } else {
-            // 窄屏竖向单栏 + 极简 3 格底栏
+            // 窄屏：顶栏（纯标题，无重复功能按钮）+ 内容区 + 4 格底部导航
             Column(Modifier.fillMaxSize()) {
-                // 极简顶栏：品牌字标 + 设置入口
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (page == "监控") "Vigil" else page,
-                        color = colors.onBackground,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (page == "规则") {
-                        IconButton(onClick = onLibrary) {
-                            Icon(Icons.Outlined.MusicNote, contentDescription = "铃声库", tint = colors.onSurfaceVariant)
-                        }
-                    }
-                    IconButton(onClick = { page = if (page == "设置") "监控" else "设置" }) {
-                        Icon(
-                            imageVector = if (page == "设置") Icons.Outlined.Close else Icons.Outlined.Settings,
-                            contentDescription = "设置",
-                            tint = if (page == "设置") colors.primary else colors.onSurfaceVariant
-                        )
-                    }
+                if (page != "记录") {
+                    VigilTopBar(title = if (page == "监控") "Vigil" else page)
                 }
 
-                // 主内容区
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 18.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
-                ) {
-                    if (page == "监控") {
-                        Spacer(Modifier.height(4.dp))
-                        SentinelHeroRing(
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    when (page) {
+                        "监控" -> MonitorPane(
+                            wide = false,
                             serviceEnabled = serviceEnabled,
                             serviceState = serviceState,
+                            keywordCount = keywordCount,
+                            recordCount = recordCount,
+                            overlayStyleLabel = overlayStyleLabel,
                             onToggle = onToggleLocal
                         )
-                        SentinelStatusPills(
-                            keywordCount = keywordCount,
-                            ringtone = ringtone,
-                            loops = loops,
-                            delayLabel = delayShortLabel,
-                            onKeywords = { page = "规则" },
-                            onSound = onRingtone,
-                            onLoops = onLoops,
-                            onDelay = onDelay
-                        )
-                        RecoveryOrOverlayBanner(
-                            serviceState = serviceState,
-                            hasOverlayPermission = hasOverlayPermission,
-                            onRequestOverlay = onRequestOverlay
-                        )
-                        RecentAlertsCard(records = records, onViewAll = onHistory)
-                        Spacer(Modifier.height(8.dp))
-                    } else {
-                        settingsContent(page == "规则")
+                        "记录" -> AlertHistoryScreen(onNavigateBack = null, viewModel = settingsViewModel)
+                        else -> Column(
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 18.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            settingsContent(page == "规则")
+                            Spacer(Modifier.height(12.dp))
+                        }
                     }
                 }
 
-                // 极简 3 格底栏：监控 / 规则 / 记录
                 HorizontalDivider(color = colors.outlineVariant)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.surface)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    BottomNavItem(Icons.Outlined.Sensors, "监控", page == "监控") { page = "监控" }
-                    BottomNavItem(Icons.Outlined.Tune, "规则", page == "规则") { page = "规则" }
-                    BottomNavItem(Icons.Outlined.History, "记录", false) { onHistory() }
+                    navItems.forEach { (id, icon, label) ->
+                        BottomNavItem(icon = icon, label = label, selected = page == id) { page = id }
+                    }
                 }
             }
         }
     }
 }
 
-/** 方案 B 核心标志：居中发光脉冲守望环（点按直接启停监听）。 */
+@Composable
+private fun MonitorPane(
+    wide: Boolean,
+    serviceEnabled: Boolean,
+    serviceState: ServiceState,
+    keywordCount: Int,
+    recordCount: Int,
+    overlayStyleLabel: String,
+    onToggle: () -> Unit
+) {
+    val content: @Composable () -> Unit = {
+        SentinelHeroRing(
+            serviceEnabled = serviceEnabled,
+            serviceState = serviceState,
+            onToggle = onToggle
+        )
+    }
+
+    val statusSection: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ListenerRecoveryBanner(serviceState = serviceState)
+            // 纯只读运行概览（仅展示实时数值，不设重复跳转入口）
+            VigilSectionCard(title = "当前状态") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    ReadOnlyMetric("监控词", "$keywordCount")
+                    ReadOnlyMetric("历史记录", "$recordCount")
+                    ReadOnlyMetric("告警浮窗", overlayStyleLabel)
+                }
+            }
+        }
+    }
+
+    if (wide) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp, vertical = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { content() }
+            Box(Modifier.weight(1f)) { statusSection() }
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Spacer(Modifier.height(16.dp))
+            content()
+            Spacer(Modifier.height(8.dp))
+            statusSection()
+        }
+    }
+}
+
+@Composable
+private fun ReadOnlyMetric(label: String, value: String) {
+    val colors = MaterialTheme.colorScheme
+    Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = value,
+            color = colors.onSurface,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = label,
+            color = colors.onSurfaceVariant,
+            fontSize = 12.sp
+        )
+    }
+}
+
+/** 居中发光脉冲守望环：全应用唯一的监听总开关。 */
 @Composable
 private fun SentinelHeroRing(
     serviceEnabled: Boolean,
@@ -304,14 +300,13 @@ private fun SentinelHeroRing(
         else -> "异常"
     }
 
-    // 仅在运行或告警态启用帧驱动呼吸光晕
     val pulseRaw = if (isRunning || isWarning) rememberFrameDrivenProgress(2200) else 0f
     val pulseTri = if (pulseRaw < 0.5f) pulseRaw * 2f else (1f - pulseRaw) * 2f
-    val glowAlpha = if (isRunning || isWarning) 0.14f + 0.18f * pulseTri else 0.04f
+    val glowAlpha = if (isRunning || isWarning) 0.16f + 0.18f * pulseTri else 0.04f
 
     Box(
         modifier = Modifier
-            .size(188.dp)
+            .size(196.dp)
             .clip(CircleShape)
             .clickable(onClick = onToggle),
         contentAlignment = Alignment.Center
@@ -326,7 +321,7 @@ private fun SentinelHeroRing(
                 radius = radius
             )
             drawCircle(
-                color = ringColor.copy(alpha = if (isRunning || isWarning) 0.22f else 0.12f),
+                color = ringColor.copy(alpha = if (isRunning || isWarning) 0.24f else 0.14f),
                 radius = radius * 0.80f,
                 style = Stroke(width = 1.5.dp.toPx())
             )
@@ -345,7 +340,7 @@ private fun SentinelHeroRing(
                 imageVector = if (isWarning) Icons.Outlined.WarningAmber else if (serviceEnabled) Icons.Outlined.Sensors else Icons.Outlined.NotificationsOff,
                 contentDescription = statusText,
                 tint = ringColor,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(30.dp)
             )
             Text(
                 text = statusText,
@@ -357,196 +352,35 @@ private fun SentinelHeroRing(
     }
 }
 
-/** 守望环下方的紧凑等宽数字胶囊：零说明文字，直接点击调节。 */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SentinelStatusPills(
-    keywordCount: Int,
-    ringtone: String,
-    loops: Int,
-    delayLabel: String,
-    onKeywords: () -> Unit,
-    onSound: () -> Unit,
-    onLoops: () -> Unit,
-    onDelay: () -> Unit
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        StatusPill(text = "$keywordCount 词", onClick = onKeywords)
-        StatusPill(text = ringtone, onClick = onSound, maxChars = 10)
-        StatusPill(text = "${loops}×", onClick = onLoops, mono = true)
-        StatusPill(text = delayLabel, onClick = onDelay, mono = true)
-    }
-}
-
-@Composable
-private fun StatusPill(
-    text: String,
-    onClick: () -> Unit,
-    mono: Boolean = false,
-    maxChars: Int = 16
-) {
-    val colors = MaterialTheme.colorScheme
-    val display = if (text.length > maxChars) text.take(maxChars - 1) + "…" else text
-    Surface(
-        onClick = onClick,
-        color = colors.surfaceVariant,
-        shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, colors.outlineVariant)
-    ) {
-        Text(
-            text = display,
-            color = colors.onSurface,
-            fontSize = 13.sp,
-            fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
-        )
-    }
-}
-
-/** 断连恢复入口 & 应用外浮窗权限一键引导（仅在异常或未授权时出现）。 */
-@Composable
-private fun RecoveryOrOverlayBanner(
-    serviceState: ServiceState,
-    hasOverlayPermission: Boolean,
-    onRequestOverlay: () -> Unit
-) {
+private fun ListenerRecoveryBanner(serviceState: ServiceState) {
+    if (serviceState !in listOf(ServiceState.LISTENER_DISCONNECTED, ServiceState.HEARTBEAT_TIMEOUT, ServiceState.NO_PERMISSION)) return
     val context = LocalContext.current
-    val colors = MaterialTheme.colorScheme
-
-    if (serviceState in listOf(ServiceState.LISTENER_DISCONNECTED, ServiceState.HEARTBEAT_TIMEOUT, ServiceState.NO_PERMISSION)) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = colors.errorContainer,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, colors.error.copy(alpha = 0.5f))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (serviceState == ServiceState.NO_PERMISSION) "通知使用权未授予" else "监听未连接",
-                    color = colors.onErrorContainer,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f)
-                )
-                if (serviceState != ServiceState.NO_PERMISSION) {
-                    TextButton(onClick = { ListenerRecovery.startFastRecovery(context) }) {
-                        Text("重试", color = colors.error)
-                    }
-                }
-                TextButton(onClick = { (context as? Activity)?.let(PermissionUtils::openNotificationListenerSettings) }) {
-                    Text("授权", color = colors.error)
-                }
-            }
-        }
-    }
-
-    if (!hasOverlayPermission) {
-        Surface(
-            onClick = onRequestOverlay,
-            modifier = Modifier.fillMaxWidth(),
-            color = colors.surface,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, colors.primary.copy(alpha = 0.45f))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.Layers, contentDescription = null, tint = colors.primary, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = "应用外告警浮窗 · 去授权",
-                    color = colors.onSurface,
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(18.dp))
-            }
-        }
-    }
-}
-
-/** 极简最近报警卡片。 */
-@Composable
-private fun RecentAlertsCard(
-    records: List<com.example.vigil.data.AlertRecord>,
-    onViewAll: () -> Unit
-) {
     val colors = MaterialTheme.colorScheme
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = colors.surface,
+        color = colors.errorContainer,
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, colors.outlineVariant)
+        border = BorderStroke(1.dp, colors.error.copy(alpha = 0.5f))
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "最近报警",
-                    color = colors.onSurface,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(
-                    onClick = onViewAll,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                ) {
-                    Text("全部", color = colors.primary, fontSize = 13.sp)
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (serviceState == ServiceState.NO_PERMISSION) "通知使用权未授予" else "监听连接异常",
+                color = colors.onErrorContainer,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            if (serviceState != ServiceState.NO_PERMISSION) {
+                TextButton(onClick = { ListenerRecovery.startFastRecovery(context) }) {
+                    Text("重试", color = colors.error)
                 }
             }
-
-            if (records.isEmpty()) {
-                Text(
-                    text = "暂无记录",
-                    color = colors.onSurfaceVariant,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(vertical = 18.dp)
-                )
-            } else {
-                records.take(4).forEachIndexed { idx, record ->
-                    if (idx > 0) HorizontalDivider(color = colors.outlineVariant, modifier = Modifier.padding(vertical = 10.dp))
-                    else Spacer(Modifier.height(6.dp))
-                    val timeText = remember(record.timestamp) {
-                        SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(record.timestamp))
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = record.keyword,
-                                color = colors.onSurface,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = record.sourceApp ?: "本机通知",
-                                color = colors.onSurfaceVariant,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Text(
-                            text = timeText,
-                            color = colors.onSurfaceVariant,
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
+            TextButton(onClick = { (context as? Activity)?.let(PermissionUtils::openNotificationListenerSettings) }) {
+                Text("授权", color = colors.error)
             }
         }
     }
@@ -565,7 +399,7 @@ private fun BottomNavItem(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {

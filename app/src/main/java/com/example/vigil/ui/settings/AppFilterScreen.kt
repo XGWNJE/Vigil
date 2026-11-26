@@ -1,72 +1,39 @@
 package com.example.vigil.ui.settings
 
 import android.app.Application
-import androidx.compose.animation.animateColor
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vigil.ui.theme.VigilPrimary
-import com.example.vigil.ui.theme.VigilBackground
-import com.example.vigil.ui.theme.VigilTextSecondary
-import com.example.vigil.ui.theme.VigilBorder
-import com.example.vigil.ui.theme.VigilTextPrimary
-import com.example.vigil.ui.theme.VigilDivider
+import com.example.vigil.ui.components.VigilPillChip
+import com.example.vigil.ui.components.VigilSectionCard
+import com.example.vigil.ui.components.VigilSettingRow
+import com.example.vigil.ui.components.VigilTopBar
 
 /**
- * 「A · 一线」应用过滤页：与主屏同一语言——暗底、发丝线分区、等宽元信息、酸橙绿强调。
- * ViewModel 接口不变，仅重写 UI。
+ * 统一风格应用过滤页（暖黑石墨 + 琥珀金，圆角卡片语言）。
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AppFilterScreen(
     onNavigateBack: () -> Unit,
@@ -74,356 +41,163 @@ fun AppFilterScreen(
         factory = SettingsViewModelFactory(LocalContext.current.applicationContext as Application)
     )
 ) {
+    val colors = MaterialTheme.colorScheme
     val isAppFilterEnabled by viewModel.isAppFilterEnabled
     val isLoadingApps by viewModel.isLoadingApps
     val searchQuery by viewModel.searchQuery
+    val showOnlySelected by viewModel.showOnlySelectedApps
     val filteredApps = viewModel.getFilteredApps()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VigilBackground)
+            .background(colors.background)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp)
     ) {
-        // ---- 顶部：返回 + 标题 + 刷新 ----
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // 返回：48dp 触控区，字形左对齐页面内容
-                Box(
-                    modifier = Modifier
-                        .size(width = 36.dp, height = 48.dp)
-                        .clickable(onClick = onNavigateBack),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Text(
-                        text = "←",
-                        fontSize = 18.sp,
-                        color = VigilTextSecondary
-                    )
+        VigilTopBar(
+            title = "应用过滤",
+            onBack = onNavigateBack,
+            trailing = {
+                IconButton(onClick = { viewModel.loadInstalledApps() }) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "刷新", tint = colors.onSurfaceVariant)
                 }
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "APP FILTER // 应用过滤",
-                    style = BodyTextStyle,
-                    fontSize = 11.sp,
-                    letterSpacing = 2.sp,
-                    color = VigilTextPrimary
-                )
             }
-            Text(
-                text = "REFRESH",
-                style = BodyTextStyle,
-                fontSize = 10.sp,
-                letterSpacing = 1.2.sp,
-                color = VigilTextSecondary,
-                modifier = Modifier
-                    .clickable { viewModel.loadInstalledApps() }
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            )
-        }
+        )
 
-        // ---- 开关行 + 统计 ----
-        Column(modifier = Modifier.padding(top = 28.dp)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(VigilDivider)
-            )
-            LineRow {
-                RowLabel("仅监听指定应用")
-                MiniSwitch(
-                    checked = isAppFilterEnabled,
-                    onToggle = { viewModel.onAppFilterEnabledChange(it) }
-                )
-            }
-            Text(
-                text = "${filteredApps.size} APPS · ${filteredApps.count { it.isSelected }} SELECTED",
-                style = BodyTextStyle,
-                fontSize = 10.sp,
-                letterSpacing = 1.sp,
-                color = VigilTextSecondary,
-                modifier = Modifier.padding(top = 12.dp)
-            )
-        }
-
-        // ---- 搜索框 ----
-        if (isAppFilterEnabled && filteredApps.none { it.isSelected }) {
-            Text("未选择应用：当前不会检查任何应用的通知", color = VigilTextSecondary,
-                modifier = Modifier.padding(top = 12.dp))
-        }
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { viewModel.onSearchQueryChange(it) },
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 16.dp),
-            singleLine = true,
-            textStyle = TextStyle(fontSize = 13.sp, color = VigilTextPrimary),
-            placeholder = {
-                Text(text = "搜索应用名或包名", fontSize = 13.sp, color = VigilTextSecondary)
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    Text(
-                        text = "×",
-                        fontSize = 15.sp,
-                        color = VigilTextSecondary,
-                        modifier = Modifier
-                            .clickable { viewModel.onSearchQueryChange("") }
-                            .padding(horizontal = 12.dp)
-                    )
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = VigilPrimary,
-                unfocusedBorderColor = VigilBorder,
-                focusedTextColor = VigilTextPrimary,
-                unfocusedTextColor = VigilTextPrimary,
-                cursorColor = VigilPrimary
-            ),
-            shape = RoundedCornerShape(4.dp)
-        )
-
-        // ---- 应用列表 ----
-        when {
-            isLoadingApps -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "LOADING…",
-                        style = BodyTextStyle,
-                        fontSize = 11.sp,
-                        letterSpacing = 2.sp,
-                        color = VigilTextSecondary
-                    )
-                }
-            }
-            filteredApps.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "NO APPS FOUND",
-                        style = BodyTextStyle,
-                        fontSize = 11.sp,
-                        letterSpacing = 2.sp,
-                        color = VigilTextSecondary
-                    )
-                }
-            }
-            else -> {
-                LazyColumn(modifier = Modifier.padding(top = 8.dp)) {
-                    items(filteredApps, key = { it.packageName }) { app ->
-                        AppFilterRow(
-                            app = app,
-                            onToggle = { viewModel.toggleAppSelection(app.packageName) },
-                            modifier = Modifier.animateItemPlacement()
+                .padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            VigilSectionCard {
+                VigilSettingRow(
+                    title = "仅监听指定应用",
+                    trailingContent = {
+                        Switch(
+                            checked = isAppFilterEnabled,
+                            onCheckedChange = { viewModel.onAppFilterEnabledChange(it) }
                         )
                     }
+                )
+            }
+
+            if (isAppFilterEnabled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.onSearchQueryChange(it) },
+                        singleLine = true,
+                        placeholder = { Text("搜索应用", fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primary,
+                            unfocusedBorderColor = colors.outlineVariant,
+                            focusedContainerColor = colors.surface,
+                            unfocusedContainerColor = colors.surface
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    VigilPillChip(
+                        label = "已选",
+                        selected = showOnlySelected,
+                        onClick = { viewModel.toggleShowOnlySelected() }
+                    )
                 }
             }
         }
-    }
-}
 
-private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)
+        Spacer(Modifier.height(10.dp))
 
-/** 单行：左侧灰标签 + 右侧内容，底部 1dp 发丝线（与主屏 LineRow 同语言） */
-@Composable
-private fun LineRow(
-    content: @Composable RowScope.() -> Unit
-) {
-    val rowLineColor = VigilDivider
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .drawBehind {
-                val stroke = 1.dp.toPx()
-                drawLine(
-                    rowLineColor,
-                    start = Offset(0f, size.height - stroke / 2),
-                    end = Offset(size.width, size.height - stroke / 2),
-                    strokeWidth = stroke
-                )
+        if (!isAppFilterEnabled) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("当前监听全部应用通知", color = colors.onSurfaceVariant, fontSize = 13.sp)
             }
-            .padding(horizontal = 2.dp, vertical = 15.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        content()
-    }
-}
-
-@Composable
-private fun RowLabel(text: String) {
-    Text(
-        text = text,
-        fontSize = 12.sp,
-        letterSpacing = 0.6.sp,
-        color = VigilTextSecondary
-    )
-}
-
-/** 主屏大开关的缩小版：描边胶囊 + 实心圆点（位置/颜色随状态平滑过渡） */
-@Composable
-private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
-    val activeDot = VigilPrimary
-    val inactiveDot = VigilBorder
-    val transition = updateTransition(targetState = checked, label = "miniSwitch")
-    val dotColor by transition.animateColor(label = "dotColor") { on ->
-        if (on) activeDot else inactiveDot
-    }
-    // 圆点中心偏移：0f=左，1f=右（胶囊内径 44-3*2=38dp，圆点 16dp，行程 22dp）
-    val dotOffset by transition.animateFloat(label = "dotOffset") { on -> if (on) 1f else 0f }
-    Box(
-        modifier = Modifier
-            .size(44.dp, 24.dp)
-            .border(width = 1.dp, color = dotColor, shape = CircleShape)
-            .clip(CircleShape)
-            .clickable { onToggle(!checked) }
-            .padding(3.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Box(
-            modifier = Modifier
-                .offset(x = (22.dp * dotOffset))
-                .size(16.dp)
-                .background(dotColor, CircleShape)
-        )
-    }
-}
-
-/** 自定义勾选框：描边小方块，选中酸橙实心 + 对勾（颜色淡入、对勾缩放弹入） */
-@Composable
-private fun AppCheck(checked: Boolean) {
-    val bgColor by animateColorAsState(
-        targetValue = if (checked) VigilPrimary else Color.Transparent,
-        animationSpec = tween(180),
-        label = "checkBg"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = if (checked) VigilPrimary else VigilBorder,
-        animationSpec = tween(180),
-        label = "checkBorder"
-    )
-    Box(
-        modifier = Modifier
-            .size(20.dp)
-            .background(bgColor, RoundedCornerShape(2.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(2.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.animation.AnimatedVisibility(
-            visible = checked,
-            enter = scaleIn(tween(180)) + fadeIn(tween(180)),
-            exit = scaleOut(tween(120)) + fadeOut(tween(120))
-        ) {
-            Text(
-                text = "✓",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = VigilBackground
-            )
+        } else if (isLoadingApps) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = colors.primary, strokeWidth = 2.5.dp)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredApps, key = { it.packageName }) { app ->
+                    AppFilterItemCard(
+                        app = app,
+                        onToggle = { viewModel.toggleAppSelection(app.packageName) }
+                    )
+                }
+                item { Spacer(Modifier.height(12.dp)) }
+            }
         }
     }
 }
 
-/** 应用行：图标 + 名称（含 SYS 标签）+ 包名，右侧勾选框，底部发丝线 */
 @Composable
-private fun AppFilterRow(
+private fun AppFilterItemCard(
     app: AppInfo,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier
+    onToggle: () -> Unit
 ) {
-    val rowLineColor = VigilDivider
+    val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
-    val appIcon = remember(app.packageName) {
+    val iconBitmap = remember(app.packageName) {
         try {
-            context.packageManager.getApplicationIcon(app.packageName).toBitmap().asImageBitmap()
-        } catch (e: Exception) {
+            context.packageManager.getApplicationIcon(app.packageName).toBitmap(96, 96).asImageBitmap()
+        } catch (_: Exception) {
             null
         }
     }
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .drawBehind {
-                val stroke = 1.dp.toPx()
-                drawLine(
-                    rowLineColor,
-                    start = Offset(0f, size.height - stroke / 2),
-                    end = Offset(size.width, size.height - stroke / 2),
-                    strokeWidth = stroke
-                )
-            }
+    VigilSectionCard(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 2.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        if (appIcon != null) {
-            Image(
-                bitmap = appIcon,
-                contentDescription = null,
-                modifier = Modifier.size(36.dp)
-            )
-        } else {
-            Box(modifier = Modifier.size(36.dp))
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (iconBitmap != null) {
+                Image(
+                    bitmap = iconBitmap,
+                    contentDescription = app.appName,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = app.appName,
-                    fontSize = 13.sp,
-                    color = VigilTextPrimary,
+                    color = colors.onSurface,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    overflow = TextOverflow.Ellipsis
                 )
-                if (app.isSystemApp) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "SYS",
-                        style = BodyTextStyle,
-                        fontSize = 9.sp,
-                        letterSpacing = 0.8.sp,
-                        color = VigilTextSecondary,
-                        modifier = Modifier
-                            .border(1.dp, VigilBorder, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
-                }
+                Text(
+                    text = app.packageName,
+                    color = colors.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Text(
-                text = app.packageName,
-                style = BodyTextStyle,
-                fontSize = 9.sp,
-                color = VigilTextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 2.dp)
+            Icon(
+                imageVector = if (app.isSelected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                contentDescription = null,
+                tint = if (app.isSelected) colors.primary else colors.outline,
+                modifier = Modifier.size(22.dp)
             )
         }
-
-        AppCheck(checked = app.isSelected)
     }
 }

@@ -52,15 +52,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.example.vigil.ui.components.VigilCardShape
+import com.example.vigil.ui.components.VigilDialogShape
+import com.example.vigil.ui.components.VigilPillChip
+import com.example.vigil.ui.components.VigilPillShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -221,10 +227,11 @@ fun MainScreen(
     val prefs = remember { SharedPreferencesHelper(context) }
     var lockTaskTipDismissed by remember { mutableStateOf(prefs.isLockTaskTipDismissed()) }
     NotificationDashboard(
-        serviceEnabled = serviceEnabled, serviceState = serviceState, keywordCount = keywordList.size,
-        ringtone = selectedRingtoneName, loops = defaultLoopCount,
-        delayPolicy = defaultDelayPolicy,
-        hasOverlayPermission = hasOverlayPermission,
+        serviceEnabled = serviceEnabled,
+        serviceState = serviceState,
+        keywordCount = keywordList.size,
+        overlayStyle = overlayAlertStyle,
+        settingsViewModel = settingsViewModel,
         onToggleLocal = {
             if (!serviceEnabled && !hasNotificationAccess) {
                 showGuideDialog = PermissionGuide.NotificationAccess
@@ -232,12 +239,11 @@ fun MainScreen(
                 startServiceCallback = { (activity as? MainActivity)?.startVigilService(it) },
                 stopServiceCallback = { (activity as? MainActivity)?.stopVigilService() })
         },
-        onRingtone = { ringtoneSelectTarget = "" }, onLoops = { loopCountDialogTarget = "" },
-        onDelay = { delayDialogTarget = "" },
-        onRequestOverlay = { activity?.let(PermissionUtils::openOverlaySettings) },
-        onHistory = onNavigateToAlertHistory, onLibrary = onNavigateToRingtoneLibrary,
         settingsContent = { keywordPage ->
-            Column(Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 if (keywordPage) {
                 // 1. 关键词
                 LineRow {
@@ -262,10 +268,18 @@ fun MainScreen(
 
                 }
                 if (!keywordPage) {
-                // 2. 默认铃声（未单独配置的关键词统一使用；系统铃声或铃声库文件）
+                GroupHeader("声音与报警")
+
+                // 2. 默认铃声
                 LineRow(onClick = { ringtoneSelectTarget = "" }) {
                     RowLabel("默认铃声")
                     RowValue(selectedRingtoneName, withArrow = true)
+                }
+
+                // 2.5 铃声库（全应用唯一入口）
+                LineRow(onClick = onNavigateToRingtoneLibrary) {
+                    RowLabel("铃声库")
+                    RowValue("管理与录音", withArrow = true)
                 }
 
                 // 3. 循环次数：1..10；关键词可在 chip 弹窗里逐条覆盖
@@ -286,7 +300,8 @@ fun MainScreen(
                     RowValue(formatDelayPolicy(defaultDelayPolicy), withArrow = true)
                 }
 
-                // 5.5 应用外系统浮窗：权限状态 + 三种样式/自适应切换 + 一键预览
+                // 5.5 应用外系统浮窗（全应用唯一入口：权限 + 样式 + 预览）
+                GroupHeader("应用外告警浮窗")
                 LineRow(onClick = {
                     if (!hasOverlayPermission) {
                         activity?.let(PermissionUtils::openOverlaySettings)
@@ -294,11 +309,12 @@ fun MainScreen(
                         AlertOverlayManager.showPreview(context, overlayAlertStyle)
                     }
                 }) {
-                    RowLabel("应用外浮窗")
-                    RowValue(
-                        if (hasOverlayPermission) "预览" else "未授权",
-                        withArrow = true
-                    )
+                    RowLabel("系统浮窗")
+                    if (hasOverlayPermission) {
+                        RowValue("预览", withArrow = true)
+                    } else {
+                        WarnCapsule()
+                    }
                 }
                 LineRow {
                     RowLabel("浮窗样式")
@@ -315,31 +331,16 @@ fun MainScreen(
                             OverlayAlertStyle.CENTER_CARD to "居中",
                             OverlayAlertStyle.CORNER_COMPACT to "角落"
                         ).forEach { (style, label) ->
-                            val selected = overlayAlertStyle == style
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(if (selected) VigilPrimary else Color.Transparent)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (selected) VigilPrimary else VigilBorder,
-                                        shape = RoundedCornerShape(999.dp)
-                                    )
-                                    .clickable {
-                                        settingsViewModel.updateOverlayAlertStyle(style)
-                                        if (hasOverlayPermission) {
-                                            AlertOverlayManager.showPreview(context, style)
-                                        }
+                            VigilPillChip(
+                                label = label,
+                                selected = overlayAlertStyle == style,
+                                onClick = {
+                                    settingsViewModel.updateOverlayAlertStyle(style)
+                                    if (hasOverlayPermission) {
+                                        AlertOverlayManager.showPreview(context, style)
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.onPrimary else VigilTextPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                                )
-                            }
+                                }
+                            )
                         }
                     }
                 }
@@ -684,22 +685,24 @@ private fun LineRow(
     onClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
-    val lineColor = VigilDivider
-    val modifier = Modifier
-        .fillMaxWidth()
-        .drawBehind {
-            val stroke = 1.dp.toPx()
-            drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(0f, size.height - stroke / 2),
-                end = androidx.compose.ui.geometry.Offset(size.width, size.height - stroke / 2), strokeWidth = stroke)
-        }
-        .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-        .padding(horizontal = 2.dp, vertical = 15.dp)
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(VigilCardShape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        color = colors.surface,
+        shape = VigilCardShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant)
     ) {
-        content()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
     }
 }
 
@@ -707,59 +710,74 @@ private fun LineRow(
 private fun RowLabel(text: String) {
     Text(
         text = text,
-        fontSize = 12.sp,
-        letterSpacing = 0.6.sp,
-        color = VigilTextSecondary
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface
     )
 }
 
 @Composable
 private fun RowValue(text: String, withArrow: Boolean) {
+    val colors = MaterialTheme.colorScheme
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(text = text, fontSize = 13.sp, color = VigilTextPrimary)
+        Text(text = text, fontSize = 13.sp, color = colors.onSurfaceVariant)
         if (withArrow) {
-            Text(text = "→", fontSize = 13.sp, color = VigilBorder)
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
 
 @Composable
 private fun GrantedValue() {
-    Text(
-        text = "GRANTED",
-        style = BodyTextStyle,
-        fontSize = 11.sp,
-        letterSpacing = 0.8.sp,
-        color = VigilPrimary
-    )
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        color = colors.primaryContainer,
+        shape = VigilPillShape
+    ) {
+        Text(
+            text = "已授权",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.primary,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
 }
 
 @Composable
 private fun WarnCapsule() {
-    Text(
-        text = "去设置",
-        style = BodyTextStyle,
-        fontSize = 11.sp,
-        color = VigilError,
-        modifier = Modifier
-            .border(1.dp, VigilError, RoundedCornerShape(4.dp))
-            .padding(horizontal = 7.dp, vertical = 2.dp)
-    )
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        color = colors.errorContainer,
+        shape = VigilPillShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.error.copy(alpha = 0.5f))
+    ) {
+        Text(
+            text = "去授权",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.error,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        )
+    }
 }
 
-/** 分组小标题：mono 大写灰字，设置 Sheet 权限分级（REQUIRED / RECOMMENDED / OPTIONAL）用 */
 @Composable
 private fun GroupHeader(text: String) {
     Text(
         text = text,
-        style = BodyTextStyle,
-        fontSize = 10.sp,
-        letterSpacing = 1.6.sp,
-        color = VigilBorder,
-        modifier = Modifier.padding(start = 2.dp, top = 20.dp, bottom = 4.dp)
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp)
     )
 }
 
@@ -775,10 +793,9 @@ private fun LockTaskGuideDialog(
 ) {
     AlertDialog(
         onDismissRequest = onClose,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = stringResource(R.string.lock_task_dialog_title),
@@ -808,63 +825,61 @@ private fun LockTaskGuideDialog(
     )
 }
 
-/** 关键词 chip：点按文本进个性化配置（铃声/循环次数），× 独立圆形删除按钮（点按触发二次确认） */
 @Composable
 private fun KeywordChip(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .background(VigilDivider.copy(alpha = 0.45f), CircleShape)
-            .border(1.dp, VigilBorder, CircleShape)
-            .padding(start = 12.dp, end = 5.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        color = colors.surfaceVariant,
+        shape = VigilPillShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant)
     ) {
-        Text(
-            text = text,
-            fontSize = 11.sp,
-            color = VigilTextPrimary,
-            modifier = Modifier.clickable(onClick = onClick)
-        )
-        // × 独立热区：圆形暗底，矢量图标天然居中（字符 × 有字形基线偏移）
-        Box(
-            modifier = Modifier
-                .size(17.dp)
-                .background(VigilBorder.copy(alpha = 0.45f), CircleShape)
-                .clickable(onClick = onRemove),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "删除关键词 $text",
-                tint = VigilTextPrimary,
-                modifier = Modifier.size(9.dp)
+            Text(
+                text = text,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+                modifier = Modifier.clickable(onClick = onClick)
             )
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(colors.outlineVariant)
+                    .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "删除关键词 $text",
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(11.dp)
+                )
+            }
         }
     }
 }
 
-/** 虚线 "+" chip */
 @Composable
 private fun AddChip(onClick: () -> Unit) {
-    val borderColor = VigilTextSecondary
-    Box(
-        modifier = Modifier
-            .drawBehind {
-                val strokeWidth = 1.dp.toPx()
-                drawRoundRect(
-                    color = borderColor,
-                    style = Stroke(
-                        width = strokeWidth,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
-                    ),
-                    cornerRadius = CornerRadius(size.height / 2, size.height / 2)
-                )
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        color = colors.primaryContainer,
+        shape = VigilPillShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f))
     ) {
-        Text(text = "+", fontSize = 11.sp, color = VigilTextSecondary)
+        Text(
+            text = "+ 添加",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.primary,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
 }
 
@@ -877,10 +892,9 @@ private fun DeleteKeywordDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "删除关键词",
@@ -918,10 +932,9 @@ private fun AddKeywordDialog(
     var input by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "添加关键词",
@@ -990,10 +1003,9 @@ private fun KeywordConfigDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "「$keyword」",
@@ -1109,10 +1121,9 @@ private fun RingtoneSelectDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "选择铃声",
@@ -1243,10 +1254,9 @@ private fun LoopCountDialog(
     var followDefault by remember(selected) { mutableStateOf(showFollowDefault && selected == null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "循环次数",
@@ -1341,10 +1351,9 @@ private fun KeywordCooldownDialog(
     val options = listOf(0, 30, 60, 180, 300, 600)
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "重复提醒间隔",
@@ -1471,10 +1480,9 @@ private fun DelayPolicyDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "延时报警",
@@ -1801,10 +1809,9 @@ private fun ScheduledAlertsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = VigilBackground,
-        shape = RoundedCornerShape(8.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = VigilDialogShape,
         tonalElevation = 0.dp,
-        modifier = Modifier.border(1.dp, VigilDivider, RoundedCornerShape(8.dp)),
         title = {
             Text(
                 text = "待触发延时报警",

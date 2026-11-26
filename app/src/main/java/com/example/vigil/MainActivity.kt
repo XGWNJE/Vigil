@@ -1,6 +1,14 @@
 // src/main/java/com/example/vigil/MainActivity.kt
 package com.example.vigil
 
+import com.example.vigil.alert.RingtoneLibrary
+import com.example.vigil.data.SharedPreferencesHelper
+import com.example.vigil.update.UpdateChecker
+import com.example.vigil.update.UpdateViewModel
+import com.example.vigil.util.ListenerRecovery
+import com.example.vigil.util.PermissionUtils
+import com.example.vigil.util.VigilLogger
+
 import android.app.Application
 import android.app.KeyguardManager
 import android.content.Context

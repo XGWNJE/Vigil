@@ -18,9 +18,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.vigil.ListenerRecovery
-import com.example.vigil.PermissionUtils
-import com.example.vigil.SharedPreferencesHelper
+import com.example.vigil.util.ListenerRecovery
+import com.example.vigil.util.PermissionUtils
+import com.example.vigil.data.SharedPreferencesHelper
 import com.example.vigil.ui.monitoring.ServiceState
 import java.text.SimpleDateFormat
 import java.util.Date

@@ -1,5 +1,7 @@
 package com.example.vigil
 
+import com.example.vigil.data.SharedPreferencesHelper
+
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

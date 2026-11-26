@@ -45,7 +45,7 @@ Android 通知关键词报警应用。在本机按通知关键词触发铃声，
 
 - [源码构建与发布](docs/release.md)：构建命令、签名和 CI 发版。
 - [路线图](ROADMAP.md)：已确认的规划与完成记录；[发行说明](release-notes/)：各版本的用户可见变化。
-- [项目规则](AGENTS.md)、[实现索引](docs/architecture.md)、[设备验证](docs/testing.md)与[平台兼容](docs/platform.md)：供开发维护时查阅。
+- [项目规则](AGENTS.md)、[设计文档](DESIGN.md)、[实现索引](docs/architecture.md)、[设备验证](docs/testing.md)与[平台兼容](docs/platform.md)：供开发维护时查阅。
 - [商店素材](store/README.md)与[上架清单](store/owner-checklist.md)：应用商店资料。
 
 欢迎通过 [GitHub Issues](https://github.com/XGWNJE/Vigil/issues) 反馈问题。代码采用 [MIT License](LICENSE)。

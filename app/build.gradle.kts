@@ -68,8 +68,7 @@ android {
     }
     buildFeatures {
         buildConfig = true
-        compose = true // *** 启用 Jetpack Compose ***
-        viewBinding = true // 如果项目中仍有部分UI使用ViewBinding，则保留此项
+        compose = true
     }
 
     packaging {

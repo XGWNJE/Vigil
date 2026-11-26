@@ -1,6 +1,8 @@
 // src/main/java/com/example/vigil/ui/AppDestinations.kt
 package com.example.vigil.ui
 
+import com.example.vigil.alert.RingtoneLibrary
+
 /**
  * 应用的导航目的地路由。
  * 单页化后只剩主屏 + 应用过滤页（不再有底部导航）。

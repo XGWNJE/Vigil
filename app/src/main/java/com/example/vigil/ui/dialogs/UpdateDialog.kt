@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.vigil.UpdateViewModel
+import com.example.vigil.update.UpdateViewModel
 import com.example.vigil.ui.theme.VigilPrimary
 import com.example.vigil.ui.theme.VigilBackground
 import com.example.vigil.ui.theme.VigilTextSecondary

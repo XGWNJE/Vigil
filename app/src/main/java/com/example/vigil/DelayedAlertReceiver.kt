@@ -1,6 +1,9 @@
 // src/main/java/com/example/vigil/DelayedAlertReceiver.kt
 package com.example.vigil
 
+import com.example.vigil.alert.DelayedAlertScheduler
+import com.example.vigil.util.VigilLogger
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent

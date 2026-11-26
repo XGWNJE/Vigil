@@ -39,8 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vigil.AlertEndType
-import com.example.vigil.AlertRecord
+import com.example.vigil.data.AlertEndType
+import com.example.vigil.data.AlertRecord
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.ui.settings.SettingsViewModelFactory
 import com.example.vigil.ui.theme.VigilPrimary

@@ -1,5 +1,7 @@
 package com.example.vigil
 
+import com.example.vigil.update.UpdateChecker
+
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking

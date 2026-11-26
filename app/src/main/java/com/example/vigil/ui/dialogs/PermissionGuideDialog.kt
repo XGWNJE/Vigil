@@ -1,6 +1,8 @@
 // src/main/java/com/example/vigil/ui/dialogs/PermissionGuideDialog.kt
 package com.example.vigil.ui.dialogs
 
+import com.example.vigil.util.PermissionUtils
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog

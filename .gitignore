@@ -9,16 +9,7 @@
 .cxx/
 
 # IntelliJ / Android Studio
-/.idea/caches/
-/.idea/libraries/
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-/.idea/.gitignore
-/.idea/gradle.xml
-/.idea/deploymentTargetDropDown.xml
-/.idea/migrations.xml
+/.idea/
 *.ipr
 *.iws
 

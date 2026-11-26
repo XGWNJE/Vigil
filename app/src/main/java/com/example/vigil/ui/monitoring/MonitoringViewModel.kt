@@ -1,6 +1,8 @@
 // src/main/java/com/example/vigil/ui/monitoring/MonitoringViewModel.kt
 package com.example.vigil.ui.monitoring
 
+import com.example.vigil.util.AlertEvent
+
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
@@ -10,12 +12,12 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.vigil.PermissionUtils
-import com.example.vigil.SharedPreferencesHelper
-import com.example.vigil.AlertEndType
-import com.example.vigil.AlertQueueItem
-import com.example.vigil.VigilEventBus
-import com.example.vigil.VigilLogger
+import com.example.vigil.util.PermissionUtils
+import com.example.vigil.data.SharedPreferencesHelper
+import com.example.vigil.data.AlertEndType
+import com.example.vigil.data.AlertQueueItem
+import com.example.vigil.util.VigilEventBus
+import com.example.vigil.util.VigilLogger
 import kotlinx.coroutines.launch
 
 /**

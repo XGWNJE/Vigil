@@ -1,6 +1,8 @@
 // src/test/java/com/example/vigil/UpdateCheckerTest.kt
 package com.example.vigil
 
+import com.example.vigil.update.UpdateChecker
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

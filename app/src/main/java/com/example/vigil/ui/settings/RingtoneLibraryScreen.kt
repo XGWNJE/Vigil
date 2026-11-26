@@ -53,8 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.vigil.PermissionUtils
-import com.example.vigil.RingtoneLibrary
+import com.example.vigil.util.PermissionUtils
+import com.example.vigil.alert.RingtoneLibrary
 import com.example.vigil.ui.dialogs.PermissionGuideDialog
 import com.example.vigil.ui.main.rememberFrameDrivenProgress
 import com.example.vigil.ui.settings.SettingsViewModel

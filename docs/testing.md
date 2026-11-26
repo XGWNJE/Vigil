@@ -5,7 +5,7 @@
 ## 环境与边界
 
 1. 默认有真机时由用户选择执行者；当前任务已授权优先使用可见的平板模拟器。纯构建和只读查询不需要操作设备 UI。
-2. AVD 列表：`emulator -list-avds`；当前本机 `VisionGuard_Tablet_API36` 为 Android 16、2560×1600、320 dpi。工具路径由 Android SDK 配置确定，不能假定其他机器有同名 AVD。
+2. AVD 列表：`emulator -list-avds`；当前本机已配置 `Vigil_API35`（Android 15 / API 35、Pixel 7 规格）。工具路径由 Android SDK 配置确定，不能假定其他机器有同名 AVD。
 3. 启动可见窗口：`emulator -avd <name> -no-boot-anim -no-snapshot-save -no-audio`（需用户进行视觉检查时默认使用可见窗口；仅在用户不在场或明确要求后台执行时才使用无窗口模式。Windows 下若从受限后台会话拉起，使用带 `/IT` 的交互式计划任务 `schtasks` 确保窗口弹出到用户桌面，避免无头守护进程）。等待 `adb -s <serial> shell getprop sys.boot_completed` 输出 1，结束后 `adb -s <serial> emu kill`。
 4. 所有操作明确指定 serial。不擅自修改设备锁屏、休眠或唤醒设置；真机无法正常唤醒时停下，等待用户解锁。
 5. 真机先由用户确认不会出声，再检查 `dumpsys audio` 的 `STREAM_ALARM` 静音状态。最小音量不等于静音；无法确认时不触发报警。模拟器通过 `-no-audio` 禁止宿主音频输出。

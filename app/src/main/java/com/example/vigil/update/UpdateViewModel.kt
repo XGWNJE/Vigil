@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -35,7 +36,7 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
         val isChecking: Boolean = false,
         val dialog: UpdateDialog? = null,
         val isDownloading: Boolean = false,
-        val downloadProgress: Float = 0f,
+        val downloadProgress: Float? = null,
         /** 已下载好的 APK，交给 Compose 层触发系统安装 */
         val installReady: File? = null,
         val installing: Boolean = false
@@ -107,37 +108,41 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
     /** 用户选择「更新」：下载 APK → 完成后置 installReady 交给 UI 触发系统安装。 */
     fun updateNow() {
         val d = _state.value.dialog as? UpdateDialog.Available ?: return
-        _state.value = _state.value.copy(
-            dialog = null,
-            isDownloading = true,
-            downloadProgress = 0f,
-            installing = false
-        )
+        _state.update {
+            it.copy(
+                dialog = null,
+                isDownloading = true,
+                downloadProgress = null,
+                installing = false
+            )
+        }
         val info = d.info
         viewModelScope.launch {
             val context = getApplication<Application>()
             val url = info.apkUrl
             if (url.isNullOrBlank()) {
                 // release 未挂 APK 资产：退化为打开浏览器发版页
-                _state.value = _state.value.copy(isDownloading = false)
+                _state.update { it.copy(isDownloading = false, downloadProgress = null) }
                 Log.w(TAG, "最新版本无 APK 资产，改打开发版页")
                 openReleasePage(context, info.releasePageUrl)
                 return@launch
             }
             val apk = UpdateChecker.download(context, url, info.versionName, info.apkSize, info.apkDigest) { progress ->
-                // 下载进度回主线程
-                viewModelScope.launch {
-                    _state.value = _state.value.copy(downloadProgress = progress)
+                _state.update { cur ->
+                    if (cur.isDownloading) cur.copy(downloadProgress = progress) else cur
                 }
             }
             if (apk != null) {
-                _state.value = _state.value.copy(isDownloading = false, installReady = apk)
+                _state.update { it.copy(isDownloading = false, downloadProgress = null, installReady = apk) }
             } else {
                 // 下载失败
-                _state.value = _state.value.copy(
-                    isDownloading = false,
-                    dialog = UpdateDialog.Error("下载更新失败，请检查网络后重试")
-                )
+                _state.update {
+                    it.copy(
+                        isDownloading = false,
+                        downloadProgress = null,
+                        dialog = UpdateDialog.Error("下载更新失败，请检查网络后重试")
+                    )
+                }
             }
         }
     }

@@ -137,14 +137,19 @@ object UpdateChecker {
             }
 
             val apkAsset = findApkAsset(json)
+            val digestRaw = if (apkAsset != null && !apkAsset.isNull("digest")) {
+                apkAsset.optString("digest").takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            } else {
+                null
+            }
             val info = UpdateInfo(
                 versionName = versionName,
                 releaseNotes = cleanReleaseNotes(json.optString("body")),
-                apkUrl = apkAsset?.optString("browser_download_url"),
+                apkUrl = apkAsset?.takeIf { !it.isNull("browser_download_url") }?.optString("browser_download_url"),
                 releasePageUrl = json.optString("html_url"),
                 publishedAt = json.optString("published_at"),
                 apkSize = apkAsset?.optLong("size", 0L) ?: 0L,
-                apkDigest = apkAsset?.optString("digest")?.takeIf { it.isNotBlank() }
+                apkDigest = digestRaw
             )
 
             if (!isNewer(versionName, currentVersionName(context))) {

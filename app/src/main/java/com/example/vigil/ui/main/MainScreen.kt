@@ -233,6 +233,7 @@ fun MainScreen(
     val hasOverlayPermission by settingsViewModel.hasOverlayPermission
     val overlayAlertStyle by settingsViewModel.overlayAlertStyle
     val pendingDelayedCount by monitoringViewModel.pendingDelayedCount
+    val activeAlert by monitoringViewModel.activeAlert
     // 关键词配置变化信号（读取即订阅，chip 弹窗里的值随配置保存即时刷新）
     val keywordConfigVersion by settingsViewModel.keywordConfigVersion
 
@@ -242,6 +243,7 @@ fun MainScreen(
     NotificationDashboard(
         serviceEnabled = serviceEnabled,
         serviceState = serviceState,
+        isAlerting = activeAlert != null,
         keywordCount = keywordList.size,
         overlayStyle = overlayAlertStyle,
         settingsViewModel = settingsViewModel,
@@ -379,7 +381,7 @@ fun MainScreen(
                     }
                 }
                 if (!keywordPage) {
-                GroupHeader("声音与报警")
+                GroupHeader("全局默认报警（规则可单独覆盖）")
 
                 // 2. 默认铃声
                 LineRow(onClick = { ringtoneSelectTarget = "" }) {
@@ -393,9 +395,9 @@ fun MainScreen(
                     RowValue("管理与录音", withArrow = true)
                 }
 
-                // 3. 循环次数：1..10；关键词可在 chip 弹窗里逐条覆盖
+                // 3. 默认循环次数：1..10；关键词可在规则卡里逐条覆盖
                 LineRow(onClick = { loopCountDialogTarget = "" }) {
-                    RowLabel("循环次数")
+                    RowLabel("默认循环次数")
                     RowValue(formatLoopCount(defaultLoopCount), withArrow = true)
                 }
 
@@ -405,9 +407,9 @@ fun MainScreen(
                     RowValue(formatKeywordCooldown(keywordCooldownSeconds), withArrow = true)
                 }
 
-                // 5. 延时报警：命中后不立即响铃，改为固定时长后或每日定点时间响；关键词可逐条覆盖
+                // 5. 默认延时报警：命中后不立即响铃，改为固定时长后或每日定点时间响；关键词可在规则卡里逐条覆盖
                 LineRow(onClick = { delayDialogTarget = "" }) {
-                    RowLabel("延时报警")
+                    RowLabel("默认延时报警")
                     RowValue(formatDelayPolicy(defaultDelayPolicy), withArrow = true)
                 }
 

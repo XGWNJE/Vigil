@@ -94,8 +94,8 @@ fun UpdateDialog(
         null -> Unit
     }
 
-    val progress = state.downloadProgress
-    if (progress != null) {
+    if (state.isDownloading) {
+        val progress = state.downloadProgress
         AlertDialog(
             onDismissRequest = {},
             containerColor = colors.surface,
@@ -106,14 +106,16 @@ fun UpdateDialog(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (progress >= 0) {
+                    if (progress != null && progress >= 0f) {
+                        val clamped = progress.coerceIn(0f, 1f)
+                        val percent = (clamped * 100f).toInt()
                         LinearProgressIndicator(
-                            progress = { (progress / 100f).coerceIn(0f, 1f) },
+                            progress = { clamped },
                             modifier = Modifier.fillMaxWidth(),
                             color = colors.primary,
                             trackColor = colors.surfaceVariant
                         )
-                        Text("$progress%", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.onSurfaceVariant)
+                        Text("$percent%", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.onSurfaceVariant)
                     } else {
                         LinearProgressIndicator(
                             modifier = Modifier.fillMaxWidth(),

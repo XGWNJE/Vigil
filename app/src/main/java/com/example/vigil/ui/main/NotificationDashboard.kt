@@ -1,10 +1,15 @@
 package com.example.vigil.ui.main
 
 import android.app.Activity
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,13 +25,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.vigil.R
 import com.example.vigil.data.OverlayAlertStyle
 import com.example.vigil.data.SharedPreferencesHelper
 import com.example.vigil.ui.components.VigilTopBar
@@ -35,6 +46,7 @@ import com.example.vigil.ui.monitoring.ServiceState
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.util.ListenerRecovery
 import com.example.vigil.util.PermissionUtils
+import kotlinx.coroutines.delay
 
 /**
  * 统一风格主容器（暖黑石墨 + 琥珀金 · 单一入口信息架构）。
@@ -49,6 +61,7 @@ import com.example.vigil.util.PermissionUtils
 internal fun NotificationDashboard(
     serviceEnabled: Boolean,
     serviceState: ServiceState,
+    isAlerting: Boolean,
     keywordCount: Int,
     overlayStyle: OverlayAlertStyle,
     settingsViewModel: SettingsViewModel,
@@ -118,6 +131,7 @@ internal fun NotificationDashboard(
                             wide = true,
                             serviceEnabled = serviceEnabled,
                             serviceState = serviceState,
+                            isAlerting = isAlerting,
                             keywordCount = keywordCount,
                             recordCount = recordCount,
                             overlayStyleLabel = overlayStyleLabel,
@@ -150,6 +164,7 @@ internal fun NotificationDashboard(
                             wide = false,
                             serviceEnabled = serviceEnabled,
                             serviceState = serviceState,
+                            isAlerting = isAlerting,
                             keywordCount = keywordCount,
                             recordCount = recordCount,
                             overlayStyleLabel = overlayStyleLabel,
@@ -192,6 +207,7 @@ private fun MonitorPane(
     wide: Boolean,
     serviceEnabled: Boolean,
     serviceState: ServiceState,
+    isAlerting: Boolean,
     keywordCount: Int,
     recordCount: Int,
     overlayStyleLabel: String,
@@ -201,6 +217,7 @@ private fun MonitorPane(
         SentinelHeroRing(
             serviceEnabled = serviceEnabled,
             serviceState = serviceState,
+            isAlerting = isAlerting,
             onToggle = onToggle
         )
     }
@@ -233,15 +250,19 @@ private fun MonitorPane(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(16.dp))
-            content()
-            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                content()
+            }
             statusSection()
+            Spacer(Modifier.height(6.dp))
         }
     }
 }
@@ -254,52 +275,46 @@ private fun SentinelMetricBar(
     active: Boolean
 ) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = colors.surface,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, colors.outlineVariant)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 340.dp)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        MetricCell(
+            icon = Icons.Outlined.Tune,
+            label = "监控词",
+            value = "$keywordCount",
+            highlight = active && keywordCount > 0,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp, horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            MetricCell(
-                icon = Icons.Outlined.Tune,
-                label = "监控词",
-                value = "$keywordCount",
-                highlight = active && keywordCount > 0,
-                modifier = Modifier.weight(1f)
-            )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(28.dp)
-                    .background(colors.outlineVariant)
-            )
-            MetricCell(
-                icon = Icons.Outlined.History,
-                label = "记录",
-                value = "$recordCount",
-                highlight = false,
-                modifier = Modifier.weight(1f)
-            )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(28.dp)
-                    .background(colors.outlineVariant)
-            )
-            MetricCell(
-                icon = Icons.Outlined.Layers,
-                label = "浮窗",
-                value = overlayStyleLabel,
-                highlight = false,
-                modifier = Modifier.weight(1f)
-            )
-        }
+                .width(1.dp)
+                .height(16.dp)
+                .background(colors.outlineVariant.copy(alpha = 0.55f))
+        )
+        MetricCell(
+            icon = Icons.Outlined.History,
+            label = "记录",
+            value = "$recordCount",
+            highlight = false,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(16.dp)
+                .background(colors.outlineVariant.copy(alpha = 0.55f))
+        )
+        MetricCell(
+            icon = Icons.Outlined.Layers,
+            label = "浮窗",
+            value = overlayStyleLabel,
+            highlight = false,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -315,39 +330,49 @@ private fun MetricCell(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
             text = value,
             color = if (highlight) colors.primary else colors.onSurface,
-            fontSize = 19.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(13.dp)
+                modifier = Modifier.size(11.dp)
             )
             Text(
                 text = label,
                 color = colors.onSurfaceVariant,
-                fontSize = 11.sp
+                fontSize = 10.sp
             )
         }
     }
 }
 
-/** 居中发光脉冲守望环：全应用唯一的监听总开关。 */
+private enum class OwlButtonState(val resId: Int, val cycleMs: Int) {
+    IDLE(R.drawable.owl_strip_idle, 2600),
+    PRESS(R.drawable.owl_strip_press, 800),
+    CONNECTING(R.drawable.owl_strip_connecting, 1600),
+    WATCHING(R.drawable.owl_strip_watching, 2400),
+    WARNING(R.drawable.owl_strip_warning, 1800),
+    ALARM(R.drawable.owl_strip_alarm, 960)
+}
+
+/** 居中发光脉冲守望环（像素猫头鹰多状态透明序列动图 + 60fps 物理弹性光环）：全应用唯一的监听总开关。 */
 @Composable
 private fun SentinelHeroRing(
     serviceEnabled: Boolean,
     serviceState: ServiceState,
+    isAlerting: Boolean,
     onToggle: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
@@ -357,13 +382,35 @@ private fun SentinelHeroRing(
         ServiceState.HEARTBEAT_TIMEOUT,
         ServiceState.NO_PERMISSION
     )
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    var tapBounceActive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(tapBounceActive) {
+        if (tapBounceActive) {
+            delay(800)
+            tapBounceActive = false
+        }
+    }
+
+    val owlState = when {
+        isAlerting -> OwlButtonState.ALARM
+        isPressed || tapBounceActive -> OwlButtonState.PRESS
+        isWarning -> OwlButtonState.WARNING
+        isRunning -> OwlButtonState.WATCHING
+        serviceEnabled -> OwlButtonState.CONNECTING
+        else -> OwlButtonState.IDLE
+    }
+
     val ringColor = when {
-        isWarning -> colors.error
+        isAlerting || isWarning -> colors.error
         isRunning -> colors.primary
-        serviceEnabled -> colors.primary.copy(alpha = 0.65f)
+        serviceEnabled -> colors.primary.copy(alpha = 0.75f)
         else -> colors.outline
     }
     val statusText = when {
+        isAlerting -> "报警中"
         !serviceEnabled -> "已停止"
         serviceState == ServiceState.RUNNING || serviceState == ServiceState.RUNNING_LIMITED -> "监听中"
         serviceState == ServiceState.NO_PERMISSION -> "未授权"
@@ -373,35 +420,72 @@ private fun SentinelHeroRing(
         else -> "异常"
     }
 
-    val pulseRaw = if (isRunning || isWarning) rememberFrameDrivenProgress(2200) else 0f
+    val pulseRaw = if (isRunning || isWarning || isAlerting) rememberFrameDrivenProgress(if (isAlerting) 900 else 2600) else 0f
     val pulseTri = if (pulseRaw < 0.5f) pulseRaw * 2f else (1f - pulseRaw) * 2f
-    val glowAlpha = if (isRunning || isWarning) 0.16f + 0.18f * pulseTri else 0.04f
+    val glowAlpha = when {
+        isAlerting -> 0.28f + 0.22f * pulseTri
+        isRunning || isWarning -> 0.18f + 0.16f * pulseTri
+        else -> 0.08f
+    }
+
+    val spriteProgress = rememberFrameDrivenProgress(owlState.cycleMs)
+    val frameIndex = ((spriteProgress * 8f).toInt()).coerceIn(0, 7)
+
+    // 预加载 6 组透明序列条，切换状态零闪烁
+    val idleStrip = ImageBitmap.imageResource(OwlButtonState.IDLE.resId)
+    val pressStrip = ImageBitmap.imageResource(OwlButtonState.PRESS.resId)
+    val connectingStrip = ImageBitmap.imageResource(OwlButtonState.CONNECTING.resId)
+    val watchingStrip = ImageBitmap.imageResource(OwlButtonState.WATCHING.resId)
+    val warningStrip = ImageBitmap.imageResource(OwlButtonState.WARNING.resId)
+    val alarmStrip = ImageBitmap.imageResource(OwlButtonState.ALARM.resId)
+    val activeStrip = when (owlState) {
+        OwlButtonState.IDLE -> idleStrip
+        OwlButtonState.PRESS -> pressStrip
+        OwlButtonState.CONNECTING -> connectingStrip
+        OwlButtonState.WATCHING -> watchingStrip
+        OwlButtonState.WARNING -> warningStrip
+        OwlButtonState.ALARM -> alarmStrip
+    }
+
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.91f else if (tapBounceActive) 1.04f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "HeroRingScale"
+    )
 
     Box(
         modifier = Modifier
-            .size(196.dp)
+            .size(236.dp)
+            .graphicsLayer {
+                scaleX = buttonScale
+                scaleY = buttonScale
+            }
             .clip(CircleShape)
-            .clickable(onClick = onToggle),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    tapBounceActive = true
+                    onToggle()
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = size.minDimension / 2f
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(ringColor.copy(alpha = glowAlpha), Color.Transparent),
+                    colors = listOf(
+                        ringColor.copy(alpha = glowAlpha),
+                        ringColor.copy(alpha = glowAlpha * 0.35f),
+                        Color.Transparent
+                    ),
                     radius = radius
                 ),
                 radius = radius
-            )
-            drawCircle(
-                color = ringColor.copy(alpha = if (isRunning || isWarning) 0.24f else 0.14f),
-                radius = radius * 0.80f,
-                style = Stroke(width = 1.5.dp.toPx())
-            )
-            drawCircle(
-                color = ringColor,
-                radius = radius * 0.72f,
-                style = Stroke(width = 3.5.dp.toPx())
             )
         }
 
@@ -409,16 +493,22 @@ private fun SentinelHeroRing(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Icon(
-                imageVector = if (isWarning) Icons.Outlined.WarningAmber else if (serviceEnabled) Icons.Outlined.Sensors else Icons.Outlined.NotificationsOff,
-                contentDescription = statusText,
-                tint = ringColor,
-                modifier = Modifier.size(30.dp)
-            )
+            Canvas(modifier = Modifier.size(148.dp)) {
+                val frameSize = activeStrip.height
+                val dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                drawImage(
+                    image = activeStrip,
+                    srcOffset = IntOffset(frameIndex * frameSize, 0),
+                    srcSize = IntSize(frameSize, frameSize),
+                    dstOffset = IntOffset.Zero,
+                    dstSize = dstSize,
+                    filterQuality = FilterQuality.None
+                )
+            }
             Text(
                 text = statusText,
-                color = if (isRunning || isWarning) colors.onBackground else colors.onSurfaceVariant,
-                fontSize = 20.sp,
+                color = if (isRunning || isWarning || isAlerting) colors.onBackground else colors.onSurfaceVariant,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
         }

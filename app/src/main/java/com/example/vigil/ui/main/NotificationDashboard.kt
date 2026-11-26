@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.data.OverlayAlertStyle
 import com.example.vigil.data.SharedPreferencesHelper
-import com.example.vigil.ui.components.VigilSectionCard
 import com.example.vigil.ui.components.VigilTopBar
 import com.example.vigil.ui.history.AlertHistoryScreen
 import com.example.vigil.ui.monitoring.ServiceState
@@ -209,17 +208,13 @@ private fun MonitorPane(
     val statusSection: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ListenerRecoveryBanner(serviceState = serviceState)
-            // 纯只读运行概览（仅展示实时数值，不设重复跳转入口）
-            VigilSectionCard(title = "当前状态") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    ReadOnlyMetric("监控词", "$keywordCount")
-                    ReadOnlyMetric("历史记录", "$recordCount")
-                    ReadOnlyMetric("告警浮窗", overlayStyleLabel)
-                }
-            }
+            // 三联精密仪表条（居中对称、悬浮竖线分割、零多余标题，纯只读状态反馈）
+            SentinelMetricBar(
+                keywordCount = keywordCount,
+                recordCount = recordCount,
+                overlayStyleLabel = overlayStyleLabel,
+                active = serviceEnabled
+            )
         }
     }
 
@@ -252,21 +247,99 @@ private fun MonitorPane(
 }
 
 @Composable
-private fun ReadOnlyMetric(label: String, value: String) {
+private fun SentinelMetricBar(
+    keywordCount: Int,
+    recordCount: Int,
+    overlayStyleLabel: String,
+    active: Boolean
+) {
     val colors = MaterialTheme.colorScheme
-    Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.surface,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, colors.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp, horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            MetricCell(
+                icon = Icons.Outlined.Tune,
+                label = "监控词",
+                value = "$keywordCount",
+                highlight = active && keywordCount > 0,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(28.dp)
+                    .background(colors.outlineVariant)
+            )
+            MetricCell(
+                icon = Icons.Outlined.History,
+                label = "记录",
+                value = "$recordCount",
+                highlight = false,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(28.dp)
+                    .background(colors.outlineVariant)
+            )
+            MetricCell(
+                icon = Icons.Outlined.Layers,
+                label = "浮窗",
+                value = overlayStyleLabel,
+                highlight = false,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetricCell(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    highlight: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         Text(
             text = value,
-            color = colors.onSurface,
-            fontSize = 18.sp,
+            color = if (highlight) colors.primary else colors.onSurface,
+            fontSize = 19.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace
         )
-        Text(
-            text = label,
-            color = colors.onSurfaceVariant,
-            fontSize = 12.sp
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier.size(13.dp)
+            )
+            Text(
+                text = label,
+                color = colors.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+        }
     }
 }
 

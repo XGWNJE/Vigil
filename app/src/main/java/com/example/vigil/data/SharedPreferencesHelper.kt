@@ -25,6 +25,9 @@ data class AlertRecord(
 /** 延时报警模式：立即响铃 / 命中后固定时长再响 / 命中后最近的每日定点时间响 */
 enum class DelayMode { IMMEDIATE, FIXED, SCHEDULED }
 
+/** 应用外系统浮窗样式：自动（窄屏顶部 / 宽屏角落）、顶部悬浮卡、居中强提醒、角落紧凑浮窗 */
+enum class OverlayAlertStyle { AUTO, TOP_BANNER, CENTER_CARD, CORNER_COMPACT }
+
 /**
  * 延时报警策略。
  * @property mode 生效模式
@@ -1075,5 +1078,21 @@ class SharedPreferencesHelper(context: Context) {
             prefs.edit().putString(KEY_DEBUG_UPDATE_API_BASE, base).apply()
         }
         Log.i("SharedPreferencesHelper", "调试更新 API 基址已设置: $base")
+    }
+
+    // --- 应用外系统浮窗样式 ---
+
+    fun getOverlayAlertStyle(): OverlayAlertStyle {
+        val raw = prefs.getString("overlay_alert_style", null) ?: return OverlayAlertStyle.AUTO
+        return try {
+            OverlayAlertStyle.valueOf(raw)
+        } catch (_: Exception) {
+            OverlayAlertStyle.AUTO
+        }
+    }
+
+    fun setOverlayAlertStyle(style: OverlayAlertStyle) {
+        prefs.edit().putString("overlay_alert_style", style.name).apply()
+        Log.i("SharedPreferencesHelper", "应用外告警浮窗样式已保存: ${style.name}")
     }
 }

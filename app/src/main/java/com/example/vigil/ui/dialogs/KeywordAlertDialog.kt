@@ -42,8 +42,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.example.vigil.ui.main.rememberFrameDrivenProgress
-import com.example.vigil.ui.theme.VigilPrimary
 import com.example.vigil.ui.theme.VigilBackground
+import com.example.vigil.ui.theme.VigilError
+import com.example.vigil.ui.theme.VigilSurface
 import com.example.vigil.ui.theme.VigilTextSecondary
 import com.example.vigil.ui.theme.VigilTextPrimary
 import java.text.SimpleDateFormat
@@ -120,25 +121,25 @@ fun KeywordAlertDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .border(1.dp, VigilPrimary.copy(alpha = borderAlpha))
+                    .background(VigilSurface, RoundedCornerShape(20.dp))
+                    .border(2.dp, VigilError.copy(alpha = borderAlpha), RoundedCornerShape(20.dp))
                     .padding(horizontal = 22.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Text(
-                    text = "KEYWORD ALERT // 关键词报警",
+                    text = "ALERT // 关键词报警",
                     style = BodyTextStyle,
-                    fontSize = 10.sp,
-                    letterSpacing = 3.sp,
-                    color = VigilPrimary
+                    fontSize = 11.sp,
+                    letterSpacing = 2.sp,
+                    color = VigilError
                 )
 
                 Text(
                     text = matchedKeyword ?: "未知",
-                    fontSize = 38.sp,
+                    fontSize = 34.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = 1.6.sp,
-                    lineHeight = 44.sp,
+                    lineHeight = 40.sp,
                     color = VigilTextPrimary
                 )
 
@@ -152,25 +153,23 @@ fun KeywordAlertDialog(
                     AlertMetaRow("TIME", timeText)
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // 底部：酸橙绿实心大按钮
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(VigilPrimary, RoundedCornerShape(2.dp))
+                        .background(VigilError, RoundedCornerShape(999.dp))
                         .clickable {
                             onConfirm()
                         }
-                        .padding(17.dp),
+                        .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "已知晓，停止报警",
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.5.sp,
-                        color = VigilBackground
+                        fontWeight = FontWeight.Bold,
+                        color = androidx.compose.ui.graphics.Color.White
                     )
                 }
             }

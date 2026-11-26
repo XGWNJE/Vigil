@@ -92,8 +92,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.vigil.MainActivity
+import com.example.vigil.alert.AlertOverlayManager
 import com.example.vigil.data.DelayMode
 import com.example.vigil.data.DelayPolicy
+import com.example.vigil.data.OverlayAlertStyle
 import com.example.vigil.alert.DelayedAlertScheduler
 import com.example.vigil.util.ListenerRecovery
 import com.example.vigil.util.PermissionUtils
@@ -209,6 +211,8 @@ fun MainScreen(
     val defaultDelayPolicy by settingsViewModel.defaultDelayPolicy
     val exactAlarmAllowed by settingsViewModel.exactAlarmAllowed
     val hasDelayedPolicy by settingsViewModel.hasDelayedPolicy
+    val hasOverlayPermission by settingsViewModel.hasOverlayPermission
+    val overlayAlertStyle by settingsViewModel.overlayAlertStyle
     val pendingDelayedCount by monitoringViewModel.pendingDelayedCount
     // 关键词配置变化信号（读取即订阅，chip 弹窗里的值随配置保存即时刷新）
     val keywordConfigVersion by settingsViewModel.keywordConfigVersion
@@ -219,6 +223,8 @@ fun MainScreen(
     NotificationDashboard(
         serviceEnabled = serviceEnabled, serviceState = serviceState, keywordCount = keywordList.size,
         ringtone = selectedRingtoneName, loops = defaultLoopCount,
+        delayPolicy = defaultDelayPolicy,
+        hasOverlayPermission = hasOverlayPermission,
         onToggleLocal = {
             if (!serviceEnabled && !hasNotificationAccess) {
                 showGuideDialog = PermissionGuide.NotificationAccess
@@ -227,6 +233,8 @@ fun MainScreen(
                 stopServiceCallback = { (activity as? MainActivity)?.stopVigilService() })
         },
         onRingtone = { ringtoneSelectTarget = "" }, onLoops = { loopCountDialogTarget = "" },
+        onDelay = { delayDialogTarget = "" },
+        onRequestOverlay = { activity?.let(PermissionUtils::openOverlaySettings) },
         onHistory = onNavigateToAlertHistory, onLibrary = onNavigateToRingtoneLibrary,
         settingsContent = { keywordPage ->
             Column(Modifier.fillMaxWidth()) {
@@ -276,6 +284,64 @@ fun MainScreen(
                 LineRow(onClick = { delayDialogTarget = "" }) {
                     RowLabel("延时报警")
                     RowValue(formatDelayPolicy(defaultDelayPolicy), withArrow = true)
+                }
+
+                // 5.5 应用外系统浮窗：权限状态 + 三种样式/自适应切换 + 一键预览
+                LineRow(onClick = {
+                    if (!hasOverlayPermission) {
+                        activity?.let(PermissionUtils::openOverlaySettings)
+                    } else {
+                        AlertOverlayManager.showPreview(context, overlayAlertStyle)
+                    }
+                }) {
+                    RowLabel("应用外浮窗")
+                    RowValue(
+                        if (hasOverlayPermission) "预览" else "未授权",
+                        withArrow = true
+                    )
+                }
+                LineRow {
+                    RowLabel("浮窗样式")
+                    FlowRow(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            OverlayAlertStyle.AUTO to "自动",
+                            OverlayAlertStyle.TOP_BANNER to "顶部",
+                            OverlayAlertStyle.CENTER_CARD to "居中",
+                            OverlayAlertStyle.CORNER_COMPACT to "角落"
+                        ).forEach { (style, label) ->
+                            val selected = overlayAlertStyle == style
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(if (selected) VigilPrimary else Color.Transparent)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (selected) VigilPrimary else VigilBorder,
+                                        shape = RoundedCornerShape(999.dp)
+                                    )
+                                    .clickable {
+                                        settingsViewModel.updateOverlayAlertStyle(style)
+                                        if (hasOverlayPermission) {
+                                            AlertOverlayManager.showPreview(context, style)
+                                        }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (selected) Color(0xFF06131C) else VigilTextPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // 6. 待触发延时报警：有排定项时才出现，可查看/取消

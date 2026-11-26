@@ -83,6 +83,29 @@ object PermissionUtils {
         return ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
 
+    /** 系统悬浮窗权限（应用外告警浮窗）是否已授予。 */
+    fun canDrawOverlays(context: Context): Boolean {
+        return Settings.canDrawOverlays(context)
+    }
+
+    /** 打开系统「显示在其他应用上层」授权页。 */
+    fun openOverlaySettings(activity: Activity) {
+        try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:${activity.packageName}")
+            )
+            if (activity is MainActivity) {
+                activity.appSettingsLauncher.launch(intent)
+            } else {
+                activity.startActivity(intent)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "无法打开悬浮窗权限设置页", e)
+            openAppDetailsSettings(activity)
+        }
+    }
+
     /**
      * 打开"自启动管理"设置页（国产 ROM 通用）。
      * 国产 ROM（小米/华为/OPPO/vivo/荣耀等）默认禁止应用自启动，进程被系统清理后

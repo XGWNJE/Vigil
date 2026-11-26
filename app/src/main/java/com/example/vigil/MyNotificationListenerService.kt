@@ -1,6 +1,7 @@
 // src/main/java/com/example/vigil/MyNotificationListenerService.kt
 package com.example.vigil
 
+import com.example.vigil.alert.AlertOverlayManager
 import com.example.vigil.alert.DelayedAlertScheduler
 import com.example.vigil.alert.RingtoneLibrary
 import com.example.vigil.data.AlertEndType
@@ -434,6 +435,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private fun stopRingtoneAndLock() {
         VigilLogger.i(applicationContext, TAG, "停止报警铃声并释放唤醒锁")
+        AlertOverlayManager.dismiss()
         stopRingtone()
         releaseWakeLock()
     }
@@ -477,16 +479,25 @@ class MyNotificationListenerService : NotificationListenerService() {
                 )
                 VigilEventBus.alertStateChanged.emit(Unit)
             }
-            val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
-                action = ACTION_SHOW_ALERT_FROM_SERVICE
-                putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, item.keyword)
-                putExtra(EXTRA_ALERT_ID_FROM_SERVICE, item.id)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
-            try {
-                startActivity(activityIntent)
-            } catch (e: Exception) {
-                Log.e(TAG, "启动 MainActivity 时发生错误", e)
+            val shownOverlay = AlertOverlayManager.show(
+                context = applicationContext,
+                item = item,
+                queueSize = queueSize,
+                onConfirm = { finishCurrentAlert(item.id, AlertEndType.MANUAL) }
+            )
+            if (!shownOverlay) {
+                // 未授予悬浮窗权限时降级回应用内弹窗兜底，确保绝不漏报
+                val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                    action = ACTION_SHOW_ALERT_FROM_SERVICE
+                    putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, item.keyword)
+                    putExtra(EXTRA_ALERT_ID_FROM_SERVICE, item.id)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                }
+                try {
+                    startActivity(activityIntent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "启动 MainActivity 时发生错误", e)
+                }
             }
         }
     }

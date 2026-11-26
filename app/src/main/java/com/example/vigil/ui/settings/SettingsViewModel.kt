@@ -22,6 +22,7 @@ import com.example.vigil.data.DelayPolicy
 import com.example.vigil.util.PermissionUtils
 import com.example.vigil.R
 import com.example.vigil.alert.RingtoneLibrary
+import com.example.vigil.data.OverlayAlertStyle
 import com.example.vigil.data.ScheduledAlert
 import com.example.vigil.data.SharedPreferencesHelper
 import com.example.vigil.data.AlertRecord
@@ -109,6 +110,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isIgnoringBatteryOptimizations = mutableStateOf(false)
     val isIgnoringBatteryOptimizations: State<Boolean> = _isIgnoringBatteryOptimizations
 
+    private val _hasOverlayPermission = mutableStateOf(PermissionUtils.canDrawOverlays(context))
+    val hasOverlayPermission: State<Boolean> = _hasOverlayPermission
+
+    private val _overlayAlertStyle = mutableStateOf(sharedPreferencesHelper.getOverlayAlertStyle())
+    val overlayAlertStyle: State<OverlayAlertStyle> = _overlayAlertStyle
+
+    fun updateOverlayAlertStyle(style: OverlayAlertStyle) {
+        _overlayAlertStyle.value = style
+        sharedPreferencesHelper.setOverlayAlertStyle(style)
+    }
+
 
     // --- 应用过滤 ---
     private val _isAppFilterEnabled = mutableStateOf(sharedPreferencesHelper.getFilterAppsEnabledState())
@@ -145,10 +157,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updatePermissionStates() {
         _hasNotificationAccess.value = PermissionUtils.isNotificationListenerEnabled(context)
         _isIgnoringBatteryOptimizations.value = PermissionUtils.isIgnoringBatteryOptimizations(context)
+        _hasOverlayPermission.value = PermissionUtils.canDrawOverlays(context)
         _exactAlarmAllowed.value = DelayedAlertScheduler.canScheduleExactAlarms(context)
         _hasDelayedPolicy.value = sharedPreferencesHelper.hasAnyDelayedPolicy()
 
-        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}, ExactAlarm=${_exactAlarmAllowed.value}")
+        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, Overlay=${_hasOverlayPermission.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}, ExactAlarm=${_exactAlarmAllowed.value}")
     }
 
     // --- 应用过滤 ---

@@ -102,8 +102,6 @@ internal fun NotificationDashboard(
         Modifier
             .fillMaxSize()
             .background(colors.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
     ) {
         val wideLayout = maxWidth >= 660.dp
 
@@ -112,9 +110,11 @@ internal fun NotificationDashboard(
                 // 宽屏 4 格极简图标导航轨（唯一导航入口）
                 Column(
                     modifier = Modifier
+                        .background(colors.surface)
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
                         .width(68.dp)
                         .fillMaxHeight()
-                        .background(colors.surface)
                         .padding(vertical = 18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -125,7 +125,13 @@ internal fun NotificationDashboard(
                 }
                 VerticalDivider(color = colors.outlineVariant)
 
-                Box(Modifier.weight(1f).fillMaxHeight()) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                ) {
                     when (page) {
                         "监控" -> MonitorPane(
                             wide = true,
@@ -153,7 +159,7 @@ internal fun NotificationDashboard(
             }
         } else {
             // 窄屏：顶栏（纯标题，无重复功能按钮）+ 内容区 + 4 格底部导航
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().statusBarsPadding()) {
                 if (page != "记录") {
                     VigilTopBar(title = if (page == "监控") "Vigil" else page)
                 }
@@ -189,6 +195,7 @@ internal fun NotificationDashboard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.surface)
+                        .navigationBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically

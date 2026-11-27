@@ -32,6 +32,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -452,46 +453,28 @@ fun MainScreen(
                     }
                 }
 
-                // 7. 应用外浮窗样式与预览
-                LineRow {
-                    RowLabel("浮窗样式")
-                    FlowRow(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(
-                            OverlayAlertStyle.AUTO to "自动",
-                            OverlayAlertStyle.TOP_BANNER to "顶部",
-                            OverlayAlertStyle.CENTER_CARD to "居中",
-                            OverlayAlertStyle.CORNER_COMPACT to "角落"
-                        ).forEach { (style, label) ->
-                            VigilPillChip(
-                                label = label,
-                                selected = overlayAlertStyle == style,
-                                onClick = {
-                                    settingsViewModel.updateOverlayAlertStyle(style)
-                                    if (hasOverlayPermission) {
-                                        AlertOverlayManager.showPreview(context, style)
-                                    }
-                                }
-                            )
+                // 7. 应用外浮窗样式（点选即保存并预览，自适应等宽/换行布局）
+                OverlayStyleCard(
+                    selectedStyle = overlayAlertStyle,
+                    hasOverlayPermission = hasOverlayPermission,
+                    onSelectStyle = { style ->
+                        settingsViewModel.updateOverlayAlertStyle(style)
+                        if (hasOverlayPermission) {
+                            AlertOverlayManager.showPreview(context, style)
+                        } else {
+                            Toast.makeText(context, "请先在下方开启「系统悬浮窗」权限", Toast.LENGTH_SHORT).show()
+                            activity?.let(PermissionUtils::openOverlaySettings)
+                        }
+                    },
+                    onPreviewClick = {
+                        if (hasOverlayPermission) {
+                            AlertOverlayManager.showPreview(context, overlayAlertStyle)
+                        } else {
+                            Toast.makeText(context, "请先在下方开启「系统悬浮窗」权限", Toast.LENGTH_SHORT).show()
+                            activity?.let(PermissionUtils::openOverlaySettings)
                         }
                     }
-                }
-                LineRow(onClick = {
-                    if (hasOverlayPermission) {
-                        AlertOverlayManager.showPreview(context, overlayAlertStyle)
-                    } else {
-                        Toast.makeText(context, "请先在下方开启「系统悬浮窗」权限", Toast.LENGTH_SHORT).show()
-                        activity?.let(PermissionUtils::openOverlaySettings)
-                    }
-                }) {
-                    RowLabel("预览浮窗")
-                    RowValue(if (hasOverlayPermission) "点按预览" else "需先授权", withArrow = true)
-                }
+                )
 
                 // ---- 核心权限（可检测状态的核心与重要权限统一收拢） ----
                 GroupHeader("核心权限")
@@ -863,6 +846,122 @@ private val BodyTextStyle = TextStyle(fontFamily = FontFamily.SansSerif)
  * 核心开关：涟漪的环心。
  * ON：酸橙绿描边 + 实心圆点呼吸缩放；OFF：暗灰描边 + 静止暗点。
  */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OverlayStyleCard(
+    selectedStyle: OverlayAlertStyle,
+    hasOverlayPermission: Boolean,
+    onSelectStyle: (OverlayAlertStyle) -> Unit,
+    onPreviewClick: () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    val options = remember {
+        listOf(
+            OverlayAlertStyle.AUTO to "自动",
+            OverlayAlertStyle.TOP_BANNER to "顶部",
+            OverlayAlertStyle.CENTER_CARD to "居中",
+            OverlayAlertStyle.CORNER_COMPACT to "角落"
+        )
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.surface,
+        shape = VigilCardShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RowLabel("浮窗样式")
+                Text(
+                    text = if (hasOverlayPermission) "点选即预览" else "需先开启系统悬浮窗",
+                    fontSize = 12.sp,
+                    color = if (hasOverlayPermission) colors.primary else colors.onSurfaceVariant,
+                    modifier = Modifier
+                        .clip(VigilPillShape)
+                        .clickable(onClick = onPreviewClick)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val fitsSingleRow = maxWidth >= 240.dp
+                if (fitsSingleRow) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        options.forEach { (style, label) ->
+                            OverlayStyleOptionChip(
+                                label = label,
+                                selected = selectedStyle == style,
+                                onClick = { onSelectStyle(style) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                } else {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        options.forEach { (style, label) ->
+                            OverlayStyleOptionChip(
+                                label = label,
+                                selected = selectedStyle == style,
+                                onClick = { onSelectStyle(style) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverlayStyleOptionChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val bg = if (selected) colors.primary else colors.surfaceVariant
+    val fg = if (selected) colors.onPrimary else colors.onSurface
+    val border = if (selected) bg else colors.outlineVariant
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        color = bg,
+        shape = VigilPillShape,
+        border = androidx.compose.foundation.BorderStroke(1.dp, border)
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                color = fg,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1
+            )
+        }
+    }
+}
+
 @Composable
 private fun LineRow(
     onClick: (() -> Unit)? = null,

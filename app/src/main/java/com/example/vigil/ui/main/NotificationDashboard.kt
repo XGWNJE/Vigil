@@ -46,7 +46,10 @@ import com.example.vigil.ui.monitoring.ServiceState
 import com.example.vigil.ui.settings.SettingsViewModel
 import com.example.vigil.util.ListenerRecovery
 import com.example.vigil.util.PermissionUtils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 统一风格主容器（暖黑石墨 + 琥珀金 · 单一入口信息架构）。
@@ -365,18 +368,26 @@ private fun MetricCell(
     }
 }
 
-private enum class OwlButtonState(
+private data class OwlClipSpec(
     val resId: Int,
     val cols: Int,
     val frameCount: Int,
     val cycleMs: Int
-) {
-    IDLE(R.drawable.owl_strip_idle, cols = 10, frameCount = 60, cycleMs = 2500),
-    PRESS(R.drawable.owl_strip_press, cols = 8, frameCount = 79, cycleMs = 1350),
-    CONNECTING(R.drawable.owl_strip_connecting, cols = 4, frameCount = 16, cycleMs = 1150),
-    WATCHING(R.drawable.owl_strip_watching, cols = 15, frameCount = 220, cycleMs = 8800),
-    WARNING(R.drawable.owl_strip_warning, cols = 10, frameCount = 60, cycleMs = 2400),
-    ALARM(R.drawable.owl_strip_alarm, cols = 8, frameCount = 94, cycleMs = 3615)
+)
+
+private enum class OwlButtonState(val clips: List<OwlClipSpec>) {
+    IDLE(listOf(OwlClipSpec(R.drawable.owl_strip_idle, cols = 9, frameCount = 133, cycleMs = 5542))),
+    PRESS(listOf(OwlClipSpec(R.drawable.owl_strip_press, cols = 8, frameCount = 79, cycleMs = 1350))),
+    CONNECTING(listOf(OwlClipSpec(R.drawable.owl_strip_connecting, cols = 4, frameCount = 16, cycleMs = 1150))),
+    WATCHING(
+        listOf(
+            OwlClipSpec(R.drawable.owl_strip_watching, cols = 15, frameCount = 220, cycleMs = 8800),
+            OwlClipSpec(R.drawable.owl_strip_watching_v2, cols = 14, frameCount = 201, cycleMs = 8040),
+            OwlClipSpec(R.drawable.owl_strip_watching_v3, cols = 15, frameCount = 214, cycleMs = 8560)
+        )
+    ),
+    WARNING(listOf(OwlClipSpec(R.drawable.owl_strip_warning, cols = 10, frameCount = 147, cycleMs = 6000))),
+    ALARM(listOf(OwlClipSpec(R.drawable.owl_strip_alarm, cols = 8, frameCount = 94, cycleMs = 3615)))
 }
 
 /** 居中发光脉冲守望环（像素猫头鹰多状态透明序列动图 + 60fps 物理弹性光环）：全应用唯一的监听总开关。 */
@@ -402,7 +413,7 @@ private fun SentinelHeroRing(
 
     LaunchedEffect(tapBounceActive, pressNonce) {
         if (tapBounceActive) {
-            delay(OwlButtonState.PRESS.cycleMs.toLong())
+            delay(OwlButtonState.PRESS.clips.first().cycleMs.toLong())
             tapBounceActive = false
         }
     }
@@ -441,20 +452,68 @@ private fun SentinelHeroRing(
         else -> 0.025f
     }
 
-    // 按需解码并缓存 2D 图集，预热高频状态，避免启动瞬间同时解码全部大图
+    // 按需异步解码并预取下一随机变体，保持有界低内存且切换零卡顿
     val resources = LocalContext.current.resources
-    val atlasCache = remember { mutableMapOf<OwlButtonState, ImageBitmap>() }
-    LaunchedEffect(Unit) {
-        for (state in listOf(OwlButtonState.IDLE, OwlButtonState.PRESS, OwlButtonState.WATCHING)) {
-            atlasCache.getOrPut(state) { ImageBitmap.imageResource(resources, state.resId) }
+    val pressAtlas = remember(resources) {
+        ImageBitmap.imageResource(resources, OwlButtonState.PRESS.clips.first().resId)
+    }
+    var activeClip by remember { mutableStateOf(owlState.clips.first()) }
+    var activeAtlas by remember { mutableStateOf<ImageBitmap?>(null) }
+    var frameIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(owlState, pressNonce) {
+        val clips = owlState.clips
+        var currentIdx = if (clips.size > 1) clips.indices.random() else 0
+        var currentSpec = clips[currentIdx]
+        activeClip = currentSpec
+        frameIndex = 0
+        activeAtlas = if (owlState == OwlButtonState.PRESS) {
+            pressAtlas
+        } else {
+            withContext(Dispatchers.IO) { ImageBitmap.imageResource(resources, currentSpec.resId) }
+        }
+
+        var nextIdx = -1
+        var prefetchedAtlas: ImageBitmap? = null
+        fun startPrefetch(excludeIdx: Int) {
+            if (clips.size <= 1) return
+            val candidates = clips.indices.filter { it != excludeIdx }
+            val pick = candidates.random()
+            nextIdx = pick
+            prefetchedAtlas = null
+            launch(Dispatchers.IO) {
+                val bmp = ImageBitmap.imageResource(resources, clips[pick].resId)
+                withContext(Dispatchers.Main) {
+                    if (nextIdx == pick) {
+                        prefetchedAtlas = bmp
+                    }
+                }
+            }
+        }
+        startPrefetch(currentIdx)
+
+        var cycleStartNanos = System.nanoTime()
+        while (true) {
+            withFrameNanos { now ->
+                val elapsedMs = (now - cycleStartNanos) / 1_000_000L
+                if (elapsedMs >= currentSpec.cycleMs) {
+                    val readyNext = prefetchedAtlas
+                    if (clips.size > 1 && readyNext != null && nextIdx in clips.indices) {
+                        currentIdx = nextIdx
+                        currentSpec = clips[currentIdx]
+                        activeClip = currentSpec
+                        activeAtlas = readyNext
+                        startPrefetch(currentIdx)
+                    }
+                    cycleStartNanos = now
+                    frameIndex = 0
+                } else {
+                    val progress = elapsedMs.toFloat() / currentSpec.cycleMs.toFloat()
+                    frameIndex = (progress * currentSpec.frameCount).toInt().coerceIn(0, currentSpec.frameCount - 1)
+                }
+            }
         }
     }
-    val activeAtlas = atlasCache.getOrPut(owlState) {
-        ImageBitmap.imageResource(resources, owlState.resId)
-    }
-
-    val spriteProgress = rememberFrameDrivenProgress(owlState.cycleMs, resetKey = owlState to pressNonce)
-    val frameIndex = ((spriteProgress * owlState.frameCount).toInt()).coerceIn(0, owlState.frameCount - 1)
 
     val buttonScale by animateFloatAsState(
         targetValue = if (isPressed) 0.91f else if (tapBounceActive) 1.04f else 1f,
@@ -516,12 +575,13 @@ private fun SentinelHeroRing(
                 }
 
                 Canvas(modifier = Modifier.size(148.dp)) {
-                    val frameSize = activeAtlas.width / owlState.cols
-                    val col = frameIndex % owlState.cols
-                    val row = frameIndex / owlState.cols
+                    val atlas = activeAtlas ?: return@Canvas
+                    val frameSize = atlas.width / activeClip.cols
+                    val col = frameIndex % activeClip.cols
+                    val row = frameIndex / activeClip.cols
                     val dstSize = IntSize(size.width.toInt(), size.height.toInt())
                     drawImage(
-                        image = activeAtlas,
+                        image = atlas,
                         srcOffset = IntOffset(col * frameSize, row * frameSize),
                         srcSize = IntSize(frameSize, frameSize),
                         dstOffset = IntOffset.Zero,

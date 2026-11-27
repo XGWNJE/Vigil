@@ -367,11 +367,11 @@ private fun MetricCell(
 
 private enum class OwlButtonState(val resId: Int, val cycleMs: Int) {
     IDLE(R.drawable.owl_strip_idle, 2600),
-    PRESS(R.drawable.owl_strip_press, 800),
-    CONNECTING(R.drawable.owl_strip_connecting, 1600),
-    WATCHING(R.drawable.owl_strip_watching, 2400),
-    WARNING(R.drawable.owl_strip_warning, 1800),
-    ALARM(R.drawable.owl_strip_alarm, 960)
+    PRESS(R.drawable.owl_strip_press, 850),
+    CONNECTING(R.drawable.owl_strip_connecting, 2000),
+    WATCHING(R.drawable.owl_strip_watching, 3200),
+    WARNING(R.drawable.owl_strip_warning, 2200),
+    ALARM(R.drawable.owl_strip_alarm, 1000)
 }
 
 /** 居中发光脉冲守望环（像素猫头鹰多状态透明序列动图 + 60fps 物理弹性光环）：全应用唯一的监听总开关。 */
@@ -393,10 +393,11 @@ private fun SentinelHeroRing(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     var tapBounceActive by remember { mutableStateOf(false) }
+    var pressNonce by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(tapBounceActive) {
+    LaunchedEffect(tapBounceActive, pressNonce) {
         if (tapBounceActive) {
-            delay(800)
+            delay(OwlButtonState.PRESS.cycleMs.toLong())
             tapBounceActive = false
         }
     }
@@ -435,9 +436,6 @@ private fun SentinelHeroRing(
         else -> 0.025f
     }
 
-    val spriteProgress = rememberFrameDrivenProgress(owlState.cycleMs)
-    val frameIndex = ((spriteProgress * 8f).toInt()).coerceIn(0, 7)
-
     // 预加载 6 组透明序列条，切换状态零闪烁
     val idleStrip = ImageBitmap.imageResource(OwlButtonState.IDLE.resId)
     val pressStrip = ImageBitmap.imageResource(OwlButtonState.PRESS.resId)
@@ -453,6 +451,10 @@ private fun SentinelHeroRing(
         OwlButtonState.WARNING -> warningStrip
         OwlButtonState.ALARM -> alarmStrip
     }
+
+    val spriteProgress = rememberFrameDrivenProgress(owlState.cycleMs, resetKey = owlState to pressNonce)
+    val frameCount = (activeStrip.width / activeStrip.height).coerceAtLeast(1)
+    val frameIndex = ((spriteProgress * frameCount).toInt()).coerceIn(0, frameCount - 1)
 
     val buttonScale by animateFloatAsState(
         targetValue = if (isPressed) 0.91f else if (tapBounceActive) 1.04f else 1f,
@@ -475,6 +477,7 @@ private fun SentinelHeroRing(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
+                    pressNonce++
                     tapBounceActive = true
                     onToggle()
                 }

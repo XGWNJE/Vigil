@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
@@ -107,6 +108,7 @@ internal fun NotificationDashboard(
             .background(colors.background)
     ) {
         val wideLayout = maxWidth >= 660.dp
+        val isDark = colors.background.luminance() < 0.5f
 
         if (wideLayout) {
             Row(Modifier.fillMaxSize()) {
@@ -132,63 +134,88 @@ internal fun NotificationDashboard(
                     Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
                 ) {
-                    when (page) {
-                        "监控" -> MonitorPane(
-                            wide = true,
-                            serviceEnabled = serviceEnabled,
-                            serviceState = serviceState,
+                    if (page == "监控") {
+                        PixelSentinelBackdrop(
+                            isDark = isDark,
+                            isIdle = !serviceEnabled && !isAlerting,
                             isAlerting = isAlerting,
-                            keywordCount = keywordCount,
-                            recordCount = recordCount,
-                            overlayStyleLabel = overlayStyleLabel,
-                            onToggle = onToggleLocal
+                            modifier = Modifier.matchParentSize()
                         )
-                        "记录" -> AlertHistoryScreen(onNavigateBack = null, viewModel = settingsViewModel)
-                        else -> Column(
-                            Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Text(page, color = colors.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                            settingsContent(page == "规则")
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                    ) {
+                        when (page) {
+                            "监控" -> MonitorPane(
+                                wide = true,
+                                serviceEnabled = serviceEnabled,
+                                serviceState = serviceState,
+                                isAlerting = isAlerting,
+                                keywordCount = keywordCount,
+                                recordCount = recordCount,
+                                overlayStyleLabel = overlayStyleLabel,
+                                onToggle = onToggleLocal
+                            )
+                            "记录" -> AlertHistoryScreen(onNavigateBack = null, viewModel = settingsViewModel)
+                            else -> Column(
+                                Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Text(page, color = colors.onBackground, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                settingsContent(page == "规则")
+                            }
                         }
                     }
                 }
             }
         } else {
             // 窄屏：顶栏（纯标题，无重复功能按钮）+ 内容区 + 4 格底部导航
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                if (page != "记录") {
-                    VigilTopBar(title = if (page == "监控") "Vigil" else page)
-                }
-
+            Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    when (page) {
-                        "监控" -> MonitorPane(
-                            wide = false,
-                            serviceEnabled = serviceEnabled,
-                            serviceState = serviceState,
+                    if (page == "监控") {
+                        PixelSentinelBackdrop(
+                            isDark = isDark,
+                            isIdle = !serviceEnabled && !isAlerting,
                             isAlerting = isAlerting,
-                            keywordCount = keywordCount,
-                            recordCount = recordCount,
-                            overlayStyleLabel = overlayStyleLabel,
-                            onToggle = onToggleLocal
+                            modifier = Modifier.matchParentSize()
                         )
-                        "记录" -> AlertHistoryScreen(onNavigateBack = null, viewModel = settingsViewModel)
-                        else -> Column(
-                            Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 18.dp, vertical = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            settingsContent(page == "规则")
-                            Spacer(Modifier.height(12.dp))
+                    }
+                    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                        if (page != "记录") {
+                            VigilTopBar(title = if (page == "监控") "Vigil" else page)
+                        }
+
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            when (page) {
+                                "监控" -> MonitorPane(
+                                    wide = false,
+                                    serviceEnabled = serviceEnabled,
+                                    serviceState = serviceState,
+                                    isAlerting = isAlerting,
+                                    keywordCount = keywordCount,
+                                    recordCount = recordCount,
+                                    overlayStyleLabel = overlayStyleLabel,
+                                    onToggle = onToggleLocal
+                                )
+                                "记录" -> AlertHistoryScreen(onNavigateBack = null, viewModel = settingsViewModel)
+                                else -> Column(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(horizontal = 18.dp, vertical = 6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    settingsContent(page == "规则")
+                                    Spacer(Modifier.height(12.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -575,15 +602,13 @@ private fun SentinelHeroRing(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        val owlSize = minOf(296.dp, maxWidth - 8.dp, maxHeight - 44.dp).coerceAtLeast(148.dp)
-        val glowSize = owlSize + 12.dp
+        val isDark = colors.background.luminance() < 0.5f
+        val owlSize = minOf(296.dp, maxWidth - 8.dp, maxHeight - 52.dp).coerceAtLeast(148.dp)
+        val perchW = minOf(owlSize * 1.32f, maxWidth)
+        val perchH = owlSize + 18.dp
 
         Column(
             modifier = Modifier
-                .graphicsLayer {
-                    scaleX = buttonScale
-                    scaleY = buttonScale
-                }
                 .clip(RoundedCornerShape(36.dp))
                 .clickable(
                     interactionSource = interactionSource,
@@ -594,38 +619,35 @@ private fun SentinelHeroRing(
                         onToggle()
                     }
                 )
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Box(
-                modifier = Modifier.size(glowSize),
+                modifier = Modifier.size(width = perchW, height = perchH),
                 contentAlignment = Alignment.Center
             ) {
-                // 紧贴猫头鹰轮廓的克制光晕（略偏下并做轻微椭圆压缩以贴合躯干轮廓）
+                PixelBranchPerch(
+                    owlSize = owlSize,
+                    isDark = isDark,
+                    isIdle = !serviceEnabled && !isAlerting,
+                    isAlerting = isAlerting,
+                    isWarning = isWarning,
+                    isConnecting = connectingVisible,
+                    isJumping = owlState == OwlButtonState.PRESS,
+                    glowColor = ringColor,
+                    glowAlpha = glowAlpha,
+                    modifier = Modifier.fillMaxSize()
+                )
+
                 Canvas(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .size(owlSize)
                         .graphicsLayer {
-                            scaleX = 1.0f
-                            scaleY = 0.90f
-                            translationY = size.height * 0.06f
+                            scaleX = buttonScale
+                            scaleY = buttonScale
                         }
                 ) {
-                    val radius = size.minDimension / 2f
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            0.0f to ringColor.copy(alpha = glowAlpha),
-                            0.50f to ringColor.copy(alpha = glowAlpha * 0.38f),
-                            0.80f to ringColor.copy(alpha = glowAlpha * 0.08f),
-                            1.0f to Color.Transparent,
-                            radius = radius
-                        ),
-                        radius = radius
-                    )
-                }
-
-                Canvas(modifier = Modifier.size(owlSize)) {
                     val current = loadedAtlas ?: return@Canvas
                     val safeIndex = frameIndex.coerceIn(0, current.clip.frameCount - 1)
                     val frameSize = current.bitmap.width / current.clip.cols

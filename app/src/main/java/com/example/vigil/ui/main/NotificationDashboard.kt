@@ -571,31 +571,35 @@ private fun SentinelHeroRing(
         label = "HeroRingScale"
     )
 
-    Box(
-        modifier = Modifier
-            .size(220.dp)
-            .graphicsLayer {
-                scaleX = buttonScale
-                scaleY = buttonScale
-            }
-            .clip(CircleShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    pressNonce++
-                    tapBounceActive = true
-                    onToggle()
-                }
-            ),
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        val owlSize = minOf(296.dp, maxWidth - 8.dp, maxHeight - 44.dp).coerceAtLeast(148.dp)
+        val glowSize = owlSize + 12.dp
+
         Column(
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = buttonScale
+                    scaleY = buttonScale
+                }
+                .clip(RoundedCornerShape(36.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        pressNonce++
+                        tapBounceActive = true
+                        onToggle()
+                    }
+                )
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             Box(
-                modifier = Modifier.size(156.dp),
+                modifier = Modifier.size(glowSize),
                 contentAlignment = Alignment.Center
             ) {
                 // 紧贴猫头鹰轮廓的克制光晕（略偏下并做轻微椭圆压缩以贴合躯干轮廓）
@@ -621,7 +625,7 @@ private fun SentinelHeroRing(
                     )
                 }
 
-                Canvas(modifier = Modifier.size(148.dp)) {
+                Canvas(modifier = Modifier.size(owlSize)) {
                     val current = loadedAtlas ?: return@Canvas
                     val safeIndex = frameIndex.coerceIn(0, current.clip.frameCount - 1)
                     val frameSize = current.bitmap.width / current.clip.cols

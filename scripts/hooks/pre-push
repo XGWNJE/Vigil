@@ -1,0 +1,30 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${VIGIL_SKIP_HOOKS:-0}" = "1" ]; then
+    echo "[pre-push] Skipped via VIGIL_SKIP_HOOKS=1"
+    exit 0
+fi
+
+PY_BIN="python"
+if ! command -v "$PY_BIN" >/dev/null 2>&1; then
+    PY_BIN="python3"
+fi
+
+RELEASE_TAG=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/tags/v*)
+            RELEASE_TAG="${remote_ref#refs/tags/}"
+            ;;
+    esac
+done
+
+echo "[pre-push] Running local docs & secret sync check..."
+if [ -n "$RELEASE_TAG" ]; then
+    "$PY_BIN" scripts/check-docs-sync.py --tag "$RELEASE_TAG"
+    echo "[pre-push] Release tag $RELEASE_TAG detected — running full local CI..."
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/local-ci.ps1 -Tag "$RELEASE_TAG"
+else
+    "$PY_BIN" scripts/check-docs-sync.py
+fi

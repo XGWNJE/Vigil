@@ -10,7 +10,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// 签名凭据：本机读 keystore.properties（gitignored），CI 读环境变量。
+// 签名凭据：本机读 keystore.properties（gitignored）或环境变量，严禁提交密钥与密码。
 // 历史教训：旧 keystore 曾随仓库提交、密码明文写在本文件，公开仓库 = 密钥泄露，已轮换。
 import java.util.Properties
 

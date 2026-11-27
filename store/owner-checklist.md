@@ -4,10 +4,10 @@
 
 商店规则、费用和表单会变化；执行前以各平台当前页面为准。不要从旧文案复制“无联网权限”或“锁屏自动弹出全屏通知”：当前版本会访问 GitHub 检查更新，报警通知需点击进入应用。
 
-## 一、GitHub 自动发版
+## 一、本地签名与 GitHub 发版
 
-- 在仓库的 [Actions secrets 页面](https://github.com/XGWNJE/Vigil/settings/secrets/actions)核对 `VIGIL_KEYSTORE_BASE64`、`VIGIL_STORE_PASSWORD`、`VIGIL_KEY_ALIAS` 和 `VIGIL_KEY_PASSWORD`；密钥文件和密码不得提交。
-- 发版操作与签名验收以[构建与发布手册](../docs/release.md)为准。GitHub Release 由 CI 在推送版本 tag 后创建。
+- 本机维护 `keystore/vigil.keystore` 与 `keystore.properties`（已 gitignore，须离线备份），禁止提交密钥或密码入库。
+- 发版操作、本地 CI 与签名验收以[构建与发布手册](../docs/release.md)为准，通过 `.\scripts\release-local.ps1` 在本地签名构建并创建 GitHub Release。
 
 ## 二、Google Play
 
@@ -29,7 +29,7 @@
 
 | 事项 | 状态 | 已有记录 |
 | --- | --- | --- |
-| GitHub CI secrets | 曾完成 | 2026-07-30 配置；v1.19.0 的 CI 签名发版已通过，后续发版仍需复核 |
+| 本地签名与发布脚本 | 已切换 | 2026-11 已由 GitHub Actions 切换为本地新签名证书与 `release-local.ps1` |
 | Play 开发者账号与资料 | 待维护者确认 | 账号状态、费用及表单以 Play Console 为准 |
 | Play 测试与正式发布 | 待维护者确认 | 测试门槛按账号创建时间与当前政策核对 |
 | 国内平台所需材料与备案 | 待维护者确认 | 按目标商店逐项核对 |

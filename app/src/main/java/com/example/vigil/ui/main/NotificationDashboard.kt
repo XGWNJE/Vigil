@@ -430,9 +430,9 @@ private fun SentinelHeroRing(
     val pulseRaw = if (isRunning || isWarning || isAlerting) rememberFrameDrivenProgress(if (isAlerting) 900 else 2600) else 0f
     val pulseTri = if (pulseRaw < 0.5f) pulseRaw * 2f else (1f - pulseRaw) * 2f
     val glowAlpha = when {
-        isAlerting -> 0.28f + 0.22f * pulseTri
-        isRunning || isWarning -> 0.18f + 0.16f * pulseTri
-        else -> 0.08f
+        isAlerting -> 0.14f + 0.10f * pulseTri
+        isRunning || isWarning -> 0.07f + 0.06f * pulseTri
+        else -> 0.025f
     }
 
     val spriteProgress = rememberFrameDrivenProgress(owlState.cycleMs)
@@ -465,7 +465,7 @@ private fun SentinelHeroRing(
 
     Box(
         modifier = Modifier
-            .size(236.dp)
+            .size(220.dp)
             .graphicsLayer {
                 scaleX = buttonScale
                 scaleY = buttonScale
@@ -481,36 +481,49 @@ private fun SentinelHeroRing(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = size.minDimension / 2f
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        ringColor.copy(alpha = glowAlpha),
-                        ringColor.copy(alpha = glowAlpha * 0.35f),
-                        Color.Transparent
-                    ),
-                    radius = radius
-                ),
-                radius = radius
-            )
-        }
-
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Canvas(modifier = Modifier.size(148.dp)) {
-                val frameSize = activeStrip.height
-                val dstSize = IntSize(size.width.toInt(), size.height.toInt())
-                drawImage(
-                    image = activeStrip,
-                    srcOffset = IntOffset(frameIndex * frameSize, 0),
-                    srcSize = IntSize(frameSize, frameSize),
-                    dstOffset = IntOffset.Zero,
-                    dstSize = dstSize,
-                    filterQuality = FilterQuality.None
-                )
+            Box(
+                modifier = Modifier.size(156.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                // 紧贴猫头鹰轮廓的克制光晕（略偏下并做轻微椭圆压缩以贴合躯干轮廓）
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 1.0f
+                            scaleY = 0.90f
+                            translationY = size.height * 0.06f
+                        }
+                ) {
+                    val radius = size.minDimension / 2f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0.0f to ringColor.copy(alpha = glowAlpha),
+                            0.50f to ringColor.copy(alpha = glowAlpha * 0.38f),
+                            0.80f to ringColor.copy(alpha = glowAlpha * 0.08f),
+                            1.0f to Color.Transparent,
+                            radius = radius
+                        ),
+                        radius = radius
+                    )
+                }
+
+                Canvas(modifier = Modifier.size(148.dp)) {
+                    val frameSize = activeStrip.height
+                    val dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                    drawImage(
+                        image = activeStrip,
+                        srcOffset = IntOffset(frameIndex * frameSize, 0),
+                        srcSize = IntSize(frameSize, frameSize),
+                        dstOffset = IntOffset.Zero,
+                        dstSize = dstSize,
+                        filterQuality = FilterQuality.None
+                    )
+                }
             }
             Text(
                 text = statusText,

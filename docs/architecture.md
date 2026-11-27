@@ -33,7 +33,7 @@
 ## 界面与更新
 
 - `MainActivity.kt`：Compose 导航、报警弹窗、权限引导与更新安装。报警期间暂缓显示更新弹窗或下载进度；报警结束后清除锁屏显示、屏幕唤醒等窗口标记。
-- `ui/main/NotificationDashboard.kt`：监控首页、手机/平板导航；`MainScreen.kt` 提供关键词和声音/权限设置；铃声选择列表可滚动，系统选择器的关键词目标在屏幕旋转后恢复。
+- `ui/main/NotificationDashboard.kt` / `PixelSentinelScene.kt`：监控首页、昼夜动态像素树梢场景与手机/平板导航；`MainScreen.kt` 提供关键词和声音/权限设置；铃声选择列表可滚动，系统选择器的关键词目标在屏幕旋转后恢复。
 - `ui/settings/RingtoneLibraryScreen.kt` / `AppFilterScreen.kt` / `ui/history/AlertHistoryScreen.kt`：铃声库、应用过滤和记录；历史使用稳定 ID 并随持久化变化刷新。
 - `update/UpdateChecker.kt` / `update/UpdateViewModel.kt`：GitHub 更新检查、下载和系统安装引导；数字版本段完整校验，支持 v 前缀与后缀。下载核对长度、资产大小、GitHub SHA-256（提供时）、包名、版本和当前签名；失败显示提示并清理临时文件。调试构建可使用本地更新接口，Release 使用 GitHub。
 

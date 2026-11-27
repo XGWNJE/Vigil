@@ -365,13 +365,18 @@ private fun MetricCell(
     }
 }
 
-private enum class OwlButtonState(val resId: Int, val cycleMs: Int) {
-    IDLE(R.drawable.owl_strip_idle, 2600),
-    PRESS(R.drawable.owl_strip_press, 850),
-    CONNECTING(R.drawable.owl_strip_connecting, 2000),
-    WATCHING(R.drawable.owl_strip_watching, 3200),
-    WARNING(R.drawable.owl_strip_warning, 2200),
-    ALARM(R.drawable.owl_strip_alarm, 1000)
+private enum class OwlButtonState(
+    val resId: Int,
+    val cols: Int,
+    val frameCount: Int,
+    val cycleMs: Int
+) {
+    IDLE(R.drawable.owl_strip_idle, cols = 10, frameCount = 60, cycleMs = 2500),
+    PRESS(R.drawable.owl_strip_press, cols = 8, frameCount = 79, cycleMs = 1350),
+    CONNECTING(R.drawable.owl_strip_connecting, cols = 4, frameCount = 16, cycleMs = 1150),
+    WATCHING(R.drawable.owl_strip_watching, cols = 15, frameCount = 220, cycleMs = 8800),
+    WARNING(R.drawable.owl_strip_warning, cols = 10, frameCount = 60, cycleMs = 2400),
+    ALARM(R.drawable.owl_strip_alarm, cols = 8, frameCount = 94, cycleMs = 3615)
 }
 
 /** 居中发光脉冲守望环（像素猫头鹰多状态透明序列动图 + 60fps 物理弹性光环）：全应用唯一的监听总开关。 */
@@ -436,25 +441,20 @@ private fun SentinelHeroRing(
         else -> 0.025f
     }
 
-    // 预加载 6 组透明序列条，切换状态零闪烁
-    val idleStrip = ImageBitmap.imageResource(OwlButtonState.IDLE.resId)
-    val pressStrip = ImageBitmap.imageResource(OwlButtonState.PRESS.resId)
-    val connectingStrip = ImageBitmap.imageResource(OwlButtonState.CONNECTING.resId)
-    val watchingStrip = ImageBitmap.imageResource(OwlButtonState.WATCHING.resId)
-    val warningStrip = ImageBitmap.imageResource(OwlButtonState.WARNING.resId)
-    val alarmStrip = ImageBitmap.imageResource(OwlButtonState.ALARM.resId)
-    val activeStrip = when (owlState) {
-        OwlButtonState.IDLE -> idleStrip
-        OwlButtonState.PRESS -> pressStrip
-        OwlButtonState.CONNECTING -> connectingStrip
-        OwlButtonState.WATCHING -> watchingStrip
-        OwlButtonState.WARNING -> warningStrip
-        OwlButtonState.ALARM -> alarmStrip
+    // 按需解码并缓存 2D 图集，预热高频状态，避免启动瞬间同时解码全部大图
+    val resources = LocalContext.current.resources
+    val atlasCache = remember { mutableMapOf<OwlButtonState, ImageBitmap>() }
+    LaunchedEffect(Unit) {
+        for (state in listOf(OwlButtonState.IDLE, OwlButtonState.PRESS, OwlButtonState.WATCHING)) {
+            atlasCache.getOrPut(state) { ImageBitmap.imageResource(resources, state.resId) }
+        }
+    }
+    val activeAtlas = atlasCache.getOrPut(owlState) {
+        ImageBitmap.imageResource(resources, owlState.resId)
     }
 
     val spriteProgress = rememberFrameDrivenProgress(owlState.cycleMs, resetKey = owlState to pressNonce)
-    val frameCount = (activeStrip.width / activeStrip.height).coerceAtLeast(1)
-    val frameIndex = ((spriteProgress * frameCount).toInt()).coerceIn(0, frameCount - 1)
+    val frameIndex = ((spriteProgress * owlState.frameCount).toInt()).coerceIn(0, owlState.frameCount - 1)
 
     val buttonScale by animateFloatAsState(
         targetValue = if (isPressed) 0.91f else if (tapBounceActive) 1.04f else 1f,
@@ -516,11 +516,13 @@ private fun SentinelHeroRing(
                 }
 
                 Canvas(modifier = Modifier.size(148.dp)) {
-                    val frameSize = activeStrip.height
+                    val frameSize = activeAtlas.width / owlState.cols
+                    val col = frameIndex % owlState.cols
+                    val row = frameIndex / owlState.cols
                     val dstSize = IntSize(size.width.toInt(), size.height.toInt())
                     drawImage(
-                        image = activeStrip,
-                        srcOffset = IntOffset(frameIndex * frameSize, 0),
+                        image = activeAtlas,
+                        srcOffset = IntOffset(col * frameSize, row * frameSize),
                         srcSize = IntSize(frameSize, frameSize),
                         dstOffset = IntOffset.Zero,
                         dstSize = dstSize,

@@ -27,7 +27,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.activity.compose.setContent
 import androidx.compose.animation.fadeIn
@@ -115,9 +114,6 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Returned from system settings page.")
             settingsViewModel.updatePermissionStates()
         }
-
-        // 首次启动时自动申请 POST_NOTIFICATIONS 权限
-        requestPostNotificationsIfNeeded()
 
         // 设置 ViewModel 回调
         monitoringViewModel.startServiceCallback = { hasPermission -> startVigilService(hasPermission) }
@@ -286,8 +282,6 @@ class MainActivity : AppCompatActivity() {
         settingsViewModel.updatePermissionStates()
         // 后台期间 EventBus 事件可能无人收集；每次回前台都以持久化队首纠正弹窗。
         monitoringViewModel.syncAlertDialogWithPersistentState()
-        // 用户从系统设置返回后，若通知权限被取消则再次申请
-        requestPostNotificationsIfNeeded()
         // 打开 App 即自愈：服务开关开着、权限在、但系统监听绑定断开时，自动请求重绑。
         // 绝大多数断连场景下用户无需手动"重启服务"或重新授权。
         if (sharedPreferencesHelper.getServiceEnabledState()
@@ -297,18 +291,6 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "检测到监听绑定断开（打开 App 时），自动 requestRebind。")
             VigilLogger.w(this, TAG, "打开 App 检测到监听绑定断开，自动 requestRebind")
             ListenerRecovery.requestRebind(this)
-        }
-    }
-
-    private fun requestPostNotificationsIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (!PermissionUtils.canPostNotifications(this)) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                    PermissionUtils.REQUEST_CODE_POST_NOTIFICATIONS
-                )
-            }
         }
     }
 

@@ -1,6 +1,7 @@
 // src/main/java/com/example/vigil/ui/main/MainScreen.kt
 package com.example.vigil.ui.main
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.media.RingtoneManager
@@ -10,6 +11,7 @@ import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -126,6 +128,7 @@ import com.example.vigil.update.UpdateViewModel
 import com.example.vigil.util.VigilEventBus
 import com.example.vigil.util.VigilLogger
 import com.example.vigil.ui.dialogs.PermissionGuideDialog
+import com.example.vigil.ui.dialogs.PermissionOnboardingDialog
 import com.example.vigil.ui.monitoring.MonitoringViewModel
 import com.example.vigil.ui.monitoring.ServiceState
 import com.example.vigil.ui.settings.SettingsViewModel
@@ -163,6 +166,7 @@ fun MainScreen(
     val selectedRingtoneName by settingsViewModel.selectedRingtoneName
     val isAppFilterEnabled by settingsViewModel.isAppFilterEnabled
     val hasNotificationAccess by settingsViewModel.hasNotificationAccess
+    val canPostNotifications by settingsViewModel.canPostNotifications
     val isIgnoringBatteryOptimizations by settingsViewModel.isIgnoringBatteryOptimizations
 
     // 铃声选择器（逻辑搬自原 SettingsScreen）
@@ -240,6 +244,33 @@ fun MainScreen(
     // 入口提示与引导行的持久化状态（纯 UI 标记，与服务/ViewModel 无关，直接读 prefs）
     val prefs = remember { SharedPreferencesHelper(context) }
     var lockTaskTipDismissed by remember { mutableStateOf(prefs.isLockTaskTipDismissed()) }
+    var showOnboardingDialog by remember {
+        mutableStateOf(
+            !prefs.isPermissionOnboardingDone() && (
+                !PermissionUtils.isNotificationListenerEnabled(context) ||
+                !PermissionUtils.canPostNotifications(context) ||
+                !PermissionUtils.canDrawOverlays(context) ||
+                !PermissionUtils.isIgnoringBatteryOptimizations(context)
+            )
+        )
+    }
+
+    val postNotificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        settingsViewModel.updatePermissionStates()
+        if (!granted && activity != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.POST_NOTIFICATIONS)
+        ) {
+            PermissionUtils.openAppDetailsSettings(activity)
+        }
+    }
+
+    val requestPostNotifications: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            postNotificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     NotificationDashboard(
         serviceEnabled = serviceEnabled,
         serviceState = serviceState,
@@ -381,7 +412,7 @@ fun MainScreen(
                     }
                 }
                 if (!keywordPage) {
-                GroupHeader("全局默认报警（规则可单独覆盖）")
+                GroupHeader("报警策略")
 
                 // 2. 默认铃声
                 LineRow(onClick = { ringtoneSelectTarget = "" }) {
@@ -413,22 +444,15 @@ fun MainScreen(
                     RowValue(formatDelayPolicy(defaultDelayPolicy), withArrow = true)
                 }
 
-                // 5.5 应用外系统浮窗（全应用唯一入口：权限 + 样式 + 预览）
-                GroupHeader("应用外告警浮窗")
-                LineRow(onClick = {
-                    if (!hasOverlayPermission) {
-                        activity?.let(PermissionUtils::openOverlaySettings)
-                    } else {
-                        AlertOverlayManager.showPreview(context, overlayAlertStyle)
-                    }
-                }) {
-                    RowLabel("系统浮窗")
-                    if (hasOverlayPermission) {
-                        RowValue("预览", withArrow = true)
-                    } else {
-                        WarnCapsule()
+                // 6. 待触发延时报警：有排定项时才出现，可查看/取消
+                if (pendingDelayedCount > 0) {
+                    LineRow(onClick = { showPendingDelayedDialog = true }) {
+                        RowLabel("待触发延时报警")
+                        RowValue("$pendingDelayedCount 条", withArrow = true)
                     }
                 }
+
+                // 7. 应用外浮窗样式与预览
                 LineRow {
                     RowLabel("浮窗样式")
                     FlowRow(
@@ -457,27 +481,28 @@ fun MainScreen(
                         }
                     }
                 }
-
-                // 6. 待触发延时报警：有排定项时才出现，可查看/取消
-                if (pendingDelayedCount > 0) {
-                    LineRow(onClick = { showPendingDelayedDialog = true }) {
-                        RowLabel("待触发延时报警")
-                        RowValue("$pendingDelayedCount 条", withArrow = true)
+                LineRow(onClick = {
+                    if (hasOverlayPermission) {
+                        AlertOverlayManager.showPreview(context, overlayAlertStyle)
+                    } else {
+                        Toast.makeText(context, "请先在下方开启「系统悬浮窗」权限", Toast.LENGTH_SHORT).show()
+                        activity?.let(PermissionUtils::openOverlaySettings)
                     }
+                }) {
+                    RowLabel("预览浮窗")
+                    RowValue(if (hasOverlayPermission) "点按预览" else "需先授权", withArrow = true)
                 }
 
-                }
-                if (!keywordPage) {
-                // ---- 权限与保活：按必需性分级（必需 / 推荐 / 可选） ----
-                GroupHeader("本机通知权限")
+                // ---- 核心权限（可检测状态的核心与重要权限统一收拢） ----
+                GroupHeader("核心权限")
 
-                // 通知使用权：功能前提，未开启则监听不存在
+                // 通知使用权：核心必需，未开启则无法监听
                 LineRow(onClick = {
                     if (!hasNotificationAccess) {
                         showGuideDialog = PermissionGuide.NotificationAccess
                     }
                 }) {
-                    RowLabel("通知使用权")
+                    RowLabel("通知使用权（必需）")
                     if (hasNotificationAccess) {
                         GrantedValue()
                     } else {
@@ -485,20 +510,79 @@ fun MainScreen(
                     }
                 }
 
-                GroupHeader("后台运行建议")
+                // 发送通知（Android 13+）：维持前台监听与报警通知
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    LineRow(onClick = {
+                        if (!canPostNotifications) {
+                            requestPostNotifications()
+                        }
+                    }) {
+                        RowLabel("发送通知（必需）")
+                        if (canPostNotifications) {
+                            GrantedValue()
+                        } else {
+                            WarnCapsule()
+                        }
+                    }
+                }
 
-                // 电池白名单：后台稳定检测的前提（Device Guard 类强杀防护），状态可检测
+                // 系统悬浮窗：推荐，应用外直接弹出报警浮窗
+                LineRow(onClick = {
+                    if (!hasOverlayPermission) {
+                        activity?.let(PermissionUtils::openOverlaySettings)
+                    }
+                }) {
+                    RowLabel("系统悬浮窗（推荐）")
+                    if (hasOverlayPermission) {
+                        GrantedValue()
+                    } else {
+                        WarnCapsule()
+                    }
+                }
+
+                // 电池白名单：推荐，防止后台监听被系统休眠清理
                 LineRow(onClick = {
                     if (!isIgnoringBatteryOptimizations) {
                         showGuideDialog = PermissionGuide.Battery
                     }
                 }) {
-                    RowLabel("电池白名单")
+                    RowLabel("电池白名单（推荐）")
                     if (isIgnoringBatteryOptimizations) {
                         GrantedValue()
                     } else {
                         WarnCapsule()
                     }
+                }
+
+                // 精确闹钟（Android 12+）：按需，仅在使用延时报警且未授权时提示
+                if (hasDelayedPolicy && !exactAlarmAllowed) {
+                    LineRow(onClick = {
+                        if (!DelayedAlertScheduler.openExactAlarmSettings(context)) {
+                            Toast.makeText(context, "无法打开闹钟和提醒设置", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        RowLabel("精确闹钟（延时必需）")
+                        WarnCapsule()
+                    }
+                }
+
+                // ---- 后台防杀（厂商策略，需在系统设置中手动配置） ----
+                GroupHeader("后台防杀")
+
+                // 自启动管理（国产 ROM 通用引导，跳转系统对应设置页；状态不可检测）
+                LineRow(onClick = {
+                    activity?.let { PermissionUtils.openAutoStartSettings(it) }
+                }) {
+                    RowLabel("自启动管理")
+                    RowValue("允许自启动", withArrow = true)
+                }
+
+                // 后台运行策略（省电策略/耗电管理设为无限制；状态不可检测）
+                LineRow(onClick = {
+                    showGuideDialog = PermissionGuide.BackgroundRun
+                }) {
+                    RowLabel("后台运行策略")
+                    RowValue("设为无限制", withArrow = true)
                 }
 
                 // 锁定任务卡片：防一键清理，无 API 可检测/跳转，纯图文引导（可「不再提示」关闭本行）
@@ -511,37 +595,10 @@ fun MainScreen(
                     }
                 }
 
-                // 精确闹钟（Android 12+）：只在使用延时报警且未授权时提示，否则纯噪音
-                if (hasDelayedPolicy && !exactAlarmAllowed) {
-                    LineRow(onClick = {
-                        if (!DelayedAlertScheduler.openExactAlarmSettings(context)) {
-                            Toast.makeText(context, "无法打开闹钟和提醒设置", Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
-                        RowLabel("精确闹钟")
-                        WarnCapsule()
-                    }
-                }
+                // ---- 关于与诊断 ----
+                GroupHeader("关于与诊断")
 
-                GroupHeader("其他设置")
-
-                // 自启动管理（国产 ROM 通用引导，跳转系统对应设置页；状态不可检测）
-                LineRow(onClick = {
-                    activity?.let { PermissionUtils.openAutoStartSettings(it) }
-                }) {
-                    RowLabel("自启动管理")
-                    RowValue("允许自启动", withArrow = true)
-                }
-
-                // 后台运行（省电策略/耗电管理设为无限制；状态不可检测）
-                LineRow(onClick = {
-                    showGuideDialog = PermissionGuide.BackgroundRun
-                }) {
-                    RowLabel("后台运行")
-                    RowValue("设为无限制", withArrow = true)
-                }
-
-                // 8. 导出日志（真机长测诊断：拼接诊断头 + 本地持久化日志，调起系统分享）
+                // 导出日志（真机长测诊断：拼接诊断头 + 本地持久化日志，调起系统分享）
                 LineRow(onClick = {
                     try {
                         val exportFile = VigilLogger.export(context)
@@ -565,7 +622,7 @@ fun MainScreen(
                     RowValue("分享诊断日志", withArrow = true)
                 }
 
-                // 9. 开源地址（GitHub 仓库，跳转浏览器）
+                // 开源地址（GitHub 仓库，跳转浏览器）
                 LineRow(onClick = {
                     try {
                         context.startActivity(
@@ -579,7 +636,7 @@ fun MainScreen(
                     RowValue("GitHub", withArrow = true)
                 }
 
-                // 10. 检查更新 / 版本号文本：点击重新检查（冷启动已自动检查过，此处手动触发）
+                // 检查更新 / 版本号文本：点击重新检查（冷启动已自动检查过，此处手动触发）
                 LineRow(onClick = { updateViewModel.checkForUpdate(isColdStart = false) }) {
                     RowLabel("检查更新")
                     RowValue("版本 v$currentVersionName", withArrow = true)
@@ -736,6 +793,27 @@ fun MainScreen(
                 showPendingDelayedDialog = false
             },
             onDismiss = { showPendingDelayedDialog = false }
+        )
+    }
+
+    if (showOnboardingDialog && activeAlert == null) {
+        PermissionOnboardingDialog(
+            hasNotificationAccess = hasNotificationAccess,
+            canPostNotifications = canPostNotifications,
+            hasOverlayPermission = hasOverlayPermission,
+            isIgnoringBatteryOptimizations = isIgnoringBatteryOptimizations,
+            onRequestNotificationAccess = { activity?.let(PermissionUtils::openNotificationListenerSettings) },
+            onRequestPostNotifications = requestPostNotifications,
+            onRequestOverlayPermission = { activity?.let(PermissionUtils::openOverlaySettings) },
+            onRequestBatteryWhitelist = { activity?.let(PermissionUtils::requestIgnoreBatteryOptimizations) },
+            onDismissLater = {
+                prefs.markPermissionOnboardingDone()
+                showOnboardingDialog = false
+            },
+            onComplete = {
+                prefs.markPermissionOnboardingDone()
+                showOnboardingDialog = false
+            }
         )
     }
 

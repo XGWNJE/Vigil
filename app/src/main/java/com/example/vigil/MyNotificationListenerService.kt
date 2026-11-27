@@ -89,6 +89,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     // 进程被杀后系统以 START_STICKY 重建服务时，onListenerConnected 可能永不被调用，
     // 此时进程活着、心跳照发，但通知永远不来 —— 看门狗靠此标志识别并自愈。
     @Volatile private var listenerActuallyConnected: Boolean = false
+    private var useAlertNotificationFallback: Boolean = false
     private var rebindFailCount: Int = 0
     private var heartbeatCount: Int = 0
 
@@ -428,6 +429,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         stopRingtoneAndLock()
         activeAlertId = null
         activeAlertKeyword = null
+        useAlertNotificationFallback = false
         activeAlertSourceApp = null
         if (persisted != null) startActiveAlert(persisted, persisted.snippet)
         else { updateForegroundNotification(); emitAlertStateChanged() }
@@ -467,6 +469,8 @@ class MyNotificationListenerService : NotificationListenerService() {
         activeAlertId = item.id
         activeAlertKeyword = item.keyword
         activeAlertSourceApp = item.sourceApp
+        // 浮窗权限通畅时不发高优先级通知栏横幅，避免重复弹窗；仅在无浮窗权限或展示失败时降级。
+        useAlertNotificationFallback = !PermissionUtils.canDrawOverlays(applicationContext)
         updateForegroundNotification()
         handler.post {
             if (sharedPreferencesHelper.getActiveAlert()?.id != item.id || activeAlertId != item.id) return@post
@@ -486,7 +490,9 @@ class MyNotificationListenerService : NotificationListenerService() {
                 onConfirm = { finishCurrentAlert(item.id, AlertEndType.MANUAL) }
             )
             if (!shownOverlay) {
-                // 未授予悬浮窗权限时降级回应用内弹窗兜底，确保绝不漏报
+                // 未授予悬浮窗权限或浮窗展示失败时，切换为系统通知栏高优先级悬浮通知 + 应用内弹窗兜底
+                useAlertNotificationFallback = true
+                updateForegroundNotification()
                 val activityIntent = Intent(applicationContext, MainActivity::class.java).apply {
                     action = ACTION_SHOW_ALERT_FROM_SERVICE
                     putExtra(EXTRA_ALERT_KEYWORD_FROM_SERVICE, item.keyword)
@@ -669,11 +675,15 @@ class MyNotificationListenerService : NotificationListenerService() {
     
     private fun updateForegroundNotification() {
         try {
-            val notification = activeAlertKeyword?.let { keyword ->
-                createActiveAlertNotification(keyword, activeAlertSourceApp)
-            } ?: createForegroundServiceNotification()
+            val notification = if (useAlertNotificationFallback) {
+                activeAlertKeyword?.let { keyword ->
+                    createActiveAlertNotification(keyword, activeAlertSourceApp)
+                } ?: createForegroundServiceNotification()
+            } else {
+                createForegroundServiceNotification()
+            }
             startForeground(FOREGROUND_NOTIFICATION_ID, notification)
-            Log.d(TAG, "已更新前台服务通知 (activeAlert=${activeAlertKeyword != null})")
+            Log.d(TAG, "已更新前台服务通知 (activeAlert=${activeAlertKeyword != null}, fallback=$useAlertNotificationFallback)")
         } catch (e: Exception) {
             Log.e(TAG, "更新前台服务通知时出错", e)
         }
@@ -871,6 +881,7 @@ class MyNotificationListenerService : NotificationListenerService() {
         stopRingtoneAndLock()
         activeAlertId = null
         activeAlertKeyword = null
+        useAlertNotificationFallback = false
         activeAlertSourceApp = null
         val next = transition.next
         if (next != null) {

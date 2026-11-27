@@ -1095,4 +1095,15 @@ class SharedPreferencesHelper(context: Context) {
         prefs.edit().putString("overlay_alert_style", style.name).apply()
         Log.i("SharedPreferencesHelper", "应用外告警浮窗样式已保存: ${style.name}")
     }
+
+    // --- 初始化授权引导 ---
+
+    fun isPermissionOnboardingDone(): Boolean {
+        return prefs.getBoolean("permission_onboarding_done", false)
+    }
+
+    fun markPermissionOnboardingDone() {
+        prefs.edit().putBoolean("permission_onboarding_done", true).apply()
+        Log.i("SharedPreferencesHelper", "已标记初始化授权引导完成")
+    }
 }

@@ -107,6 +107,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _hasNotificationAccess = mutableStateOf(false)
     val hasNotificationAccess: State<Boolean> = _hasNotificationAccess
 
+    private val _canPostNotifications = mutableStateOf(PermissionUtils.canPostNotifications(context))
+    val canPostNotifications: State<Boolean> = _canPostNotifications
+
     private val _isIgnoringBatteryOptimizations = mutableStateOf(false)
     val isIgnoringBatteryOptimizations: State<Boolean> = _isIgnoringBatteryOptimizations
 
@@ -156,12 +159,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun updatePermissionStates() {
         _hasNotificationAccess.value = PermissionUtils.isNotificationListenerEnabled(context)
+        _canPostNotifications.value = PermissionUtils.canPostNotifications(context)
         _isIgnoringBatteryOptimizations.value = PermissionUtils.isIgnoringBatteryOptimizations(context)
         _hasOverlayPermission.value = PermissionUtils.canDrawOverlays(context)
         _exactAlarmAllowed.value = DelayedAlertScheduler.canScheduleExactAlarms(context)
         _hasDelayedPolicy.value = sharedPreferencesHelper.hasAnyDelayedPolicy()
 
-        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, Overlay=${_hasOverlayPermission.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}, ExactAlarm=${_exactAlarmAllowed.value}")
+        Log.d(TAG, "Permission states updated: Notification=${_hasNotificationAccess.value}, PostNotif=${_canPostNotifications.value}, Overlay=${_hasOverlayPermission.value}, BatteryWhitelist=${_isIgnoringBatteryOptimizations.value}, ExactAlarm=${_exactAlarmAllowed.value}")
     }
 
     // --- 应用过滤 ---

@@ -147,7 +147,8 @@ class MainActivity : AppCompatActivity() {
                         matchedKeyword = matchedKeyword,
                         sourceApp = activeAlert?.sourceApp,
                         snippet = activeAlert?.snippet,
-                        eventTimeMillis = activeAlert?.firstTriggeredAt
+                        eventTimeMillis = activeAlert?.firstTriggeredAt,
+                        isSilent = activeAlert?.ringtoneUri?.startsWith("silent:") == true
                     )
                 }
 

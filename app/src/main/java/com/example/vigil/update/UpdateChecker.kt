@@ -219,6 +219,14 @@ object UpdateChecker {
         return match.groupValues[1].split('.').map { it.toIntOrNull() ?: return null }
     }
 
+    /** 安装包下载与校验结果 */
+    sealed class DownloadResult {
+        data class Success(val file: File) : DownloadResult()
+        data class Failure(val reason: String) : DownloadResult()
+    }
+
+    private class DownloadFailureException(val reason: String) : IOException(reason)
+
     /**
      * 下载 APK 到应用缓存目录，返回文件；失败返回 null 并写日志。
      * [onProgress] 回调 0f..1f（回调可能从 IO 线程触发，调用方注意线程切换）。
@@ -230,24 +238,39 @@ object UpdateChecker {
         expectedSize: Long = 0L,
         expectedDigest: String? = null,
         onProgress: ((Float) -> Unit)? = null
-    ): File? = withContext(Dispatchers.IO) {
+    ): File? {
+        return (downloadWithResult(context, url, versionName, expectedSize, expectedDigest, onProgress) as? DownloadResult.Success)?.file
+    }
+
+    /**
+     * 下载并校验 APK，返回明确的成功文件或中文失败原因。
+     */
+    suspend fun downloadWithResult(
+        context: Context,
+        url: String,
+        versionName: String,
+        expectedSize: Long = 0L,
+        expectedDigest: String? = null,
+        onProgress: ((Float) -> Unit)? = null
+    ): DownloadResult = withContext(Dispatchers.IO) {
         val sanitized = versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val dest = File(context.cacheDir, "vigil-update-$sanitized.apk")
-        val partial = File(context.cacheDir, "vigil-update-$sanitized.apk.part")
+        val partial = File(context.cacheDir, "vigil-update-$sanitized.tmp.apk")
         var conn: HttpURLConnection? = null
         var succeeded = false
         try {
             if (dest.exists()) dest.delete()
+            if (partial.exists()) partial.delete()
             conn = URL(url).openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 15_000
+            conn.connectTimeout = 30_000
+            conn.readTimeout = 30_000
             conn.instanceFollowRedirects = true
             conn.setRequestProperty("User-Agent", "Vigil-App-Updater")
             val code = conn.responseCode
             if (code != 200) {
                 Log.w(TAG, "下载 APK 返回异常 HTTP $code")
-                return@withContext null
+                return@withContext DownloadResult.Failure("下载服务返回异常（HTTP $code）")
             }
             val contentLength = conn.contentLengthLong
             var total = 0L
@@ -260,7 +283,7 @@ object UpdateChecker {
                         if (read == -1) break
                         out.write(buf, 0, read)
                         total += read
-                        if (total > 512L * 1024 * 1024) throw IOException("安装包超过大小限制")
+                        if (total > 512L * 1024 * 1024) throw DownloadFailureException("安装包超过大小限制")
                         if (contentLength > 0) {
                             onProgress?.invoke((total.toFloat() / contentLength).coerceIn(0f, 1f))
                         }
@@ -269,7 +292,9 @@ object UpdateChecker {
                 }
             }
             if (total == 0L || (contentLength >= 0 && total != contentLength) ||
-                (expectedSize > 0 && total != expectedSize)) throw IOException("安装包下载不完整")
+                (expectedSize > 0 && total != expectedSize)) {
+                throw DownloadFailureException("安装包下载不完整，请重试")
+            }
             if (expectedDigest != null) {
                 val digest = MessageDigest.getInstance("SHA-256")
                 partial.inputStream().use { input ->
@@ -277,18 +302,33 @@ object UpdateChecker {
                     while (true) { val count = input.read(buf); if (count < 0) break; digest.update(buf, 0, count) }
                 }
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
-                if (!expectedDigest.equals("sha256:$actual", ignoreCase = true)) throw IOException("安装包校验失败")
+                if (!expectedDigest.equals("sha256:$actual", ignoreCase = true)) {
+                    throw DownloadFailureException("安装包完整性校验失败，请重试")
+                }
             }
-            if (!isValidUpdateApk(context, partial, versionName)) throw IOException("安装包身份、版本或签名不匹配")
-            if (!partial.renameTo(dest)) throw IOException("无法保存安装包")
+            if (!isValidUpdateApk(context, partial, versionName)) {
+                throw DownloadFailureException("安装包签名或版本校验未通过（跨签名版本请先卸载旧版后从发布页安装）")
+            }
+            if (!partial.renameTo(dest)) {
+                throw DownloadFailureException("无法保存安装包")
+            }
             succeeded = true
             Log.i(TAG, "下载完成: ${dest.absolutePath} (${dest.length()} bytes)")
-            dest
+            DownloadResult.Success(dest)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: DownloadFailureException) {
+            Log.e(TAG, "下载更新 APK 失败: ${e.reason}", e)
+            dest.delete()
+            DownloadResult.Failure(e.reason)
+        } catch (e: IOException) {
+            Log.e(TAG, "下载更新 APK 网络异常", e)
+            dest.delete()
+            DownloadResult.Failure("网络连接超时或中断，请检查网络后重试")
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
             Log.e(TAG, "下载更新 APK 失败", e)
             dest.delete()
-            null
+            DownloadResult.Failure(e.message ?: "下载更新失败，请重试")
         } finally {
             conn?.disconnect()
             partial.delete()

@@ -127,21 +127,22 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
                 openReleasePage(context, info.releasePageUrl)
                 return@launch
             }
-            val apk = UpdateChecker.download(context, url, info.versionName, info.apkSize, info.apkDigest) { progress ->
+            when (val res = UpdateChecker.downloadWithResult(context, url, info.versionName, info.apkSize, info.apkDigest) { progress ->
                 _state.update { cur ->
                     if (cur.isDownloading) cur.copy(downloadProgress = progress) else cur
                 }
-            }
-            if (apk != null) {
-                _state.update { it.copy(isDownloading = false, downloadProgress = null, installReady = apk) }
-            } else {
-                // 下载失败
-                _state.update {
-                    it.copy(
-                        isDownloading = false,
-                        downloadProgress = null,
-                        dialog = UpdateDialog.Error("下载更新失败，请检查网络后重试")
-                    )
+            }) {
+                is UpdateChecker.DownloadResult.Success -> {
+                    _state.update { it.copy(isDownloading = false, downloadProgress = null, installReady = res.file) }
+                }
+                is UpdateChecker.DownloadResult.Failure -> {
+                    _state.update {
+                        it.copy(
+                            isDownloading = false,
+                            downloadProgress = null,
+                            dialog = UpdateDialog.Error(res.reason)
+                        )
+                    }
                 }
             }
         }

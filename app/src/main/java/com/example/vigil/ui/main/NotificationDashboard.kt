@@ -419,7 +419,7 @@ private enum class OwlButtonState(val clips: List<OwlClipSpec>) {
         )
     ),
     WARNING(listOf(OwlClipSpec(R.drawable.owl_strip_warning, cols = 12, frameCount = 174, cycleMs = 7102))),
-    ALARM(listOf(OwlClipSpec(R.drawable.owl_strip_alarm, cols = 10, frameCount = 88, cycleMs = 3385)))
+    ALARM(listOf(OwlClipSpec(R.drawable.owl_strip_alarm, cols = 8, frameCount = 88, cycleMs = 3385)))
 }
 
 /** 居中发光脉冲守望环（像素猫头鹰多状态透明序列动图 + 60fps 物理弹性光环）：全应用唯一的监听总开关。 */
